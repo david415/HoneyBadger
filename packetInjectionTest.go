@@ -102,16 +102,11 @@ func main() {
 			if err != nil {
 				panic(err)
 			}
-
-			for {
-				time.Sleep(time.Duration(10) * time.Second)
-
-				_, err = ipConn.WriteTo(buf.Bytes(), &dstIP)
-				if err != nil {
-					panic(err)
-				}
-				log.Print("packet sent!\n")
+			_, err = ipConn.WriteTo(buf.Bytes(), &dstIP)
+			if err != nil {
+				panic(err)
 			}
+			log.Print("packet sent!\n")
 			// XXX end of send packet section
 		}
 
