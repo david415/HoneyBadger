@@ -20,23 +20,23 @@ func main() {
 	dstIPaddr := net.IPAddr{
 		IP: dstIP,
 	}
-	ipLayer := &layers.IPv4{
+	ipLayer := layers.IPv4{
 		SrcIP:    srcIP,
 		DstIP:    dstIP,
 		Protocol: layers.IPProtocolTCP,
 	}
-	tcpLayer := &layers.TCP{
+	tcpLayer := layers.TCP{
 		SrcPort: layers.TCPPort(666),
 		DstPort: layers.TCPPort(22),
 		SYN:     true,
 	}
-	tcpLayer.SetNetworkLayerForChecksum(ipLayer)
+	tcpLayer.SetNetworkLayerForChecksum(&ipLayer)
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{
-		ComputeChecksums: true,
 		FixLengths:       true,
+		ComputeChecksums: true,
 	}
-	err := gopacket.SerializeLayers(buf, opts, ipLayer, tcpLayer)
+	err := gopacket.SerializeLayers(buf, opts, &ipLayer)
 	if err != nil {
 		panic(err)
 	}
