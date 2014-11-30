@@ -1,3 +1,6 @@
+// Original Google source code modified by David Stainton in 2014
+// thanks to the BSD license...
+//
 // Copyright 2012 Google, Inc. All rights reserved.
 //
 // Use of this source code is governed by a BSD-style license
@@ -18,8 +21,8 @@ import (
 	"code.google.com/p/gopacket/examples/util"
 	"code.google.com/p/gopacket/layers"
 	"code.google.com/p/gopacket/pcap"
-	"code.google.com/p/gopacket/tcpassembly"
 	"flag"
+	"github.com/david415/gopacket/tcpassembly"
 	"log"
 	"time"
 )
