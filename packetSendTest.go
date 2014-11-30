@@ -12,14 +12,17 @@ func main() {
 	defer util.Run()()
 
 	// XXX create tcp/ip packet
-	//	srcIP := net.ParseIP("192.168.0.20")
+	srcIP := net.ParseIP("127.0.0.1")
 	dstIP := net.ParseIP("192.168.0.1")
+	//srcIPaddr := net.IPAddr{
+	//	IP: srcIP,
+	//}
 	dstIPaddr := net.IPAddr{
 		IP: dstIP,
 	}
 	ipLayer := &layers.IPv4{
-		Version:  4,
-		TTL:      64,
+		SrcIP:    srcIP,
+		DstIP:    dstIP,
 		Protocol: layers.IPProtocolTCP,
 	}
 	tcpLayer := &layers.TCP{
@@ -40,7 +43,7 @@ func main() {
 	// XXX end of packet creation
 
 	// XXX send packet
-	ipConn, err := net.ListenPacket("ip4:tcp", "192.168.0.20")
+	ipConn, err := net.ListenPacket("ip4:tcp", "0.0.0.0")
 	if err != nil {
 		panic(err)
 	}
