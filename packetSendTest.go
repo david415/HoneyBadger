@@ -11,35 +11,73 @@ import (
 func main() {
 	defer util.Run()()
 
-	// XXX create tcp/ip packet
-	srcIP := net.ParseIP("127.0.0.1")
-	dstIP := net.ParseIP("192.168.0.1")
-	//srcIPaddr := net.IPAddr{
-	//	IP: srcIP,
-	//}
-	dstIPaddr := net.IPAddr{
-		IP: dstIP,
+	var srcIP, dstIP net.IP
+	var srcIPstr string = "127.0.0.1"
+	var dstIPstr string = "127.0.0.1"
+
+	// source ip
+	srcIP = net.ParseIP(srcIPstr)
+	if srcIP == nil {
+		log.Printf("non-ip target: %q\n", srcIPstr)
 	}
-	ipLayer := layers.IPv4{
+	srcIP = srcIP.To4()
+	if srcIP == nil {
+		log.Printf("non-ipv4 target: %q\n", srcIPstr)
+	}
+
+	// destination ip
+	dstIP = net.ParseIP(dstIPstr)
+	if dstIP == nil {
+		log.Printf("non-ip target: %q\n", dstIPstr)
+	}
+	dstIP = dstIP.To4()
+	if dstIP == nil {
+		log.Printf("non-ipv4 target: %q\n", dstIPstr)
+	}
+
+	// build tcp/ip packet
+	ip := layers.IPv4{
 		SrcIP:    srcIP,
 		DstIP:    dstIP,
+		Version:  4,
+		TTL:      64,
 		Protocol: layers.IPProtocolTCP,
 	}
-	tcpLayer := layers.TCP{
-		SrcPort: layers.TCPPort(666),
-		DstPort: layers.TCPPort(22),
-		SYN:     true,
+	srcport := layers.TCPPort(645)
+	dstport := layers.TCPPort(22)
+	tcp := layers.TCP{
+		SrcPort: srcport,
+		DstPort: dstport,
+
+		Seq:    1105024978,
+		Ack:    0,
+		ACK:    false,
+		SYN:    true,
+		FIN:    false,
+		RST:    false,
+		URG:    false,
+		ECE:    false,
+		CWR:    false,
+		NS:     false,
+		PSH:    false,
+		Window: 14600,
 	}
-	tcpLayer.SetNetworkLayerForChecksum(&ipLayer)
+
+	payload := gopacket.Payload([]byte("meowmeowmeowXXXhoho"))
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{
-		FixLengths:       true,
+		//		FixLengths:       true,
 		ComputeChecksums: true,
 	}
-	err := gopacket.SerializeLayers(buf, opts, &ipLayer)
+	tcp.SetNetworkLayerForChecksum(&ip)
+	err := gopacket.SerializeLayers(buf, opts,
+		&ip,
+		&tcp,
+		payload)
 	if err != nil {
 		panic(err)
 	}
+	packetData := buf.Bytes()
 	// XXX end of packet creation
 
 	// XXX send packet
@@ -47,7 +85,12 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	_, err = ipConn.WriteTo(buf.Bytes(), &dstIPaddr)
+
+	dstIPaddr := net.IPAddr{
+		IP: dstIP,
+	}
+
+	_, err = ipConn.WriteTo(packetData, &dstIPaddr)
 	if err != nil {
 		panic(err)
 	}
