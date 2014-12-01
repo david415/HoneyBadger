@@ -6,6 +6,7 @@ import (
 	"code.google.com/p/gopacket/layers"
 	"code.google.com/p/gopacket/pcap"
 	"flag"
+	"golang.org/x/net/ipv4"
 	"log"
 	"net"
 	"time"
@@ -15,6 +16,95 @@ var iface = flag.String("i", "wlan0", "Interface to get packets from")
 var filter = flag.String("f", "tcp", "BPF filter for pcap")
 var flushAfter = flag.String("flush_after", "2m", "")
 var snaplen = flag.Int("s", 65536, "SnapLen for pcap packet capture")
+
+type TCPFlowID struct {
+	SrcIP   net.IP
+	SrcPort layers.TCPPort
+	DstIP   net.IP
+	DstPort layers.TCPPort
+}
+
+type TCPStreamInjector struct {
+	flowId        *TCPFlowID
+	packetConn    net.PacketConn
+	rawConn       *ipv4.RawConn
+	ipHeader      *ipv4.Header
+	ip            layers.IPv4
+	tcp           layers.TCP
+	ipBuf         gopacket.SerializeBuffer
+	tcpPayloadBuf gopacket.SerializeBuffer
+}
+
+func (i *TCPStreamInjector) Init(netInterface string) error {
+	var err error
+	i.packetConn, err = net.ListenPacket("ip4:tcp", netInterface)
+	if err != nil {
+		return err
+	}
+	i.rawConn, err = ipv4.NewRawConn(i.packetConn)
+	return err
+}
+
+func (i *TCPStreamInjector) SetFlow(flowId *TCPFlowID) {
+	i.flowId = flowId
+}
+
+func (i *TCPStreamInjector) PrepareIPLayer() error {
+	i.ip = layers.IPv4{
+		SrcIP:    i.flowId.SrcIP,
+		DstIP:    i.flowId.DstIP,
+		Version:  4,
+		TTL:      64,
+		Protocol: layers.IPProtocolTCP,
+	}
+	i.ipBuf = gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{
+		FixLengths:       true,
+		ComputeChecksums: true,
+	}
+	err := i.ip.SerializeTo(i.ipBuf, opts)
+	if err != nil {
+		return err
+	}
+	i.ipHeader, err = ipv4.ParseHeader(i.ipBuf.Bytes())
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (i *TCPStreamInjector) Write(payload []byte) error {
+	i.tcp = layers.TCP{
+		SrcPort: i.flowId.SrcPort,
+		DstPort: i.flowId.DstPort,
+		Window:  1505,
+		Urgent:  0,
+		Seq:     11050,
+		Ack:     0,
+		ACK:     false,
+		SYN:     false,
+		FIN:     false,
+		RST:     false,
+		URG:     false,
+		ECE:     false,
+		CWR:     false,
+		NS:      false,
+		PSH:     false,
+	}
+	i.tcp.SetNetworkLayerForChecksum(&i.ip)
+	i.tcpPayloadBuf = gopacket.NewSerializeBuffer()
+	packetPayload := gopacket.Payload(payload)
+	opts := gopacket.SerializeOptions{
+		FixLengths:       true,
+		ComputeChecksums: true,
+	}
+	err := gopacket.SerializeLayers(i.tcpPayloadBuf, opts, &i.tcp, packetPayload)
+	if err != nil {
+		return err
+	}
+	err = i.rawConn.WriteTo(i.ipHeader, i.tcpPayloadBuf.Bytes(), nil)
+	return err
+}
 
 func main() {
 	defer util.Run()()
@@ -64,48 +154,30 @@ func main() {
 		log.Printf("tcp seq %d\n", tcp.Seq)
 
 		if shouldSend {
-			// XXX create tcp/ip packet
-			ipLayer := &layers.IPv4{
-				SrcIP:    ip4.SrcIP,
-				DstIP:    ip4.DstIP,
-				Protocol: layers.IPProtocolTCP,
-			}
-			tcpLayer := &layers.TCP{
+
+			tcpFlowId := TCPFlowID{
+				SrcIP:   ip4.SrcIP,
+				DstIP:   ip4.DstIP,
 				SrcPort: tcp.SrcPort,
 				DstPort: tcp.DstPort,
-				Seq:     tcp.Seq,
-				SYN:     tcp.SYN,
-				Window:  tcp.Window,
 			}
-			tcpLayer.SetNetworkLayerForChecksum(ipLayer)
-			buf := gopacket.NewSerializeBuffer()
-			opts := gopacket.SerializeOptions{
-				ComputeChecksums: true,
-				FixLengths:       true,
-			}
-			err = gopacket.SerializeLayers(buf, opts,
-				ipLayer,
-				tcpLayer,
-				gopacket.Payload([]byte("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXxxx")))
-			if err != nil {
-				panic(err)
-			}
-			// XXX end of packet creation
 
-			// XXX send packet
-			dstIP := net.IPAddr{
-				IP: ip4.DstIP,
-			}
-			// get an IPConn instance
-			// replace 0.0.0.0 with ip4.SrcIP???
-			ipConn, err := net.ListenPacket("ip4:tcp", "0.0.0.0")
+			// reuse ip head
+			streamInjector := TCPStreamInjector{}
+			err = streamInjector.Init("0.0.0.0")
 			if err != nil {
 				panic(err)
 			}
-			_, err = ipConn.WriteTo(buf.Bytes(), &dstIP)
+			streamInjector.SetFlow(&tcpFlowId)
+			err = streamInjector.PrepareIPLayer()
 			if err != nil {
 				panic(err)
 			}
+			err = streamInjector.Write([]byte("meowmeowmeow"))
+			if err != nil {
+				panic(err)
+			}
+
 			log.Print("packet sent!\n")
 			// XXX end of send packet section
 		}
