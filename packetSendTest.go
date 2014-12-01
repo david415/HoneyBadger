@@ -5,27 +5,10 @@ import (
 	"code.google.com/p/gopacket/examples/util"
 	"code.google.com/p/gopacket/layers"
 	"fmt"
+	"golang.org/x/net/ipv4"
 	"log"
 	"net"
 )
-
-func sanitizeTCPFields(packetData []byte, srcPort, dstPort layers.TCPPort) error {
-	packet := gopacket.NewPacket(packetData, layers.LayerTypeTCP, gopacket.Default)
-	tcpLayerType := packet.Layer(layers.LayerTypeTCP)
-	if tcpLayerType == nil {
-		return fmt.Errorf("packet has no tcp layer\n")
-	}
-	tcpLayer, ok := tcpLayerType.(*layers.TCP)
-	if !ok {
-		return fmt.Errorf("tcp layer is not tcp layer :-/")
-	}
-
-	if srcPort != tcpLayer.SrcPort || dstPort != tcpLayer.DstPort {
-		return fmt.Errorf("malformed tcp layer: srcport %d dstport %d\n", tcpLayer.SrcPort, tcpLayer.DstPort)
-	}
-
-	return nil
-}
 
 func main() {
 	defer util.Run()()
@@ -62,11 +45,13 @@ func main() {
 		TTL:      64,
 		Protocol: layers.IPProtocolTCP,
 	}
-	srcport := layers.TCPPort(645)
+
+	srcport := layers.TCPPort(666)
 	dstport := layers.TCPPort(22)
 	tcp := layers.TCP{
 		SrcPort: srcport,
 		DstPort: dstport,
+		Window:  1505,
 		Urgent:  0,
 		Seq:     11050,
 		Ack:     0,
@@ -81,42 +66,43 @@ func main() {
 		PSH:     false,
 	}
 
-	//payload := gopacket.Payload([]byte("meowmeowmeowXXXhoho"))
-	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{
 		FixLengths:       true,
 		ComputeChecksums: true,
 	}
+
 	tcp.SetNetworkLayerForChecksum(&ip)
-	err := gopacket.SerializeLayers(buf, opts,
-		&ip,
-		&tcp)
-	//payload)
+
+	ipHeaderBuf := gopacket.NewSerializeBuffer()
+	err := ip.SerializeTo(ipHeaderBuf, opts)
 	if err != nil {
 		panic(err)
 	}
-	packetData := buf.Bytes()
+	ipHeader, err := ipv4.ParseHeader(ipHeaderBuf.Bytes())
+	if err != nil {
+		panic(err)
+	}
+
+	tcpPayloadBuf := gopacket.NewSerializeBuffer()
+	payload := gopacket.Payload([]byte("meowmeowmeow"))
+	err = gopacket.SerializeLayers(tcpPayloadBuf, opts, &tcp, payload)
+	if err != nil {
+		panic(err)
+	}
 	// XXX end of packet creation
 
 	// XXX send packet
-	ipConn, err := net.ListenPacket("ip4:tcp", "0.0.0.0")
+	var packetConn net.PacketConn
+	var rawConn *ipv4.RawConn
+	packetConn, err = net.ListenPacket("ip4:tcp", "127.0.0.1")
+	if err != nil {
+		panic(err)
+	}
+	rawConn, err = ipv4.NewRawConn(packetConn)
 	if err != nil {
 		panic(err)
 	}
 
-	err = sanitizeTCPFields(packetData, srcport, dstport)
-	if err != nil {
-		//panic(err)
-		log.Printf("malformed packet: %s\n", err)
-	}
-
-	dstIPaddr := net.IPAddr{
-		IP: dstIP,
-	}
-
-	_, err = ipConn.WriteTo(packetData, &dstIPaddr)
-	if err != nil {
-		panic(err)
-	}
-	log.Print("packet sent!\n")
+	err = rawConn.WriteTo(ipHeader, tcpPayloadBuf.Bytes(), nil)
+	log.Printf("packet of length %d sent!\n", (len(tcpPayloadBuf.Bytes()) + len(ipHeaderBuf.Bytes())))
 }
