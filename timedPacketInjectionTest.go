@@ -17,6 +17,26 @@ var filter = flag.String("f", "tcp", "BPF filter for pcap")
 var flushAfter = flag.String("flush_after", "2m", "")
 var snaplen = flag.Int("s", 65536, "SnapLen for pcap packet capture")
 
+// XXX perhaps use this to calculate the packet injection timing of
+// for future stream sections beyond the window-size offset into the future?
+//type TCPRate struct {
+//	prevSeq, currentSeq   uint32
+//	prevTime, currentTime Time
+//	rates                 []uint32
+//}
+
+//func (r *TCPRate) Init(seq uint32) {
+//	r.prevSeq = seq
+//	r.prevTime = time.Now()
+//}
+
+//func (r *TCPRate) append(seq uint32) {
+//	timeSecDelta := uint32(time.Now().sub(r.prevTime) * time.Second)
+//	seqDelta := seq - r.prevSeq
+//	bytesPerSecond := seqDelta / timeSecDelta
+// ...
+//}
+
 type TCPFlowID struct {
 	SrcIP   net.IP
 	SrcPort layers.TCPPort
@@ -109,7 +129,11 @@ func (i *TCPStreamInjector) Write(payload []byte) error {
 func main() {
 	defer util.Run()()
 
+	var tcpRate TCPRate = nil
 	var shouldSend bool = true
+	var streamInjector TCPStreamInjector = nil
+	var currentTCPFlow gopacket.Flow = nil
+	var currentIPFlow gopacket.Flow = nil
 
 	var eth layers.Ethernet
 	var dot1q layers.Dot1Q
@@ -137,51 +161,66 @@ func main() {
 
 	log.Print("collecting packets...\n")
 
-	for {
-		data, ci, err := handle.ZeroCopyReadPacketData()
-		if err != nil {
-			log.Printf("error getting packet: %v %s", err, ci)
+	data, ci, err := handle.ZeroCopyReadPacketData()
+	if err != nil {
+		log.Printf("error getting packet: %v %s", err, ci)
+		continue
+	}
+	err = parser.DecodeLayers(data, &decoded)
+	if err != nil {
+		log.Printf("error decoding packet: %v", err)
+		continue
+	}
+
+	log.Printf("decoded the following layers: %v", decoded)
+	log.Printf("packet of size %d\n", len(data))
+	log.Printf("tcp seq %d\n", tcp.Seq)
+
+	if currentTCPFlow == nil {
+		currentTCPFlow = tcp.TransportFlow()
+		currentIPFlow = ipv4.NetworkFlow()
+	} else {
+		if tcp.TransportFlow() != currentTCPFlow || ipv4.NetworkFlow() != currentIPFlow {
+			log.Printf("Skipping non-tracked tcp/ip flow.\n")
 			continue
 		}
-		err = parser.DecodeLayers(data, &decoded)
+	}
+
+	if streamInjector == nil {
+		streamInjector = TCPStreamInjector{}
+		err = streamInjector.Init("0.0.0.0")
 		if err != nil {
-			log.Printf("error decoding packet: %v", err)
-			continue
+			panic(err)
+		}
+	}
+
+	tcpFlowId := TCPFlowID{
+		SrcIP:   ip4.SrcIP,
+		DstIP:   ip4.DstIP,
+		SrcPort: tcp.SrcPort,
+		DstPort: tcp.DstPort,
+	}
+
+	streamInjector.SetFlow(&tcpFlowId)
+	err = streamInjector.PrepareIPLayer()
+	if err != nil {
+		panic(err)
+	}
+
+	if tcpRate == nil {
+		tcpRate.Init(tcp.Seq)
+	} else {
+		tcpRate.Append(tcp.Seq)
+	}
+
+	if shouldSend {
+		err = streamInjector.Write([]byte("meowmeowmeow"))
+		if err != nil {
+			panic(err)
 		}
 
-		log.Printf("decoded the following layers: %v", decoded)
-		log.Printf("packet of size %d\n", len(data))
-		log.Printf("tcp seq %d\n", tcp.Seq)
-
-		if shouldSend {
-
-			tcpFlowId := TCPFlowID{
-				SrcIP:   ip4.SrcIP,
-				DstIP:   ip4.DstIP,
-				SrcPort: tcp.SrcPort,
-				DstPort: tcp.DstPort,
-			}
-
-			// reuse ip head
-			streamInjector := TCPStreamInjector{}
-			err = streamInjector.Init("0.0.0.0")
-			if err != nil {
-				panic(err)
-			}
-			streamInjector.SetFlow(&tcpFlowId)
-			err = streamInjector.PrepareIPLayer()
-			if err != nil {
-				panic(err)
-			}
-			err = streamInjector.Write([]byte("meowmeowmeow"))
-			if err != nil {
-				panic(err)
-			}
-
-			log.Print("packet sent!\n")
-			// XXX end of send packet section
-		}
-
+		log.Print("packet sent!\n")
+		// XXX end of send packet section
 	}
 
 }
