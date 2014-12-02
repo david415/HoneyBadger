@@ -5,6 +5,7 @@ import (
 	"code.google.com/p/gopacket/examples/util"
 	"code.google.com/p/gopacket/layers"
 	"code.google.com/p/gopacket/pcap"
+	"code.google.com/p/gopacket/tcpassembly"
 	"flag"
 	"fmt"
 	"golang.org/x/net/ipv4"
@@ -40,7 +41,6 @@ func (f *TCPIPFlow) Set(ip layers.IPv4, tcp layers.TCP) {
 }
 
 type TCPStreamInjector struct {
-	nextSeq       uint32
 	flowId        *TCPFlowID
 	packetConn    net.PacketConn
 	rawConn       *ipv4.RawConn
@@ -49,6 +49,7 @@ type TCPStreamInjector struct {
 	tcp           layers.TCP
 	ipBuf         gopacket.SerializeBuffer
 	tcpPayloadBuf gopacket.SerializeBuffer
+	Payload       gopacket.Payload
 }
 
 func (i *TCPStreamInjector) Init(netInterface string) error {
@@ -61,22 +62,12 @@ func (i *TCPStreamInjector) Init(netInterface string) error {
 	return err
 }
 
-func (i *TCPStreamInjector) SetNextSeq(seq uint32) {
-	i.nextSeq = seq
-}
-
 func (i *TCPStreamInjector) SetFlow(flowId *TCPFlowID) {
 	i.flowId = flowId
 }
 
-func (i *TCPStreamInjector) PrepareIPLayer() error {
-	i.ip = layers.IPv4{
-		SrcIP:    i.flowId.SrcIP,
-		DstIP:    i.flowId.DstIP,
-		Version:  4,
-		TTL:      64,
-		Protocol: layers.IPProtocolTCP,
-	}
+func (i *TCPStreamInjector) SetIPLayer(iplayer layers.IPv4) error {
+	i.ip = iplayer
 	i.ipBuf = gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{
 		FixLengths:       true,
@@ -93,27 +84,30 @@ func (i *TCPStreamInjector) PrepareIPLayer() error {
 	return nil
 }
 
-func (i *TCPStreamInjector) Write(payload []byte) error {
-	i.tcp = layers.TCP{
-		SrcPort: i.flowId.SrcPort,
-		DstPort: i.flowId.DstPort,
-		Window:  1505,
-		Urgent:  0,
-		Seq:     i.nextSeq,
-		Ack:     0,
-		ACK:     false,
-		SYN:     false,
-		FIN:     false,
-		RST:     false,
-		URG:     false,
-		ECE:     false,
-		CWR:     false,
-		NS:      false,
-		PSH:     false,
+func (i *TCPStreamInjector) SetTCPLayer(tcpLayer layers.TCP) {
+	i.tcp = tcpLayer
+}
+
+func (i *TCPStreamInjector) SpraySequenceRangePackets(start uint32, count int) error {
+	var err error
+
+	currentSeq := tcpassembly.Sequence(start)
+	stopSeq := currentSeq.Add(count)
+
+	for ; currentSeq.Difference(stopSeq) != 0; currentSeq = currentSeq.Add(1) {
+		err = i.Write(uint32(currentSeq))
+		if err != nil {
+			return err
+		}
 	}
+	return nil
+}
+
+func (i *TCPStreamInjector) Write(seq uint32) error {
+	i.tcp.Seq = seq
 	i.tcp.SetNetworkLayerForChecksum(&i.ip)
 	i.tcpPayloadBuf = gopacket.NewSerializeBuffer()
-	packetPayload := gopacket.Payload(payload)
+	packetPayload := gopacket.Payload(i.Payload)
 	opts := gopacket.SerializeOptions{
 		FixLengths:       true,
 		ComputeChecksums: true,
@@ -154,6 +148,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	streamInjector.Payload = []byte("meowmeowmeow")
 
 	handle, err := pcap.OpenLive(*iface, int32(*snaplen), true, pcap.BlockForever)
 	if err != nil {
@@ -180,6 +175,8 @@ func main() {
 			continue
 		}
 
+		// if we see a flow coming from the tcp/ip service we are watching
+		// then track how many packets we receive from each flow
 		if tcp.SrcPort == layers.TCPPort(*servicePort) && ip4.SrcIP.Equal(serviceIP) {
 			flow.Set(ip4, tcp)
 			_, isTracked := trackedFlows[flow]
@@ -192,8 +189,8 @@ func main() {
 			continue
 		}
 
+		// after 10 packets from a given flow then inject packets into the stream
 		if trackedFlows[flow]%10 == 0 {
-
 			tcpFlowId := TCPFlowID{
 				SrcIP:   ip4.SrcIP,
 				DstIP:   ip4.DstIP,
@@ -201,17 +198,16 @@ func main() {
 				DstPort: tcp.DstPort,
 			}
 			streamInjector.SetFlow(&tcpFlowId)
-
-			streamInjector.SetNextSeq(tcp.Seq + uint32(len(payload)) + uint32(tcp.Window)/uint32(2))
-			err = streamInjector.PrepareIPLayer()
+			err = streamInjector.SetIPLayer(ip4)
 			if err != nil {
 				panic(err)
 			}
-			err = streamInjector.Write([]byte("meowmeowmeow"))
+			streamInjector.SetTCPLayer(tcp)
+			err = streamInjector.SpraySequenceRangePackets(tcp.Seq, 100)
 			if err != nil {
 				panic(err)
 			}
-			log.Print("packet sent!\n")
+			log.Print("packet spray sent!\n")
 		}
 
 	}
