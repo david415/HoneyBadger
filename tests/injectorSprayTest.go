@@ -1,14 +1,13 @@
-package main
+package injectorTestHarness
 
 import (
 	"code.google.com/p/gopacket"
 	"code.google.com/p/gopacket/examples/util"
 	"code.google.com/p/gopacket/layers"
 	"code.google.com/p/gopacket/pcap"
-	"code.google.com/p/gopacket/tcpassembly"
 	"flag"
 	"fmt"
-	"golang.org/x/net/ipv4"
+	"github.com/david415/HoneyBadger/injection"
 	"log"
 	"net"
 )
@@ -18,107 +17,6 @@ var filter = flag.String("f", "tcp", "BPF filter for pcap")
 var snaplen = flag.Int("s", 65536, "SnapLen for pcap packet capture")
 var serviceIPstr = flag.String("d", "127.0.0.1", "target TCP flows from this IP address")
 var servicePort = flag.Int("e", 2666, "target TCP flows from this port")
-
-// used as keys into our dictionary of tracked flows
-// this is perhaps not has versatile because the fields in
-// TCPFlow and IPFlow are non-exportable
-type TCPIPFlow struct {
-	TCPFlow gopacket.Flow
-	IPFlow  gopacket.Flow
-}
-
-// used by TCPStreamInjector below
-type TCPFlowID struct {
-	SrcIP   net.IP
-	SrcPort layers.TCPPort
-	DstIP   net.IP
-	DstPort layers.TCPPort
-}
-
-func (f *TCPIPFlow) Set(ip layers.IPv4, tcp layers.TCP) {
-	f.TCPFlow = tcp.TransportFlow()
-	f.IPFlow = ip.NetworkFlow()
-}
-
-type TCPStreamInjector struct {
-	flowId        *TCPFlowID
-	packetConn    net.PacketConn
-	rawConn       *ipv4.RawConn
-	ipHeader      *ipv4.Header
-	ip            layers.IPv4
-	tcp           layers.TCP
-	ipBuf         gopacket.SerializeBuffer
-	tcpPayloadBuf gopacket.SerializeBuffer
-	Payload       gopacket.Payload
-}
-
-func (i *TCPStreamInjector) Init(netInterface string) error {
-	var err error
-	i.packetConn, err = net.ListenPacket("ip4:tcp", netInterface)
-	if err != nil {
-		return err
-	}
-	i.rawConn, err = ipv4.NewRawConn(i.packetConn)
-	return err
-}
-
-func (i *TCPStreamInjector) SetFlow(flowId *TCPFlowID) {
-	i.flowId = flowId
-}
-
-func (i *TCPStreamInjector) SetIPLayer(iplayer layers.IPv4) error {
-	i.ip = iplayer
-	i.ipBuf = gopacket.NewSerializeBuffer()
-	opts := gopacket.SerializeOptions{
-		FixLengths:       true,
-		ComputeChecksums: true,
-	}
-	err := i.ip.SerializeTo(i.ipBuf, opts)
-	if err != nil {
-		return err
-	}
-	i.ipHeader, err = ipv4.ParseHeader(i.ipBuf.Bytes())
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (i *TCPStreamInjector) SetTCPLayer(tcpLayer layers.TCP) {
-	i.tcp = tcpLayer
-}
-
-func (i *TCPStreamInjector) SpraySequenceRangePackets(start uint32, count int) error {
-	var err error
-
-	currentSeq := tcpassembly.Sequence(start)
-	stopSeq := currentSeq.Add(count)
-
-	for ; currentSeq.Difference(stopSeq) != 0; currentSeq = currentSeq.Add(1) {
-		err = i.Write(uint32(currentSeq))
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (i *TCPStreamInjector) Write(seq uint32) error {
-	i.tcp.Seq = seq
-	i.tcp.SetNetworkLayerForChecksum(&i.ip)
-	i.tcpPayloadBuf = gopacket.NewSerializeBuffer()
-	packetPayload := gopacket.Payload(i.Payload)
-	opts := gopacket.SerializeOptions{
-		FixLengths:       true,
-		ComputeChecksums: true,
-	}
-	err := gopacket.SerializeLayers(i.tcpPayloadBuf, opts, &i.tcp, packetPayload)
-	if err != nil {
-		return err
-	}
-	err = i.rawConn.WriteTo(i.ipHeader, i.tcpPayloadBuf.Bytes(), nil)
-	return err
-}
 
 func main() {
 	defer util.Run()()
@@ -133,7 +31,7 @@ func main() {
 	decoded := make([]gopacket.LayerType, 0, 4)
 
 	// target/track all TCP flows from this TCP/IP service endpoint
-	trackedFlows := make(map[TCPIPFlow]int)
+	trackedFlows := make(map[honeybadger.TCPIPFlow]int)
 	serviceIP := net.ParseIP(*serviceIPstr)
 	if serviceIP == nil {
 		panic(fmt.Sprintf("non-ip target: %q\n", serviceIPstr))
@@ -143,7 +41,7 @@ func main() {
 		panic(fmt.Sprintf("non-ipv4 target: %q\n", serviceIPstr))
 	}
 
-	streamInjector := TCPStreamInjector{}
+	streamInjector := honeybadger.TCPStreamInjector{}
 	err := streamInjector.Init("0.0.0.0")
 	if err != nil {
 		panic(err)
@@ -159,7 +57,7 @@ func main() {
 	}
 	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet,
 		&eth, &dot1q, &ip4, &ip6, &ip6extensions, &tcp, &payload)
-	flow := TCPIPFlow{}
+	flow := honeybadger.TCPIPFlow{}
 
 	log.Print("collecting packets...\n")
 
@@ -191,7 +89,7 @@ func main() {
 
 		// after 10 packets from a given flow then inject packets into the stream
 		if trackedFlows[flow]%10 == 0 {
-			tcpFlowId := TCPFlowID{
+			tcpFlowId := honeybadger.TCPFlowID{
 				SrcIP:   ip4.SrcIP,
 				DstIP:   ip4.DstIP,
 				SrcPort: tcp.SrcPort,

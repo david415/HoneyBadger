@@ -14,7 +14,7 @@
 // It also uses gopacket.DecodingLayerParser instead of the normal
 // gopacket.PacketSource, to highlight the methods, pros, and cons of this
 // approach.
-package main
+package detector
 
 import (
 	"code.google.com/p/gopacket"
