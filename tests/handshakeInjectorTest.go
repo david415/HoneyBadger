@@ -9,6 +9,8 @@ import (
 	"flag"
 	"github.com/david415/HoneyBadger/inject"
 	"log"
+	"math/rand"
+	"time"
 )
 
 var iface = flag.String("i", "lo", "Interface to get packets from")
@@ -25,6 +27,10 @@ func main() {
 	var ip4 layers.IPv4
 	var tcp layers.TCP
 	var payload gopacket.Payload
+
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	hijackSeq := r.Uint32()
+
 	decoded := make([]gopacket.LayerType, 0, 4)
 
 	streamInjector := inject.TCPStreamInjector{}
@@ -73,10 +79,11 @@ func main() {
 		// empty payload for SYN/ACK handshake completion
 		streamInjector.Payload = []byte("")
 		seq := tcp.Seq
-		tcp.Seq = 666 // XXX Zomg no... we need to select a pseudo random uint32!
+		tcp.Seq = hijackSeq
 		tcp.Ack = uint32(tcpassembly.Sequence(seq).Add(1))
 		tcp.ACK = true
-		tcp.SYN = true // XXX this should already be set because of the above filter rule
+		tcp.SYN = true
+		tcp.RST = false
 
 		err = streamInjector.SetIPLayer(ip4)
 		if err != nil {
@@ -93,7 +100,10 @@ func main() {
 		redirect := "HTTP/1.1 307 Moved Permanently\r\nLocation: http://127.0.0.1/?\r\n\r\n"
 		streamInjector.Payload = []byte(redirect)
 		tcp.PSH = true
-		tcp.Seq = 667 // dear god please this soon or else...
+		tcp.SYN = false
+		tcp.ACK = true
+		tcp.Ack = uint32(tcpassembly.Sequence(seq).Add(1))
+		tcp.Seq = uint32(tcpassembly.Sequence(hijackSeq).Add(1))
 
 		err = streamInjector.SetIPLayer(ip4)
 		if err != nil {
@@ -111,7 +121,7 @@ func main() {
 		tcp.FIN = true
 		tcp.SYN = false
 		tcp.ACK = false
-		tcp.Seq = 668 // XXX
+		tcp.Seq = uint32(tcpassembly.Sequence(hijackSeq).Add(2))
 
 		err = streamInjector.SetIPLayer(ip4)
 		if err != nil {
