@@ -1,4 +1,4 @@
-package honeybadger
+package inject
 
 import (
 	"code.google.com/p/gopacket"
@@ -8,25 +8,12 @@ import (
 	"net"
 )
 
-// used as keys into our dictionary of tracked flows
-// this is perhaps not has versatile because the fields in
-// TCPFlow and IPFlow are non-exportable
-type TCPIPFlow struct {
-	TCPFlow gopacket.Flow
-	IPFlow  gopacket.Flow
-}
-
 // used by TCPStreamInjector below
 type TCPFlowID struct {
 	SrcIP   net.IP
 	SrcPort layers.TCPPort
 	DstIP   net.IP
 	DstPort layers.TCPPort
-}
-
-func (f *TCPIPFlow) Set(ip layers.IPv4, tcp layers.TCP) {
-	f.TCPFlow = tcp.TransportFlow()
-	f.IPFlow = ip.NetworkFlow()
 }
 
 type TCPStreamInjector struct {
@@ -84,7 +71,8 @@ func (i *TCPStreamInjector) SpraySequenceRangePackets(start uint32, count int) e
 	stopSeq := currentSeq.Add(count)
 
 	for ; currentSeq.Difference(stopSeq) != 0; currentSeq = currentSeq.Add(1) {
-		err = i.Write(uint32(currentSeq))
+		i.tcp.Seq = uint32(currentSeq)
+		err = i.Write()
 		if err != nil {
 			return err
 		}
@@ -92,8 +80,7 @@ func (i *TCPStreamInjector) SpraySequenceRangePackets(start uint32, count int) e
 	return nil
 }
 
-func (i *TCPStreamInjector) Write(seq uint32) error {
-	i.tcp.Seq = seq
+func (i *TCPStreamInjector) Write() error {
 	i.tcp.SetNetworkLayerForChecksum(&i.ip)
 	i.tcpPayloadBuf = gopacket.NewSerializeBuffer()
 	packetPayload := gopacket.Payload(i.Payload)

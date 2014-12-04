@@ -1,4 +1,4 @@
-package injectorTestHarness
+package main
 
 import (
 	"code.google.com/p/gopacket"
@@ -7,7 +7,8 @@ import (
 	"code.google.com/p/gopacket/pcap"
 	"flag"
 	"fmt"
-	"github.com/david415/HoneyBadger/injection"
+	"github.com/david415/HoneyBadger/inject"
+	"github.com/david415/HoneyBadger/observe"
 	"log"
 	"net"
 )
@@ -31,7 +32,7 @@ func main() {
 	decoded := make([]gopacket.LayerType, 0, 4)
 
 	// target/track all TCP flows from this TCP/IP service endpoint
-	trackedFlows := make(map[honeybadger.TCPIPFlow]int)
+	trackedFlows := make(map[observe.TCPIPFlow]int)
 	serviceIP := net.ParseIP(*serviceIPstr)
 	if serviceIP == nil {
 		panic(fmt.Sprintf("non-ip target: %q\n", serviceIPstr))
@@ -41,7 +42,7 @@ func main() {
 		panic(fmt.Sprintf("non-ipv4 target: %q\n", serviceIPstr))
 	}
 
-	streamInjector := honeybadger.TCPStreamInjector{}
+	streamInjector := inject.TCPStreamInjector{}
 	err := streamInjector.Init("0.0.0.0")
 	if err != nil {
 		panic(err)
@@ -57,7 +58,7 @@ func main() {
 	}
 	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet,
 		&eth, &dot1q, &ip4, &ip6, &ip6extensions, &tcp, &payload)
-	flow := honeybadger.TCPIPFlow{}
+	flow := observe.TCPIPFlow{}
 
 	log.Print("collecting packets...\n")
 
@@ -89,7 +90,7 @@ func main() {
 
 		// after 10 packets from a given flow then inject packets into the stream
 		if trackedFlows[flow]%10 == 0 {
-			tcpFlowId := honeybadger.TCPFlowID{
+			tcpFlowId := inject.TCPFlowID{
 				SrcIP:   ip4.SrcIP,
 				DstIP:   ip4.DstIP,
 				SrcPort: tcp.SrcPort,
