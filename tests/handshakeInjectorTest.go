@@ -97,7 +97,7 @@ func main() {
 		log.Print("SYN/ACK packet sent!\n")
 
 		// send rediction payload
-		redirect := "HTTP/1.1 307 Moved Permanently\r\nLocation: http://127.0.0.1/?\r\n\r\n"
+		redirect := "HTTP/1.1 307 Temporary Redirect\r\nLocation: http://127.0.0.1/?\r\n\r\n"
 		streamInjector.Payload = []byte(redirect)
 		tcp.PSH = true
 		tcp.SYN = false
