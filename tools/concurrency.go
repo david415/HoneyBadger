@@ -1,7 +1,6 @@
 package main
 
 import (
-	"code.google.com/p/gopacket/examples/util"
 	"flag"
 	"github.com/david415/HoneyBadger/observe"
 )
@@ -11,7 +10,9 @@ var filter = flag.String("f", "tcp", "BPF filter for pcap")
 var snaplen = flag.Int("s", 65536, "SnapLen for pcap packet capture")
 
 func main() {
-	defer util.Run()()
 	multiObserver := observe.MultiTCPFlowObserver{}
-	multiObserver.Start(*iface, int32(*snaplen), *filter)
+	err := multiObserver.Start(*iface, int32(*snaplen), *filter)
+	if err != nil {
+		panic(err)
+	}
 }

@@ -53,16 +53,21 @@ type PacketManifest struct {
 }
 
 type FlowObserver struct {
-	packetManifestChannel chan PacketManifest
+	packetManifestChannel chan *PacketManifest
 }
 
 func (o FlowObserver) Start() {
-	var p PacketManifest
-	o.packetManifestChannel = make(chan PacketManifest, 1)
-	defer o.Stop()
+	log.Printf("FlowObserver.Start()\n")
+	var p *PacketManifest
+	o.packetManifestChannel = make(chan *PacketManifest, 1)
 	go func() {
+		defer o.Stop()
+		var ok bool
 		for {
-			p = <-o.packetManifestChannel
+			p, ok = <-o.packetManifestChannel
+			if ok == false {
+				panic("failed to read packetManifestChannel")
+			}
 			o.ProcessFlowPacket(p)
 		}
 	}()
@@ -72,8 +77,8 @@ func (o FlowObserver) Stop() {
 	close(o.packetManifestChannel)
 }
 
-func (o FlowObserver) ProcessFlowPacket(p PacketManifest) {
-	fmt.Printf("payload size %d, tcp header size %d\n", len(p.Payload))
+func (o FlowObserver) ProcessFlowPacket(p *PacketManifest) {
+	fmt.Printf("ProcessFlowPacket: p.TCP.Seq %d\n", p.TCP.Seq)
 }
 
 func (m *MultiTCPFlowObserver) Start(iface string, snaplen int32, bpf string) error {
@@ -83,6 +88,8 @@ func (m *MultiTCPFlowObserver) Start(iface string, snaplen int32, bpf string) er
 	var tcp layers.TCP
 	var payload gopacket.Payload
 	decoded := make([]gopacket.LayerType, 0, 4)
+
+	log.Printf("iface %s, snaplen %d, bpf %s\n", iface, snaplen, bpf)
 
 	m.pcapHandle, err = pcap.OpenLive(iface, int32(snaplen), true, pcap.BlockForever)
 	if err != nil {
@@ -100,21 +107,20 @@ func (m *MultiTCPFlowObserver) Start(iface string, snaplen int32, bpf string) er
 	for {
 		data, _, err := m.pcapHandle.ReadPacketData()
 		if err != nil {
-			log.Printf("error reading packet1: %v", err)
+			log.Printf("error reading packet: %v", err)
 			continue
 		}
 		err = parser.DecodeLayers(data, &decoded)
 		if err != nil {
-			log.Printf("error decoding packet2: %v", err)
+			log.Printf("error decoding packet: %v", err)
 			continue
 		}
-		fmt.Printf("tcp.Seq %d\n", tcp.Seq)
 		packetManifest := PacketManifest{
 			IP:      ip4,
 			TCP:     tcp,
 			Payload: payload,
 		}
-		m.dispatchToFlowObserver(packetManifest)
+		m.dispatchToFlowObserver(&packetManifest)
 	}
 }
 
@@ -125,13 +131,16 @@ func (m *MultiTCPFlowObserver) Stop() {
 	}
 }
 
-func (m *MultiTCPFlowObserver) dispatchToFlowObserver(p PacketManifest) {
+func (m *MultiTCPFlowObserver) dispatchToFlowObserver(p *PacketManifest) {
 	flow := TCPIPFlow{}
 	flow.Set(p.IP, p.TCP)
 	_, isTracked := m.trackedFlows[flow]
 	if !isTracked {
+		log.Print("flow not yet tracked\n")
 		m.trackedFlows[flow] = FlowObserver{}
 		m.trackedFlows[flow].Start()
+	} else {
+		log.Print("flow is yet tracked\n")
 	}
 	m.trackedFlows[flow].packetManifestChannel <- p
 }
