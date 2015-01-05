@@ -180,16 +180,15 @@ func (c *Connection) receivePacket(p PacketManifest) {
 		log.Print("After TCP_CONNECTED\n")
 		if (!p.TCP.SYN && p.TCP.ACK) && tcpassembly.Sequence(p.TCP.Seq).Difference(c.clientNextSeq) == 0 {
 			if tcpassembly.Sequence(p.TCP.Ack).Difference(c.clientNextAck) == 0 {
-
 				log.Printf("TCP handshake hijack\n")
 				log.Printf("NextSeq %d NextAck %d\n", c.clientNextSeq, c.clientNextAck)
 				log.Printf("Seq %d Ack %d\n", p.TCP.Seq, p.TCP.Ack)
-				fmt.Printf("len of payload %d\n", len(p.Payload))
-				for i := 0; i < len(p.Payload); i++ {
-					fmt.Print("%s", string(p.Payload[i]))
-				}
-
+				fmt.Printf("payload: %s\n", string(p.Payload))
 			}
+		} else {
+			log.Printf("payload: %s\n", string(p.Payload))
+			log.Printf("NextSeq %d NextAck %d\n", c.clientNextSeq, c.clientNextAck)
+			log.Printf("Seq %d Ack %d\n", p.TCP.Seq, p.TCP.Ack)
 		}
 	}
 }
