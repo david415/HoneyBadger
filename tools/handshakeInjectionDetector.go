@@ -13,7 +13,6 @@ import (
 	"code.google.com/p/gopacket/tcpassembly"
 	"container/ring"
 	"flag"
-	"fmt"
 	"log"
 )
 
@@ -48,6 +47,14 @@ func NewTcpIpFlowFromFlows(ipFlow gopacket.Flow, tcpFlow gopacket.Flow) TcpIpFlo
 		ipFlow:  ipFlow,
 		tcpFlow: tcpFlow,
 	}
+}
+
+func (t *TcpIpFlow) Reverse() TcpIpFlow {
+	return NewTcpIpFlowFromFlows(t.ipFlow.Reverse(), t.tcpFlow.Reverse())
+}
+
+func (t *TcpIpFlow) Equal(s TcpIpFlow) bool {
+	return t.ipFlow == s.ipFlow && t.tcpFlow == s.tcpFlow
 }
 
 // getPacketFlow returns a tcp/ip flowKey
@@ -136,9 +143,8 @@ type Connection struct {
 	clientFlow    TcpIpFlow
 	serverFlow    TcpIpFlow
 	clientNextSeq tcpassembly.Sequence
-	clientNextAck tcpassembly.Sequence
 	serverNextSeq tcpassembly.Sequence
-	serverNextAck tcpassembly.Sequence
+	hijackNextAck tcpassembly.Sequence
 	head          *ring.Ring
 	current       *ring.Ring
 }
@@ -151,44 +157,95 @@ func NewConnection() Connection {
 	}
 }
 
-func (c *Connection) receivePacket(p PacketManifest) {
+// check for duplicate SYN/ACK indicating handshake hijake
+// XXX todo: make compatible with ipv6
+func (c *Connection) isHijack(p PacketManifest, flow TcpIpFlow) bool {
+	// check for duplicate SYN/ACK indicating handshake hijake
+	if flow.Equal(c.serverFlow) {
+		if p.TCP.ACK && p.TCP.SYN {
+			if tcpassembly.Sequence(p.TCP.Ack).Difference(c.hijackNextAck) == 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (c *Connection) receivePacket(p PacketManifest, flow TcpIpFlow) {
 	switch c.state {
 	case TCP_UNKNOWN:
 		if p.TCP.SYN && !p.TCP.ACK {
-			log.Printf("TCP_SYN Seq %d Ack %d\n", p.TCP.Seq, p.TCP.Ack)
+			log.Print("SYN\n")
 			c.state = TCP_SYN
-			c.serverNextAck = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1) // XXX
+			c.clientFlow = flow
+			c.serverFlow = c.clientFlow.Reverse()
+			c.clientNextSeq = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1) // XXX
+			c.hijackNextAck = c.clientNextSeq
+		} else {
+			log.Print("unknown TCP state\n")
 		}
 	case TCP_SYN:
-		if (p.TCP.SYN && p.TCP.ACK) && tcpassembly.Sequence(c.serverNextAck).Difference(tcpassembly.Sequence(p.TCP.Ack)) == 0 {
-			log.Printf("TCP_SYNACK Seq %d Ack %d\n", p.TCP.Seq, p.TCP.Ack)
-			c.state = TCP_SYNACK
-			c.clientNextSeq = tcpassembly.Sequence(p.TCP.Ack).Add(len(p.Payload)) // XXX correct?
-			c.clientNextAck = tcpassembly.Sequence(p.TCP.Seq).Add(1)              // XXX
+		if !flow.Equal(c.serverFlow) {
+			log.Print("handshake anomaly\n")
+			return
 		}
+		if !(p.TCP.SYN && p.TCP.ACK) {
+			log.Print("handshake anomaly\n")
+			return
+		}
+		if tcpassembly.Sequence(c.clientNextSeq).Difference(tcpassembly.Sequence(p.TCP.Ack)) != 0 {
+			log.Print("handshake anomaly\n")
+			return
+		}
+		log.Print("SYN/ACK\n")
+		c.state = TCP_SYNACK
+		c.serverNextSeq = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1) // XXX
 	case TCP_SYNACK:
-		log.Printf("NextSeq %d NextAck %d\n", c.clientNextSeq, c.clientNextAck)
-		log.Printf("Seq %d Ack %d\n", p.TCP.Seq, p.TCP.Ack)
-
-		if (!p.TCP.SYN && p.TCP.ACK) && tcpassembly.Sequence(p.TCP.Seq).Difference(c.clientNextSeq) == 0 {
-			if tcpassembly.Sequence(p.TCP.Ack).Difference(c.clientNextAck) == 0 {
-				log.Print("TCP_CONNECTED\n")
-				c.state = TCP_CONNECTED
-			}
+		if c.isHijack(p, flow) {
+			log.Print("handshake hijack detected\n")
+			return
 		}
+		if !flow.Equal(c.clientFlow) {
+			log.Print("handshake anomaly\n")
+			return
+		}
+		if !p.TCP.ACK || p.TCP.SYN {
+			log.Print("handshake anomaly\n")
+			return
+		}
+		if tcpassembly.Sequence(p.TCP.Seq).Difference(c.clientNextSeq) != 0 {
+			log.Print("handshake anomaly\n")
+			return
+		}
+		if tcpassembly.Sequence(p.TCP.Ack).Difference(c.serverNextSeq) != 0 {
+			log.Print("handshake anomaly\n")
+			return
+		}
+		c.state = TCP_CONNECTED
+		log.Print("connected\n")
 	case TCP_CONNECTED:
-		log.Print("After TCP_CONNECTED\n")
-		if (!p.TCP.SYN && p.TCP.ACK) && tcpassembly.Sequence(p.TCP.Seq).Difference(c.clientNextSeq) == 0 {
-			if tcpassembly.Sequence(p.TCP.Ack).Difference(c.clientNextAck) == 0 {
-				log.Printf("TCP handshake hijack\n")
-				log.Printf("NextSeq %d NextAck %d\n", c.clientNextSeq, c.clientNextAck)
-				log.Printf("Seq %d Ack %d\n", p.TCP.Seq, p.TCP.Ack)
-				fmt.Printf("payload: %s\n", string(p.Payload))
+		if c.isHijack(p, flow) {
+			log.Print("handshake hijack detected\n")
+			return
+		}
+
+		if flow.Equal(c.clientFlow) {
+			if tcpassembly.Sequence(p.TCP.Seq).Difference(c.clientNextSeq) == 0 {
+				log.Printf("expected tcp Sequence from client; payload len %d\n", len(p.Payload))
+				c.clientNextSeq = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload)) // XXX
+			} else {
+				log.Print("unexpected tcp Sequence from client\n")
 			}
-		} else {
-			log.Printf("payload: %s\n", string(p.Payload))
-			log.Printf("NextSeq %d NextAck %d\n", c.clientNextSeq, c.clientNextAck)
-			log.Printf("Seq %d Ack %d\n", p.TCP.Seq, p.TCP.Ack)
+			return
+		}
+		if flow.Equal(c.serverFlow) {
+			if tcpassembly.Sequence(p.TCP.Seq).Difference(c.serverNextSeq) == 0 {
+				log.Printf("expected tcp Sequence from server; payload len %d\n", len(p.Payload))
+				c.serverNextSeq = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload)) // XXX
+			} else {
+				log.Print("unexpected tcp Sequence from server; payload: %s\n", string(p.Payload))
+			}
+			return
 		}
 	}
 }
@@ -263,6 +320,8 @@ func decodeTcp(packetChan chan []byte, connTracker *ConnTracker, stopDecodeChan 
 	for {
 		select {
 		case packetBytes := <-packetChan:
+			newPayload := new(gopacket.Payload)
+			payload = *newPayload
 			err := parser.DecodeLayers(packetBytes, &decoded)
 			if err != nil {
 				continue
@@ -276,11 +335,11 @@ func decodeTcp(packetChan chan []byte, connTracker *ConnTracker, stopDecodeChan 
 			}
 			if connTracker.Has(connKey) {
 				conn := connTracker.Get(connKey)
-				conn.receivePacket(packetManifest)
+				conn.receivePacket(packetManifest, tcpipflow)
 			} else {
 				conn := NewConnection()
 				connTracker.Put(connKey, &conn)
-				conn.receivePacket(packetManifest)
+				conn.receivePacket(packetManifest, tcpipflow)
 			}
 		case <-stopDecodeChan:
 			return
