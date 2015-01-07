@@ -13,6 +13,15 @@ project goals
 
 
 
+usage note
+----------
+It is not a good idea to run network traffic analysis tools as root.
+In Linux you can run these tools as an unprivileged user after you run setcap as root like this::
+
+   # setcap cap_net_raw,cap_net_admin=eip handshakeHijackDetector
+
+
+
 note about the GNU AFFERO GENERAL PUBLIC LICENSE
 ------------------------------------------------
 
