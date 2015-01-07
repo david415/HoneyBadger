@@ -258,7 +258,11 @@ func (c *Connection) receivePacket(p PacketManifest, flow TcpIpFlow) {
 				log.Printf("expected tcp Sequence from server; payload len %d\n", len(p.Payload))
 				c.serverNextSeq = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload)) // XXX
 			} else {
-				log.Print("unexpected tcp Sequence from server; payload: %s\n", string(p.Payload))
+				if len(p.Payload) > 0 {
+					log.Printf("unexpected tcp Sequence from server; payload: %s\n", string(p.Payload))
+				} else {
+					log.Print("zero payload\n")
+				}
 			}
 			return
 		}
