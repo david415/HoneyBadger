@@ -25,7 +25,7 @@ import (
 	"code.google.com/p/gopacket/pcap"
 	"flag"
 	"fmt"
-	"github.com/david415/HoneyBadger/inject"
+	inject "github.com/david415/HoneyBadger"
 	"log"
 	"net"
 )
@@ -34,7 +34,6 @@ var iface = flag.String("i", "lo", "Interface to get packets from")
 var filter = flag.String("f", "tcp", "BPF filter for pcap")
 var snaplen = flag.Int("s", 65536, "SnapLen for pcap packet capture")
 var serviceIPstr = flag.String("d", "127.0.0.1", "target TCP flows from this IP address")
-var servicePort = flag.Int("e", 2666, "target TCP flows from this port")
 
 func main() {
 	defer util.Run()()

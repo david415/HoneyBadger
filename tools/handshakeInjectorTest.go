@@ -25,14 +25,14 @@ import (
 	"code.google.com/p/gopacket/pcap"
 	"code.google.com/p/gopacket/tcpassembly"
 	"flag"
-	"github.com/david415/HoneyBadger/inject"
+	inject "github.com/david415/HoneyBadger"
 	"log"
 	"math/rand"
 	"time"
 )
 
 var iface = flag.String("i", "lo", "Interface to get packets from")
-var filter = flag.String("f", "tcp and dst port 2666 and tcp[tcpflags] == tcp-syn", "BPF filter for pcap")
+var filter = flag.String("f", "tcp and dst port 9666 and tcp[tcpflags] == tcp-syn", "BPF filter for pcap")
 var snaplen = flag.Int("s", 65536, "SnapLen for pcap packet capture")
 var serviceIPstr = flag.String("d", "127.0.0.1", "target TCP flows from this IP address")
 var servicePort = flag.Int("e", 2666, "target TCP flows from this port")
@@ -115,8 +115,8 @@ func main() {
 		log.Print("SYN/ACK packet sent!\n")
 
 		// send rediction payload
-		redirect := "HTTP/1.1 307 Temporary Redirect\r\nLocation: http://127.0.0.1/?\r\n\r\n"
-		streamInjector.Payload = []byte(redirect)
+		redirect := []byte("HTTP/1.1 307 Temporary Redirect\r\nLocation: http://127.0.0.1/?\r\n\r\n")
+		streamInjector.Payload = redirect
 		tcp.PSH = true
 		tcp.SYN = false
 		tcp.ACK = true

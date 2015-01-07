@@ -16,7 +16,7 @@
  *    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package inject
+package HoneyBadger
 
 import (
 	"code.google.com/p/gopacket"
@@ -101,7 +101,8 @@ func (i *TCPStreamInjector) SpraySequenceRangePackets(start uint32, count int) e
 func (i *TCPStreamInjector) Write() error {
 	i.tcp.SetNetworkLayerForChecksum(&i.ip)
 	i.tcpPayloadBuf = gopacket.NewSerializeBuffer()
-	packetPayload := gopacket.Payload(i.Payload)
+	//	packetPayload := gopacket.Payload(i.Payload)
+	packetPayload := i.Payload
 	opts := gopacket.SerializeOptions{
 		FixLengths:       true,
 		ComputeChecksums: true,
