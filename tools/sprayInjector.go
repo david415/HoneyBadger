@@ -85,14 +85,6 @@ func main() {
 		log.Printf("error decoding packet: %v", err)
 		return
 	}
-
-	tcpFlowId := inject.TCPFlowID{
-		SrcIP:   ip4.SrcIP,
-		DstIP:   ip4.DstIP,
-		SrcPort: tcp.SrcPort,
-		DstPort: tcp.DstPort,
-	}
-	streamInjector.SetFlow(&tcpFlowId)
 	err = streamInjector.SetIPLayer(ip4)
 	if err != nil {
 		panic(err)

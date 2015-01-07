@@ -26,16 +26,7 @@ import (
 	"net"
 )
 
-// used by TCPStreamInjector below
-type TCPFlowID struct {
-	SrcIP   net.IP
-	SrcPort layers.TCPPort
-	DstIP   net.IP
-	DstPort layers.TCPPort
-}
-
 type TCPStreamInjector struct {
-	flowId        *TCPFlowID
 	packetConn    net.PacketConn
 	rawConn       *ipv4.RawConn
 	ipHeader      *ipv4.Header
@@ -54,10 +45,6 @@ func (i *TCPStreamInjector) Init(netInterface string) error {
 	}
 	i.rawConn, err = ipv4.NewRawConn(i.packetConn)
 	return err
-}
-
-func (i *TCPStreamInjector) SetFlow(flowId *TCPFlowID) {
-	i.flowId = flowId
 }
 
 func (i *TCPStreamInjector) SetIPLayer(iplayer layers.IPv4) error {
