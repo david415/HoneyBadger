@@ -49,10 +49,14 @@ func NewTcpIpFlowFromFlows(ipFlow gopacket.Flow, tcpFlow gopacket.Flow) TcpIpFlo
 	}
 }
 
+// Reverse returns a reversed TcpIpFlow, that is to say the resulting
+// TcpIpFlow flow will be made up of a reversed IP flow and a reversed
+// TCP flow.
 func (t *TcpIpFlow) Reverse() TcpIpFlow {
 	return NewTcpIpFlowFromFlows(t.ipFlow.Reverse(), t.tcpFlow.Reverse())
 }
 
+// Equal returns true if TcpIpFlow structs t and s are equal. False otherwise.
 func (t *TcpIpFlow) Equal(s TcpIpFlow) bool {
 	return t.ipFlow == s.ipFlow && t.tcpFlow == s.tcpFlow
 }
@@ -80,8 +84,9 @@ func (t *TcpIpFlow) Layers() (gopacket.Flow, gopacket.Flow) {
 }
 
 // TcpBidirectionalFlow struct can be used as a hashmap key.
-// Bidirectional in this case means that each of these keys
-// for each TCP connection can be represented by two TcpFlow`s
+// Bidirectional in this case means that an instance of this
+// struct can be used to match either unidirectional flow
+// from a given TCP connection.
 type TcpBidirectionalFlow struct {
 	flow TcpIpFlow
 }
@@ -121,16 +126,20 @@ func NewTcpBidirectionalFlowFromTcpIpFlow(tcpipFlow TcpIpFlow) TcpBidirectionalF
 	}
 }
 
+// Get returns the "ordered" TcpIpFlow
 func (f *TcpBidirectionalFlow) Get() TcpIpFlow {
 	return f.flow
 }
 
+// PacketManifest is used to send parsed packets via channels to other goroutines
 type PacketManifest struct {
 	IP      layers.IPv4
 	TCP     layers.TCP
 	Payload gopacket.Payload
 }
 
+// Reassembly is inspired by gopacket.tcpassembly this struct can be used
+// to represent ordered segments of a TCP stream... currently not used.
 type Reassembly struct {
 	PacketManifest PacketManifest
 	Skip           int
@@ -138,6 +147,9 @@ type Reassembly struct {
 	End            bool
 }
 
+// Connection is used to track client and server flows for a given TCP connection.
+// Currently Connection is being used to track TCP handshake states and detect handshake hijack...
+// but it could be used for other things too like stream reassembly and detecting other TCP attacks.
 type Connection struct {
 	state         uint8
 	clientFlow    TcpIpFlow
@@ -149,6 +161,7 @@ type Connection struct {
 	current       *ring.Ring
 }
 
+// NewConnection returns a new Connection struct
 func NewConnection() Connection {
 	return Connection{
 		head:    nil,
@@ -157,7 +170,7 @@ func NewConnection() Connection {
 	}
 }
 
-// check for duplicate SYN/ACK indicating handshake hijake
+// isHijack checks for duplicate SYN/ACK indicating handshake hijake
 // XXX todo: make compatible with ipv6
 func (c *Connection) isHijack(p PacketManifest, flow TcpIpFlow) bool {
 	// check for duplicate SYN/ACK indicating handshake hijake
@@ -171,6 +184,10 @@ func (c *Connection) isHijack(p PacketManifest, flow TcpIpFlow) bool {
 	return false
 }
 
+// receivePacket currently implements basic TCP handshake state tracking
+// and detect TCP handshake hijack. Obviously it will not be exactly clear
+// as to weather the attacker has won the race or not... however hijack detected
+// at least means an attempt was made.
 func (c *Connection) receivePacket(p PacketManifest, flow TcpIpFlow) {
 	switch c.state {
 	case TCP_UNKNOWN:
@@ -179,6 +196,11 @@ func (c *Connection) receivePacket(p PacketManifest, flow TcpIpFlow) {
 			c.state = TCP_SYN
 			c.clientFlow = flow
 			c.serverFlow = c.clientFlow.Reverse()
+
+			// Note that TCP SYN and SYN/ACK packets may contain payload data if
+			// a TCP extension is used...
+			// If so then the sequence number needs to track this payload.
+			// For more information see: https://tools.ietf.org/id/draft-agl-tcpm-sadata-00.html
 			c.clientNextSeq = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1) // XXX
 			c.hijackNextAck = c.clientNextSeq
 		} else {
@@ -199,7 +221,7 @@ func (c *Connection) receivePacket(p PacketManifest, flow TcpIpFlow) {
 		}
 		log.Print("SYN/ACK\n")
 		c.state = TCP_SYNACK
-		c.serverNextSeq = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1) // XXX
+		c.serverNextSeq = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1) // XXX see above comment about TCP extentions
 	case TCP_SYNACK:
 		if c.isHijack(p, flow) {
 			log.Print("handshake hijack detected\n")
@@ -250,29 +272,41 @@ func (c *Connection) receivePacket(p PacketManifest, flow TcpIpFlow) {
 	}
 }
 
+// ConnTracker is used to track TCP connections
 type ConnTracker struct {
 	connectionMap map[TcpBidirectionalFlow]*Connection
 }
 
+// NewConnTracker returns a new ConnTracker struct
 func NewConnTracker() *ConnTracker {
 	return &ConnTracker{
 		connectionMap: make(map[TcpBidirectionalFlow]*Connection),
 	}
 }
 
+// Has returns true if the given TcpBidirectionalFlow is a key in our
+// connection hashmap.
 func (c *ConnTracker) Has(key TcpBidirectionalFlow) bool {
 	_, ok := c.connectionMap[key]
 	return ok
 }
 
+// Get returns the Connection struct pointer corresponding
+// to the given TcpBidirectionalFlow key in our connectionMap hashmap.
 func (c *ConnTracker) Get(key TcpBidirectionalFlow) *Connection {
 	return c.connectionMap[key]
 }
 
+// Put sets the connectionMap's key/value.. where a given TcpBidirectionalFlow
+// is the key and a Connection struct pointer is the value.
 func (c *ConnTracker) Put(key TcpBidirectionalFlow, conn *Connection) {
 	c.connectionMap[key] = conn
 }
 
+// startReceivingTcp is a generator function which returns two channels;
+// a stop channel and a packet channel. This function creates a goroutine
+// which continually reads packets off the network interface and sends them
+// to the packet channel.
 func startReceivingTcp(filter, iface string, snaplen int) (chan bool, chan []byte) {
 
 	handle, err := pcap.OpenLive(iface, int32(snaplen), true, pcap.BlockForever)
@@ -303,11 +337,17 @@ func startReceivingTcp(filter, iface string, snaplen int) (chan bool, chan []byt
 	return stopReceiveChan, receiveParseChan
 }
 
+// startDecodingTcp calls decodeTcp in a new goroutine...
 func startDecodingTcp(packetChan chan []byte, connTracker *ConnTracker) {
 	stopDecodeChan := make(chan bool)
 	go decodeTcp(packetChan, connTracker, stopDecodeChan)
 }
 
+// decodeTcp receives packets from a channel and decodes them with gopacket,
+// creates a bidirectional flow identifier for each TCP packet and determines
+// which flow tracker instance is tracking that connection. If none is found then
+// a new flow tracker is created. Either way the parsed packet structs are passed
+// to the flow tracker for further processing.
 func decodeTcp(packetChan chan []byte, connTracker *ConnTracker, stopDecodeChan chan bool) {
 	var eth layers.Ethernet
 	var ip layers.IPv4
