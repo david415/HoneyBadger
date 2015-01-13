@@ -19,6 +19,18 @@ const (
 	TCP_CONNECTED    = 4
 )
 
+func SequenceFromPacket(packet []byte) (uint32, error) {
+	var ip layers.IPv4
+	var tcp layers.TCP
+	decoded := []gopacket.LayerType{}
+	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeIPv4, &ip, &tcp)
+	err := parser.DecodeLayers(packet, &decoded)
+	if err != nil {
+		return 0, err
+	}
+	return tcp.Seq, nil
+}
+
 // TcpIpFlow is used for tracking unidirectional TCP flows
 type TcpIpFlow struct {
 	ipFlow  gopacket.Flow
@@ -63,7 +75,9 @@ func NewTcpIpFlowFromPacket(packet []byte) (TcpIpFlow, error) {
 	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeIPv4, &ip, &tcp)
 	err := parser.DecodeLayers(packet, &decoded)
 	if err != nil {
-		return TcpIpFlow{}, err
+		return TcpIpFlow{
+			ipFlow: ip.NetworkFlow(),
+		}, err
 	}
 	return TcpIpFlow{
 		ipFlow:  ip.NetworkFlow(),
@@ -71,8 +85,8 @@ func NewTcpIpFlowFromPacket(packet []byte) (TcpIpFlow, error) {
 	}, nil
 }
 
-// Layers returns the component flow structs IPv4, TCP
-func (t *TcpIpFlow) Layers() (gopacket.Flow, gopacket.Flow) {
+// Flows returns the component flow structs IPv4, TCP
+func (t *TcpIpFlow) Flows() (gopacket.Flow, gopacket.Flow) {
 	return t.ipFlow, t.tcpFlow
 }
 
@@ -90,7 +104,7 @@ type TcpBidirectionalFlow struct {
 func NewTcpBidirectionalFlowFromTcpIpFlow(tcpipFlow TcpIpFlow) TcpBidirectionalFlow {
 	var tcpSrc, tcpDst, ipSrcEnd, ipDstEnd gopacket.Endpoint
 
-	ipflow, tcpflow := tcpipFlow.Layers()
+	ipflow, tcpflow := tcpipFlow.Flows()
 	srcIP, dstIP := ipflow.Endpoints()
 	if srcIP.LessThan(dstIP) {
 		ipSrcEnd = srcIP
