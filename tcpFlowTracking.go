@@ -153,6 +153,99 @@ func (c *Connection) isHijack(p PacketManifest, flow TcpIpFlow) bool {
 	return false
 }
 
+func (c *Connection) stateUnknown(p PacketManifest, flow TcpIpFlow) {
+	if p.TCP.SYN && !p.TCP.ACK {
+		log.Print("SYN\n")
+		c.state = TCP_SYN
+		c.clientFlow = flow
+		c.serverFlow = c.clientFlow.Reverse()
+
+		// Note that TCP SYN and SYN/ACK packets may contain payload data if
+		// a TCP extension is used...
+		// If so then the sequence number needs to track this payload.
+		// For more information see: https://tools.ietf.org/id/draft-agl-tcpm-sadata-00.html
+		c.clientNextSeq = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1) // XXX
+		c.hijackNextAck = c.clientNextSeq
+	} else {
+		log.Print("unknown TCP state\n")
+	}
+}
+
+func (c *Connection) stateSyn(p PacketManifest, flow TcpIpFlow) {
+	if !flow.Equal(c.serverFlow) {
+		log.Print("handshake anomaly\n")
+		return
+	}
+	if !(p.TCP.SYN && p.TCP.ACK) {
+		log.Print("handshake anomaly\n")
+		return
+	}
+	if tcpassembly.Sequence(c.clientNextSeq).Difference(tcpassembly.Sequence(p.TCP.Ack)) != 0 {
+		log.Print("handshake anomaly\n")
+		return
+	}
+	log.Print("SYN/ACK\n")
+	c.state = TCP_SYNACK
+	c.serverNextSeq = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1) // XXX see above comment about TCP extentions
+}
+
+func (c *Connection) stateSynAck(p PacketManifest, flow TcpIpFlow) {
+	if c.isHijack(p, flow) {
+		log.Print("handshake hijack detected\n")
+		return
+	}
+	if !flow.Equal(c.clientFlow) {
+		log.Print("handshake anomaly\n")
+		return
+	}
+	if !p.TCP.ACK || p.TCP.SYN {
+		log.Print("handshake anomaly\n")
+		return
+	}
+	if tcpassembly.Sequence(p.TCP.Seq).Difference(c.clientNextSeq) != 0 {
+		log.Print("handshake anomaly\n")
+		return
+	}
+	if tcpassembly.Sequence(p.TCP.Ack).Difference(c.serverNextSeq) != 0 {
+		log.Print("handshake anomaly\n")
+		return
+	}
+	c.state = TCP_CONNECTED
+	log.Print("connected\n")
+}
+
+func (c *Connection) stateConnected(p PacketManifest, flow TcpIpFlow) {
+	if c.packetCount < FIRST_FEW_PACKETS {
+		if c.isHijack(p, flow) {
+			log.Print("handshake hijack detected\n")
+			return
+		}
+	}
+
+	if flow.Equal(c.clientFlow) {
+		if tcpassembly.Sequence(p.TCP.Seq).Difference(c.clientNextSeq) == 0 {
+			log.Printf("expected tcp Sequence from client; payload len %d\n", len(p.Payload))
+			c.clientNextSeq = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload)) // XXX
+		} else {
+			log.Print("unexpected tcp Sequence from client\n")
+		}
+		return
+	}
+	if flow.Equal(c.serverFlow) {
+		if tcpassembly.Sequence(p.TCP.Seq).Difference(c.serverNextSeq) == 0 {
+			log.Printf("expected tcp Sequence from server; payload len %d\n", len(p.Payload))
+			c.serverNextSeq = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload)) // XXX
+		} else {
+			if len(p.Payload) > 0 {
+				log.Printf("unexpected tcp Sequence from server; payload: %s\n", string(p.Payload))
+			} else {
+				log.Print("zero payload\n")
+			}
+		}
+		return
+	}
+}
+
 // receivePacket currently implements basic TCP handshake state tracking
 // and detect TCP handshake hijack. Obviously it will not be exactly clear
 // as to weather the attacker has won the race or not... however hijack detected
@@ -161,92 +254,13 @@ func (c *Connection) receivePacket(p PacketManifest, flow TcpIpFlow) {
 	c.packetCount += 1
 	switch c.state {
 	case TCP_UNKNOWN:
-		if p.TCP.SYN && !p.TCP.ACK {
-			log.Print("SYN\n")
-			c.state = TCP_SYN
-			c.clientFlow = flow
-			c.serverFlow = c.clientFlow.Reverse()
-
-			// Note that TCP SYN and SYN/ACK packets may contain payload data if
-			// a TCP extension is used...
-			// If so then the sequence number needs to track this payload.
-			// For more information see: https://tools.ietf.org/id/draft-agl-tcpm-sadata-00.html
-			c.clientNextSeq = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1) // XXX
-			c.hijackNextAck = c.clientNextSeq
-		} else {
-			log.Print("unknown TCP state\n")
-		}
+		c.stateUnknown(p, flow)
 	case TCP_SYN:
-		if !flow.Equal(c.serverFlow) {
-			log.Print("handshake anomaly\n")
-			return
-		}
-		if !(p.TCP.SYN && p.TCP.ACK) {
-			log.Print("handshake anomaly\n")
-			return
-		}
-		if tcpassembly.Sequence(c.clientNextSeq).Difference(tcpassembly.Sequence(p.TCP.Ack)) != 0 {
-			log.Print("handshake anomaly\n")
-			return
-		}
-		log.Print("SYN/ACK\n")
-		c.state = TCP_SYNACK
-		c.serverNextSeq = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1) // XXX see above comment about TCP extentions
+		c.stateSyn(p, flow)
 	case TCP_SYNACK:
-		if c.isHijack(p, flow) {
-			log.Print("handshake hijack detected\n")
-			return
-		}
-		if !flow.Equal(c.clientFlow) {
-			log.Print("handshake anomaly\n")
-			return
-		}
-		if !p.TCP.ACK || p.TCP.SYN {
-			log.Print("handshake anomaly\n")
-			return
-		}
-		if tcpassembly.Sequence(p.TCP.Seq).Difference(c.clientNextSeq) != 0 {
-			log.Print("handshake anomaly\n")
-			return
-		}
-		if tcpassembly.Sequence(p.TCP.Ack).Difference(c.serverNextSeq) != 0 {
-			log.Print("handshake anomaly\n")
-			return
-		}
-		c.state = TCP_CONNECTED
-		log.Print("connected\n")
+		c.stateSynAck(p, flow)
 	case TCP_CONNECTED:
-
-		if c.packetCount < FIRST_FEW_PACKETS {
-			if c.isHijack(p, flow) {
-				log.Print("handshake hijack detected\n")
-				return
-			}
-		}
-
-		if flow.Equal(c.clientFlow) {
-			if tcpassembly.Sequence(p.TCP.Seq).Difference(c.clientNextSeq) == 0 {
-				log.Printf("expected tcp Sequence from client; payload len %d\n", len(p.Payload))
-				c.clientNextSeq = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload)) // XXX
-			} else {
-				log.Print("unexpected tcp Sequence from client\n")
-			}
-			return
-		}
-		if flow.Equal(c.serverFlow) {
-			if tcpassembly.Sequence(p.TCP.Seq).Difference(c.serverNextSeq) == 0 {
-				log.Printf("expected tcp Sequence from server; payload len %d\n", len(p.Payload))
-				c.serverNextSeq = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload)) // XXX
-			} else {
-				if len(p.Payload) > 0 {
-					log.Printf("unexpected tcp Sequence from server; payload: %s\n", string(p.Payload))
-				} else {
-					log.Print("zero payload\n")
-				}
-			}
-			return
-		}
-
+		c.stateConnected(p, flow)
 	} // matches end of switch {
 }
 
