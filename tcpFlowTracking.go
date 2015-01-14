@@ -6,6 +6,7 @@ import (
 	"code.google.com/p/gopacket/pcap"
 	"code.google.com/p/gopacket/tcpassembly"
 	"container/ring"
+	"fmt"
 	"log"
 )
 
@@ -66,8 +67,7 @@ func (t *TcpIpFlow) Equal(s TcpIpFlow) bool {
 	return t.ipFlow == s.ipFlow && t.tcpFlow == s.tcpFlow
 }
 
-// getPacketFlow returns a tcp/ip flowKey
-// given a byte array packet
+// getPacketFlow returns a TcpIpFlow struct given a byte array packet
 func NewTcpIpFlowFromPacket(packet []byte) (TcpIpFlow, error) {
 	var ip layers.IPv4
 	var tcp layers.TCP
@@ -96,46 +96,6 @@ func (t *TcpIpFlow) Flows() (gopacket.Flow, gopacket.Flow) {
 // from a given TCP connection.
 type TcpBidirectionalFlow struct {
 	flow TcpIpFlow
-}
-
-// NewTcpBidirectionalFlowFromTcpIpFlow takes a TcpIpFlow argument
-// and returns a TcpBidirectionalFlow
-// XXX can we please have short names for things? What should we rename it to?
-func NewTcpBidirectionalFlowFromTcpIpFlow(tcpipFlow TcpIpFlow) TcpBidirectionalFlow {
-	var tcpSrc, tcpDst, ipSrcEnd, ipDstEnd gopacket.Endpoint
-
-	ipflow, tcpflow := tcpipFlow.Flows()
-	srcIP, dstIP := ipflow.Endpoints()
-	if srcIP.LessThan(dstIP) {
-		ipSrcEnd = srcIP
-		ipDstEnd = dstIP
-	} else {
-		ipSrcEnd = dstIP
-		ipDstEnd = srcIP
-	}
-	ipFlow, _ := gopacket.FlowFromEndpoints(ipSrcEnd, ipDstEnd)
-
-	srcPortEnd, dstPortEnd := tcpflow.Endpoints()
-	if srcPortEnd.LessThan(dstPortEnd) {
-		tcpSrc = srcPortEnd
-		tcpDst = dstPortEnd
-	} else {
-		tcpSrc = dstPortEnd
-		tcpDst = srcPortEnd
-	}
-	tcpFlow, _ := gopacket.FlowFromEndpoints(tcpSrc, tcpDst)
-
-	return TcpBidirectionalFlow{
-		flow: TcpIpFlow{
-			ipFlow:  ipFlow,
-			tcpFlow: tcpFlow,
-		},
-	}
-}
-
-// Get returns the "ordered" TcpIpFlow
-func (f *TcpBidirectionalFlow) Get() TcpIpFlow {
-	return f.flow
 }
 
 // PacketManifest is used to send parsed packets via channels to other goroutines
@@ -285,33 +245,49 @@ func (c *Connection) receivePacket(p PacketManifest, flow TcpIpFlow) {
 
 // ConnTracker is used to track TCP connections
 type ConnTracker struct {
-	connectionMap map[TcpBidirectionalFlow]*Connection
+	flowAMap map[TcpIpFlow]*Connection
+	flowBMap map[TcpIpFlow]*Connection
 }
 
 // NewConnTracker returns a new ConnTracker struct
 func NewConnTracker() *ConnTracker {
 	return &ConnTracker{
-		connectionMap: make(map[TcpBidirectionalFlow]*Connection),
+		flowAMap: make(map[TcpIpFlow]*Connection),
+		flowBMap: make(map[TcpIpFlow]*Connection),
 	}
 }
 
-// Has returns true if the given TcpBidirectionalFlow is a key in our
-// connection hashmap.
-func (c *ConnTracker) Has(key TcpBidirectionalFlow) bool {
-	_, ok := c.connectionMap[key]
+// Has returns true if the given TcpIpFlow is a key in our
+// either of flowAMap or flowBMap
+func (c *ConnTracker) Has(key TcpIpFlow) bool {
+	_, ok := c.flowAMap[key]
+	if !ok {
+		_, ok = c.flowBMap[key]
+	}
 	return ok
 }
 
 // Get returns the Connection struct pointer corresponding
-// to the given TcpBidirectionalFlow key in our connectionMap hashmap.
-func (c *ConnTracker) Get(key TcpBidirectionalFlow) *Connection {
-	return c.connectionMap[key]
+// to the given TcpIpFlow key in one of the flow maps
+// flowAMap or flowBMap
+func (c *ConnTracker) Get(key TcpIpFlow) (*Connection, error) {
+	val, ok := c.flowAMap[key]
+	if ok {
+		return val, nil
+	} else {
+		val, ok = c.flowBMap[key]
+		if !ok {
+			return nil, fmt.Errorf("failed to retreive flow\n")
+		}
+	}
+	return val, nil
 }
 
 // Put sets the connectionMap's key/value.. where a given TcpBidirectionalFlow
 // is the key and a Connection struct pointer is the value.
-func (c *ConnTracker) Put(key TcpBidirectionalFlow, conn *Connection) {
-	c.connectionMap[key] = conn
+func (c *ConnTracker) Put(key TcpIpFlow, conn *Connection) {
+	c.flowAMap[key] = conn
+	c.flowBMap[key.Reverse()] = conn
 }
 
 // startReceivingTcp is a generator function which returns two channels;
@@ -378,18 +354,20 @@ func decodeTcp(packetChan chan []byte, connTracker *ConnTracker, stopDecodeChan 
 				continue
 			}
 			tcpipflow := NewTcpIpFlowFromFlows(ip.NetworkFlow(), tcp.TransportFlow())
-			connKey := NewTcpBidirectionalFlowFromTcpIpFlow(tcpipflow)
 			packetManifest := PacketManifest{
 				IP:      ip,
 				TCP:     tcp,
 				Payload: payload,
 			}
-			if connTracker.Has(connKey) {
-				conn := connTracker.Get(connKey)
+			if connTracker.Has(tcpipflow) {
+				conn, err := connTracker.Get(tcpipflow)
+				if err != nil {
+					panic(err) // wtf
+				}
 				conn.receivePacket(packetManifest, tcpipflow)
 			} else {
 				conn := NewConnection()
-				connTracker.Put(connKey, &conn)
+				connTracker.Put(tcpipflow, &conn)
 				conn.receivePacket(packetManifest, tcpipflow)
 			}
 		case <-stopDecodeChan:
