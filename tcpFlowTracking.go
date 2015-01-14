@@ -11,13 +11,14 @@ import (
 )
 
 const (
-	MAX_CONN_PACKETS = 1000
-	invalidSequence  = -1
-	TCP_UNKNOWN      = 0
-	TCP_SYN          = 1
-	TCP_SYNACK       = 2
-	TCP_ACK          = 3
-	TCP_CONNECTED    = 4
+	MAX_CONN_PACKETS  = 1000
+	invalidSequence   = -1
+	TCP_UNKNOWN       = 0
+	TCP_SYN           = 1
+	TCP_SYNACK        = 2
+	TCP_ACK           = 3
+	TCP_CONNECTED     = 4
+	FIRST_FEW_PACKETS = 10
 )
 
 func SequenceFromPacket(packet []byte) (uint32, error) {
@@ -126,6 +127,7 @@ type Connection struct {
 	hijackNextAck tcpassembly.Sequence
 	head          *ring.Ring
 	current       *ring.Ring
+	packetCount   uint64
 }
 
 // NewConnection returns a new Connection struct
@@ -156,6 +158,7 @@ func (c *Connection) isHijack(p PacketManifest, flow TcpIpFlow) bool {
 // as to weather the attacker has won the race or not... however hijack detected
 // at least means an attempt was made.
 func (c *Connection) receivePacket(p PacketManifest, flow TcpIpFlow) {
+	c.packetCount += 1
 	switch c.state {
 	case TCP_UNKNOWN:
 		if p.TCP.SYN && !p.TCP.ACK {
@@ -213,9 +216,12 @@ func (c *Connection) receivePacket(p PacketManifest, flow TcpIpFlow) {
 		c.state = TCP_CONNECTED
 		log.Print("connected\n")
 	case TCP_CONNECTED:
-		if c.isHijack(p, flow) {
-			log.Print("handshake hijack detected\n")
-			return
+
+		if c.packetCount < FIRST_FEW_PACKETS {
+			if c.isHijack(p, flow) {
+				log.Print("handshake hijack detected\n")
+				return
+			}
 		}
 
 		if flow.Equal(c.clientFlow) {
@@ -240,7 +246,8 @@ func (c *Connection) receivePacket(p PacketManifest, flow TcpIpFlow) {
 			}
 			return
 		}
-	}
+
+	} // matches end of switch {
 }
 
 // ConnTracker is used to track TCP connections
