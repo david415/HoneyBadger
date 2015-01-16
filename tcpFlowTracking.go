@@ -260,6 +260,10 @@ func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
 			log.Print("TCP_CONNECTION_CLOSING: FIN packet\n")
 			return
 		}
+		if p.TCP.RST {
+			// XXX
+			c.state = TCP_CLOSED
+		}
 	} else {
 		log.Print("unexpected tcp Sequence from client\n")
 	}
