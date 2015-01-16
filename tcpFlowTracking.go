@@ -230,6 +230,8 @@ func (c *Connection) stateConnectionEstablished(p PacketManifest, flow TcpIpFlow
 }
 
 func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
+	var nextSeqPtr *tcpassembly.Sequence
+	var closerState, remoteState *uint8
 	if c.packetCount < FIRST_FEW_PACKETS {
 		if c.isHijack(p, flow) {
 			log.Print("handshake hijack detected\n")
@@ -237,35 +239,29 @@ func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
 		}
 	}
 	if flow.Equal(c.clientFlow) {
-		if tcpassembly.Sequence(p.TCP.Seq).Difference(c.clientNextSeq) == 0 {
-			c.clientNextSeq = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload)) // XXX
-			log.Printf("expected tcp Sequence from client; payload len %d\n", len(p.Payload))
-			if p.TCP.FIN {
-				c.clientNextSeq += 1 // XXX
-				c.closingFlow = c.clientFlow
-				c.state = TCP_CONNECTION_CLOSING
-				c.clientState = TCP_FIN_WAIT1
-				c.serverState = TCP_CLOSE_WAIT
-				log.Print("TCP_CONNECTION_CLOSING: FIN packet\n")
-			}
-		} else {
-			log.Print("unexpected tcp Sequence from client\n")
+		nextSeqPtr = &c.clientNextSeq
+		closerState = &c.clientState
+		remoteState = &c.serverState
+	} else {
+		nextSeqPtr = &c.serverNextSeq
+		closerState = &c.serverState
+		remoteState = &c.clientState
+	}
+	if tcpassembly.Sequence(p.TCP.Seq).Difference(*nextSeqPtr) == 0 {
+		*nextSeqPtr = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload)) // XXX
+		log.Printf("expected tcp Sequence from client; payload len %d\n", len(p.Payload))
+
+		if p.TCP.FIN {
+			c.closingFlow = c.clientFlow // XXX
+			*nextSeqPtr += 1
+			c.state = TCP_CONNECTION_CLOSING
+			*closerState = TCP_FIN_WAIT1
+			*remoteState = TCP_CLOSE_WAIT
+			log.Print("TCP_CONNECTION_CLOSING: FIN packet\n")
+			return
 		}
 	} else {
-		if tcpassembly.Sequence(p.TCP.Seq).Difference(c.serverNextSeq) == 0 {
-			c.serverNextSeq = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload)) // XXX
-			log.Printf("expected tcp Sequence from server; payload len %d\n", len(p.Payload))
-			if p.TCP.FIN {
-				c.serverNextSeq += 1 // XXX
-				c.closingFlow = c.serverFlow
-				c.state = TCP_CONNECTION_CLOSING
-				c.clientState = TCP_CLOSE_WAIT
-				c.serverState = TCP_FIN_WAIT1
-				log.Print("TCP_CONNECTION_CLOSING: FIN packet\n")
-			}
-		} else {
-			log.Print("unexpected tcp Sequence from client\n")
-		}
+		log.Print("unexpected tcp Sequence from client\n")
 	}
 }
 
