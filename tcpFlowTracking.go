@@ -104,14 +104,6 @@ func (t *TcpIpFlow) Flows() (gopacket.Flow, gopacket.Flow) {
 	return t.ipFlow, t.tcpFlow
 }
 
-// TcpBidirectionalFlow struct can be used as a hashmap key.
-// Bidirectional in this case means that an instance of this
-// struct can be used to match either unidirectional flow
-// from a given TCP connection.
-type TcpBidirectionalFlow struct {
-	flow TcpIpFlow
-}
-
 // PacketManifest is used to send parsed packets via channels to other goroutines
 type PacketManifest struct {
 	IP      layers.IPv4
