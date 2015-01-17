@@ -1,6 +1,7 @@
 package HoneyBadger
 
 import (
+	"bytes"
 	"code.google.com/p/gopacket"
 	"code.google.com/p/gopacket/layers"
 	"code.google.com/p/gopacket/pcap"
@@ -11,7 +12,6 @@ import (
 )
 
 const (
-	invalidSequence   = -1
 	MAX_CONN_PACKETS  = 1000
 	FIRST_FEW_PACKETS = 12
 
@@ -122,36 +122,36 @@ type PacketManifest struct {
 // Reassembly is inspired by gopacket.tcpassembly this struct can be used
 // to represent ordered segments of a TCP stream... currently not used.
 type Reassembly struct {
-	PacketManifest PacketManifest
-	Skip           int
-	Start          bool
-	End            bool
+	Start bool
+	End   bool
+	Seq   tcpassembly.Sequence
+	Bytes []byte
 }
 
 // Connection is used to track client and server flows for a given TCP connection.
 // Currently Connection is being used to track TCP handshake states and detect handshake hijack...
 // but it could be used for other things too like stream reassembly and detecting other TCP attacks.
 type Connection struct {
-	state         uint8
-	clientState   uint8
-	serverState   uint8
-	clientFlow    TcpIpFlow
-	serverFlow    TcpIpFlow
-	closingFlow   TcpIpFlow
-	clientNextSeq tcpassembly.Sequence
-	serverNextSeq tcpassembly.Sequence
-	hijackNextAck tcpassembly.Sequence
-	head          *ring.Ring
-	current       *ring.Ring
-	packetCount   uint64
+	state            uint8
+	clientState      uint8
+	serverState      uint8
+	clientFlow       TcpIpFlow
+	serverFlow       TcpIpFlow
+	closingFlow      TcpIpFlow
+	clientNextSeq    tcpassembly.Sequence
+	serverNextSeq    tcpassembly.Sequence
+	hijackNextAck    tcpassembly.Sequence
+	clientStreamRing *ring.Ring
+	serverStreamRing *ring.Ring
+	packetCount      uint64
 }
 
 // NewConnection returns a new Connection struct
 func NewConnection() Connection {
 	return Connection{
-		head:    nil,
-		current: ring.New(MAX_CONN_PACKETS),
-		state:   TCP_LISTEN,
+		state:            TCP_LISTEN,
+		clientStreamRing: ring.New(MAX_CONN_PACKETS),
+		serverStreamRing: ring.New(MAX_CONN_PACKETS),
 	}
 }
 
@@ -166,6 +166,95 @@ func (c *Connection) isHijack(p PacketManifest, flow TcpIpFlow) bool {
 		}
 	}
 	return false
+}
+
+func (c *Connection) getOverlapRings(p PacketManifest, flow TcpIpFlow) (*ring.Ring, *ring.Ring) {
+	var ringPtr *ring.Ring
+	var prev *ring.Ring
+
+	payloadSize := len(p.Payload)
+	start := tcpassembly.Sequence(p.TCP.Seq)
+	end := start.Add(payloadSize)
+
+	if flow.Equal(c.clientFlow) {
+		ringPtr = c.serverStreamRing
+	} else {
+		ringPtr = c.clientStreamRing
+	}
+
+	current := ringPtr.Next()
+	_, ok := current.Value.(Reassembly)
+	if !ok {
+		return nil, nil
+	}
+	for *current != *ringPtr && (ok && current.Value.(Reassembly).Seq.Difference(start) < 0) {
+		prev = current
+		current = current.Next()
+		_, ok = current.Value.(Reassembly)
+	}
+
+	head := prev
+	_, ok = current.Value.(Reassembly)
+	if ok {
+		seq := current.Value.(Reassembly).Seq
+		numBytes := len(current.Value.(Reassembly).Bytes)
+		for current != ringPtr && seq.Add(numBytes).Difference(end) >= 0 {
+			prev = current
+			current = current.Next()
+		}
+		return head, prev
+	} else {
+		return nil, nil
+	}
+}
+
+func (c *Connection) getOverlapBytes(head, tail *ring.Ring, start, end tcpassembly.Sequence) ([]byte, int, int) {
+	var sliceStart, sliceEnd tcpassembly.Sequence
+	var rangeStartOffset, rangeEndOffset int
+	overlapBytes := make([]byte, 1)
+	diff := head.Value.(Reassembly).Seq.Difference(start)
+	if diff >= 0 {
+		sliceStart = start
+	} else {
+		sliceStart = head.Value.(Reassembly).Seq //XXX our copy of the stream doesn't go back far enough
+	}
+	rangeStartOffset = int(sliceStart - start)
+	diff = tail.Value.(Reassembly).Seq.Add(len(tail.Value.(Reassembly).Bytes)).Difference(end)
+	if diff < 0 {
+		sliceEnd = end
+	} else {
+		sliceEnd = tail.Value.(Reassembly).Seq.Add(len(tail.Value.(Reassembly).Bytes))
+	}
+	rangeEndOffset = int(end - sliceEnd)
+	if head.Value.(Reassembly).Seq.Difference(tail.Value.(Reassembly).Seq) == 0 {
+		overlapBytes = head.Value.(Reassembly).Bytes[sliceStart:sliceEnd]
+	} else {
+		// construct our contiguous byte array and return it
+		overlapBytes = append(overlapBytes, head.Value.(Reassembly).Bytes[sliceStart:]...)
+		current := head.Next()
+		for current != tail {
+			overlapBytes = append(overlapBytes, current.Value.(Reassembly).Bytes...) // XXX
+			current = current.Next()
+		}
+		overlapBytes = append(overlapBytes, tail.Value.(Reassembly).Bytes[:sliceEnd+1]...) // XXX
+	}
+	return overlapBytes, rangeStartOffset, rangeEndOffset
+}
+
+func (c *Connection) isInjection(p PacketManifest, flow TcpIpFlow) bool {
+	log.Print("isInjection\n")
+
+	head, tail := c.getOverlapRings(p, flow)
+	if head == nil || tail == nil {
+		log.Print("getOverlapRings returned a nil\n")
+		return false
+	}
+
+	start := tcpassembly.Sequence(p.TCP.Seq)
+	end := start.Add(len(p.Payload))
+
+	overlapBytes, startOffset, endOffset := c.getOverlapBytes(head, tail, start, end)
+	return !bytes.Equal(overlapBytes, p.Payload[startOffset:endOffset+1])
 }
 
 func (c *Connection) stateListen(p PacketManifest, flow TcpIpFlow) {
@@ -206,7 +295,7 @@ func (c *Connection) stateConnectionRequest(p PacketManifest, flow TcpIpFlow) {
 
 func (c *Connection) stateConnectionEstablished(p PacketManifest, flow TcpIpFlow) {
 	if c.isHijack(p, flow) {
-		log.Print("handshake hijack detected\n")
+		log.Print("handshake hijack attack detected.\n")
 		return
 	}
 	if !flow.Equal(c.clientFlow) {
@@ -247,10 +336,16 @@ func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
 		closerState = &c.serverState
 		remoteState = &c.clientState
 	}
-	if tcpassembly.Sequence(p.TCP.Seq).Difference(*nextSeqPtr) == 0 {
-		*nextSeqPtr = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload)) // XXX
-		log.Printf("expected tcp Sequence from client; payload len %d\n", len(p.Payload))
-
+	diff := tcpassembly.Sequence(p.TCP.Seq).Difference(*nextSeqPtr)
+	if diff > 0 {
+		log.Printf("overlap case: TCP.Seq %d before nextSeqPtr %d\n", p.TCP.Seq, *nextSeqPtr)
+		// *nextSeqPtr comes after p.TCP.Seq
+		// stream overlap case
+		if c.isInjection(p, flow) {
+			log.Print("TCP injection attack detected.\n")
+		}
+	} else if diff == 0 {
+		// contiguous!
 		if p.TCP.FIN {
 			c.closingFlow = c.clientFlow // XXX
 			*nextSeqPtr += 1
@@ -263,9 +358,28 @@ func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
 		if p.TCP.RST {
 			// XXX
 			c.state = TCP_CLOSED
+			return
 		}
-	} else {
-		log.Print("unexpected tcp Sequence from client\n")
+		if len(p.Payload) > 0 {
+			reassembly := Reassembly{
+				Seq:   tcpassembly.Sequence(p.TCP.Seq),
+				Bytes: []byte(p.Payload),
+			}
+			if flow == c.clientFlow {
+				c.clientStreamRing.Next()
+				c.clientStreamRing.Value = reassembly
+
+			} else {
+				c.serverStreamRing.Next()
+				c.serverStreamRing.Value = reassembly
+			}
+			*nextSeqPtr = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload)) // XXX
+			log.Printf("expected tcp Sequence from client; payload len %d\n", len(p.Payload))
+		} else {
+			log.Print("ignoring useless zero size payload packet\n")
+		}
+	} else if diff < 0 {
+		// p.TCP.Seq comes after *nextSeqPtr
 	}
 }
 

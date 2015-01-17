@@ -35,7 +35,7 @@ var iface = flag.String("i", "lo", "Interface to get packets from")
 var filter = flag.String("f", "tcp and dst port 9666 and tcp[tcpflags] == tcp-syn", "BPF filter for pcap")
 var snaplen = flag.Int("s", 65536, "SnapLen for pcap packet capture")
 var serviceIPstr = flag.String("d", "127.0.0.1", "target TCP flows from this IP address")
-var servicePort = flag.Int("e", 2666, "target TCP flows from this port")
+var servicePort = flag.Int("e", 9666, "target TCP flows from this port")
 
 func main() {
 	defer util.Run()()
