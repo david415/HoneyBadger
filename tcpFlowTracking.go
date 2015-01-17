@@ -120,6 +120,10 @@ type Reassembly struct {
 	Bytes []byte
 }
 
+func (r *Reassembly) String() string {
+	return fmt.Sprintf("Reassembly: Seq %d Bytes len %d data %s\n", r.Seq, len(r.Bytes), string(r.Bytes))
+}
+
 // Connection is used to track client and server flows for a given TCP connection.
 // Currently Connection is being used to track TCP handshake states and detect handshake hijack...
 // but it could be used for other things too like stream reassembly and detecting other TCP attacks.
@@ -160,20 +164,30 @@ func (c *Connection) isHijack(p PacketManifest, flow TcpIpFlow) bool {
 	return false
 }
 
+func displayRing(val interface{}) {
+	if v, ok := val.(Reassembly); ok {
+		log.Printf("%s\n", v.String())
+	}
+}
+
+func (c *Connection) displayRings() {
+	log.Print("client ring\n")
+	c.clientStreamRing.Do(displayRing)
+	log.Print("server ring\n")
+	c.serverStreamRing.Do(displayRing)
+}
+
 func (c *Connection) getOverlapRings(p PacketManifest, flow TcpIpFlow) (*ring.Ring, *ring.Ring) {
 	var ringPtr *ring.Ring
 	var prev *ring.Ring
-
 	payloadSize := len(p.Payload)
 	start := tcpassembly.Sequence(p.TCP.Seq)
 	end := start.Add(payloadSize)
-
 	if flow.Equal(c.clientFlow) {
 		ringPtr = c.serverStreamRing
 	} else {
 		ringPtr = c.clientStreamRing
 	}
-
 	current := ringPtr.Next()
 	_, ok := current.Value.(Reassembly)
 	if !ok {
@@ -184,7 +198,6 @@ func (c *Connection) getOverlapRings(p PacketManifest, flow TcpIpFlow) (*ring.Ri
 		current = current.Next()
 		_, ok = current.Value.(Reassembly)
 	}
-
 	head := prev
 	_, ok = current.Value.(Reassembly)
 	if ok {
@@ -234,8 +247,6 @@ func (c *Connection) getOverlapBytes(head, tail *ring.Ring, start, end tcpassemb
 }
 
 func (c *Connection) isInjection(p PacketManifest, flow TcpIpFlow) bool {
-	log.Print("isInjection\n")
-
 	head, tail := c.getOverlapRings(p, flow)
 	if head == nil || tail == nil {
 		log.Print("getOverlapRings returned a nil\n")
@@ -330,11 +341,14 @@ func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
 	}
 	diff := tcpassembly.Sequence(p.TCP.Seq).Difference(*nextSeqPtr)
 	if diff > 0 {
-		log.Printf("overlap case: TCP.Seq %d before nextSeqPtr %d\n", p.TCP.Seq, *nextSeqPtr)
 		// *nextSeqPtr comes after p.TCP.Seq
 		// stream overlap case
+
+		log.Printf("overlap case: TCP.Seq %d before nextSeqPtr %d\n", p.TCP.Seq, *nextSeqPtr)
 		if c.isInjection(p, flow) {
 			log.Print("TCP injection attack detected.\n")
+		} else {
+			c.displayRings()
 		}
 	} else if diff == 0 {
 		// contiguous!
@@ -358,17 +372,17 @@ func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
 				Bytes: []byte(p.Payload),
 			}
 			if flow == c.clientFlow {
-				c.clientStreamRing.Next()
-				c.clientStreamRing.Value = reassembly
-
-			} else {
-				c.serverStreamRing.Next()
+				c.serverStreamRing = c.serverStreamRing.Next()
 				c.serverStreamRing.Value = reassembly
+				log.Printf("expected tcp Sequence from client; payload len %d\n", len(p.Payload))
+			} else {
+				c.clientStreamRing = c.clientStreamRing.Next()
+				c.clientStreamRing.Value = reassembly
+				log.Printf("expected tcp Sequence from server; payload len %d\n", len(p.Payload))
 			}
 			*nextSeqPtr = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload)) // XXX
-			log.Printf("expected tcp Sequence from client; payload len %d\n", len(p.Payload))
 		} else {
-			log.Print("ignoring useless zero size payload packet\n")
+			//log.Print("ignoring useless zero size payload packet\n")
 		}
 	} else if diff < 0 {
 		// p.TCP.Seq comes after *nextSeqPtr
