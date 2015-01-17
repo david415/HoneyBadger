@@ -12,7 +12,13 @@ import (
 )
 
 const (
-	MAX_CONN_PACKETS  = 1000
+	// Size of the ring buffers which stores the latest
+	// reassembled streams
+	MAX_CONN_PACKETS = 40
+
+	// Stop looking for handshake hijack after several
+	// packets have traversed the connection after entering
+	// into TCP_DATA_TRANSFER state
 	FIRST_FEW_PACKETS = 12
 
 	// TCP states
@@ -34,6 +40,8 @@ const (
 	TCP_LAST_ACK   = 1
 )
 
+// SequenceFromPacket returns a Sequence number and nil error if the given
+// packet is able to be parsed. Otherwise returns 0 and an error.
 func SequenceFromPacket(packet []byte) (uint32, error) {
 	var ip layers.IPv4
 	var tcp layers.TCP
@@ -112,7 +120,7 @@ type PacketManifest struct {
 }
 
 // Reassembly is inspired by gopacket.tcpassembly this struct can be used
-// to represent ordered segments of a TCP stream... currently not used.
+// to represent ordered segments of a TCP stream.
 type Reassembly struct {
 	Start bool
 	End   bool
@@ -125,8 +133,8 @@ func (r *Reassembly) String() string {
 }
 
 // Connection is used to track client and server flows for a given TCP connection.
-// Currently Connection is being used to track TCP handshake states and detect handshake hijack...
-// but it could be used for other things too like stream reassembly and detecting other TCP attacks.
+// We implement a basic TCP finite state machine and track state in order to detect
+// hanshake hijack and other TCP attacks such as segment veto and stream injection.
 type Connection struct {
 	state            uint8
 	clientState      uint8
@@ -164,12 +172,15 @@ func (c *Connection) isHijack(p PacketManifest, flow TcpIpFlow) bool {
 	return false
 }
 
+// displayRing prints the ring element
 func displayRing(val interface{}) {
 	if v, ok := val.(Reassembly); ok {
 		log.Printf("%s\n", v.String())
 	}
 }
 
+// displayRings prints the contents of the ring buffers.
+// This is used for debugging purposes.
 func (c *Connection) displayRings() {
 	log.Print("client ring\n")
 	c.clientStreamRing.Do(displayRing)
@@ -177,6 +188,8 @@ func (c *Connection) displayRings() {
 	c.serverStreamRing.Do(displayRing)
 }
 
+// getOverlapRings returns the head and tail ring elements corresponding to the first and last
+// overlapping ring segments... that overlap with the given packet (PacketManifest).
 func (c *Connection) getOverlapRings(p PacketManifest, flow TcpIpFlow) (*ring.Ring, *ring.Ring) {
 	var ringPtr *ring.Ring
 	var prev *ring.Ring
@@ -213,6 +226,10 @@ func (c *Connection) getOverlapRings(p PacketManifest, flow TcpIpFlow) (*ring.Ri
 	}
 }
 
+// getOverlapBytes returns the overlap byte array; that is the contiguous data stored in our ring buffer
+// that overlaps with the stream segment specified by the start and end Sequence boundaries.
+// The other return values are the slice offsets of the original packet payload that can be used to compute
+// the new overlapping portion of the stream segment.
 func (c *Connection) getOverlapBytes(head, tail *ring.Ring, start, end tcpassembly.Sequence) ([]byte, int, int) {
 	var sliceStart, sliceEnd tcpassembly.Sequence
 	var rangeStartOffset, rangeEndOffset int
@@ -246,6 +263,8 @@ func (c *Connection) getOverlapBytes(head, tail *ring.Ring, start, end tcpassemb
 	return overlapBytes, rangeStartOffset, rangeEndOffset
 }
 
+// isInjection returns true if the given packet indicates a TCP injection attack
+// such as segment veto. Returns false otherwise.
 func (c *Connection) isInjection(p PacketManifest, flow TcpIpFlow) bool {
 	head, tail := c.getOverlapRings(p, flow)
 	if head == nil || tail == nil {
@@ -260,6 +279,9 @@ func (c *Connection) isInjection(p PacketManifest, flow TcpIpFlow) bool {
 	return !bytes.Equal(overlapBytes, p.Payload[startOffset:endOffset+1])
 }
 
+// stateListen gets called by our TCP finite state machine runtime
+// and moves us into the TCP_CONNECTION_REQUEST state if we receive
+// a SYN packet.
 func (c *Connection) stateListen(p PacketManifest, flow TcpIpFlow) {
 	if p.TCP.SYN && !p.TCP.ACK {
 		log.Print("TCP_CONNECTION_REQUEST\n")
@@ -278,6 +300,9 @@ func (c *Connection) stateListen(p PacketManifest, flow TcpIpFlow) {
 	}
 }
 
+// stateConnectionRequest gets called by our TCP finite state machine runtime
+// and moves us into the TCP_CONNECTION_ESTABLISHED state if we receive
+// a SYN/ACK packet.
 func (c *Connection) stateConnectionRequest(p PacketManifest, flow TcpIpFlow) {
 	if !flow.Equal(c.serverFlow) {
 		log.Print("handshake anomaly\n")
@@ -296,6 +321,9 @@ func (c *Connection) stateConnectionRequest(p PacketManifest, flow TcpIpFlow) {
 	c.serverNextSeq = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1) // XXX see above comment about TCP extentions
 }
 
+// stateConnectionEstablished is called by our TCP FSM runtime and
+// changes our state to TCP_DATA_TRANSFER if we receive a valid final
+// handshake ACK packet.
 func (c *Connection) stateConnectionEstablished(p PacketManifest, flow TcpIpFlow) {
 	if c.isHijack(p, flow) {
 		log.Print("handshake hijack attack detected.\n")
@@ -321,6 +349,8 @@ func (c *Connection) stateConnectionEstablished(p PacketManifest, flow TcpIpFlow
 	log.Print("TCP_DATA_TRANSFER\n")
 }
 
+// stateDataTransfer is called by our TCP FSM and processes packets
+// once we are in the TCP_DATA_TRANSFER state
 func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
 	var nextSeqPtr *tcpassembly.Sequence
 	var closerState, remoteState *uint8
@@ -389,6 +419,7 @@ func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
 	}
 }
 
+// stateFinWait1 handles packets for the FIN-WAIT-1 state
 func (c *Connection) stateFinWait1(p PacketManifest, flow TcpIpFlow, nextSeqPtr *tcpassembly.Sequence, nextAckPtr *tcpassembly.Sequence, statePtr, otherStatePtr *uint8) {
 	if tcpassembly.Sequence(p.TCP.Seq).Difference(*nextSeqPtr) != 0 {
 		log.Print("FIN-WAIT-1: out of order packet received\n")
@@ -413,6 +444,7 @@ func (c *Connection) stateFinWait1(p PacketManifest, flow TcpIpFlow, nextSeqPtr 
 	}
 }
 
+// stateFinWait1 handles packets for the FIN-WAIT-2 state
 func (c *Connection) stateFinWait2(p PacketManifest, flow TcpIpFlow, nextSeqPtr *tcpassembly.Sequence, nextAckPtr *tcpassembly.Sequence, statePtr *uint8) {
 	if tcpassembly.Sequence(p.TCP.Seq).Difference(*nextSeqPtr) == 0 {
 		if p.TCP.ACK && p.TCP.FIN {
@@ -521,9 +553,6 @@ func (c *Connection) stateClosed(p PacketManifest, flow TcpIpFlow) {
 // which is loosely based off of the simplified FSM in this paper:
 // http://ants.iis.sinica.edu.tw/3bkmj9ltewxtsrrvnoknfdxrm3zfwrr/17/p520460.pdf
 // The goal is to detect all manner of content injection.
-// Currently we detect TCP handshake hijack. But soon we'll be doing
-// retrospective analysis on reassembled stream segments to detect
-// TCP segment veto attacks and other stream injection attacks.
 func (c *Connection) receivePacket(p PacketManifest, flow TcpIpFlow) {
 	c.packetCount += 1
 	switch c.state {
@@ -542,7 +571,9 @@ func (c *Connection) receivePacket(p PacketManifest, flow TcpIpFlow) {
 	}
 }
 
-// ConnTracker is used to track TCP connections
+// ConnTracker is used to track TCP connections using
+// two maps. One for each flow... where a TcpIpFlow
+// is the key and *Connection is the value.
 type ConnTracker struct {
 	flowAMap map[TcpIpFlow]*Connection
 	flowBMap map[TcpIpFlow]*Connection
