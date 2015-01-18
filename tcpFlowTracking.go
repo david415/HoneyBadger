@@ -165,8 +165,8 @@ type Connection struct {
 	clientNextSeq    tcpassembly.Sequence
 	serverNextSeq    tcpassembly.Sequence
 	hijackNextAck    tcpassembly.Sequence
-	clientStreamRing *ring.Ring
-	serverStreamRing *ring.Ring
+	ClientStreamRing *ring.Ring
+	ServerStreamRing *ring.Ring
 	packetCount      uint64
 }
 
@@ -174,8 +174,8 @@ type Connection struct {
 func NewConnection() Connection {
 	return Connection{
 		state:            TCP_LISTEN,
-		clientStreamRing: ring.New(MAX_CONN_PACKETS),
-		serverStreamRing: ring.New(MAX_CONN_PACKETS),
+		ClientStreamRing: ring.New(MAX_CONN_PACKETS),
+		ServerStreamRing: ring.New(MAX_CONN_PACKETS),
 	}
 }
 
@@ -203,44 +203,45 @@ func displayRing(val interface{}) {
 // This is used for debugging purposes.
 func (c *Connection) displayRings() {
 	log.Print("client ring\n")
-	c.clientStreamRing.Do(displayRing)
+	c.ClientStreamRing.Do(displayRing)
 	log.Print("server ring\n")
-	c.serverStreamRing.Do(displayRing)
+	c.ServerStreamRing.Do(displayRing)
 }
 
 // getOverlapRings returns the head and tail ring elements corresponding to the first and last
 // overlapping ring segments... that overlap with the given packet (PacketManifest).
 func (c *Connection) getOverlapRings(p PacketManifest, flow TcpIpFlow) (*ring.Ring, *ring.Ring) {
 	var ringPtr *ring.Ring
-	var prev *ring.Ring
-	payloadSize := len(p.Payload)
+
 	start := tcpassembly.Sequence(p.TCP.Seq)
-	end := start.Add(payloadSize)
+	end := start.Add(len(p.Payload))
+
 	if flow.Equal(c.clientFlow) {
-		ringPtr = c.serverStreamRing
+		ringPtr = c.ServerStreamRing
 	} else {
-		ringPtr = c.clientStreamRing
+		ringPtr = c.ClientStreamRing
 	}
-	current := ringPtr.Next()
+
+	current := ringPtr.Prev()
 	_, ok := current.Value.(Reassembly)
 	if !ok {
 		return nil, nil
 	}
 	for *current != *ringPtr && (ok && current.Value.(Reassembly).Seq.Difference(start) < 0) {
-		prev = current
-		current = current.Next()
+		current = current.Prev()
 		_, ok = current.Value.(Reassembly)
 	}
-	head := prev
+	head := current
 	_, ok = current.Value.(Reassembly)
 	if ok {
-		seq := current.Value.(Reassembly).Seq
+		seq := head.Value.(Reassembly).Seq
 		numBytes := len(current.Value.(Reassembly).Bytes)
-		for current != ringPtr && seq.Add(numBytes).Difference(end) >= 0 {
-			prev = current
+		for current != ringPtr && seq.Add(numBytes).Difference(end) > 0 {
 			current = current.Next()
+			seq = current.Value.(Reassembly).Seq
+			numBytes = len(current.Value.(Reassembly).Bytes)
 		}
-		return head, prev
+		return head, current
 	} else {
 		return nil, nil
 	}
@@ -422,12 +423,12 @@ func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
 				Bytes: []byte(p.Payload),
 			}
 			if flow == c.clientFlow {
-				c.serverStreamRing = c.serverStreamRing.Next()
-				c.serverStreamRing.Value = reassembly
+				c.ServerStreamRing = c.ServerStreamRing.Next()
+				c.ServerStreamRing.Value = reassembly
 				log.Printf("expected tcp Sequence from client; payload len %d\n", len(p.Payload))
 			} else {
-				c.clientStreamRing = c.clientStreamRing.Next()
-				c.clientStreamRing.Value = reassembly
+				c.ClientStreamRing = c.ClientStreamRing.Next()
+				c.ClientStreamRing.Value = reassembly
 				log.Printf("expected tcp Sequence from server; payload len %d\n", len(p.Payload))
 			}
 			*nextSeqPtr = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload)) // XXX
