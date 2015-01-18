@@ -25,10 +25,11 @@ In Linux you can run these tools as an unprivileged user after you run setcap as
 note about the GNU AFFERO GENERAL PUBLIC LICENSE
 ------------------------------------------------
 
-Some of these software tools I've made available under the AGPL
-because they are working prototypes for exploiting vulnerabilities
-in TCP. There use in the wild could be harmful... however the author
-wishes to raise awareness... not help script kiddies.
+The HoneyBadger TCP attack detection is released under the GPL however
+the "integration tests" for the TCP attack detection are in fact working
+TCP exploit prototypes; therefore I have released these tools under the AGPL.
+There use in the wild could be harmful... however the author
+wishes to raise awareness... not help attackers.
 
 AGPL states that if you use this software you *must*
 distribute the source code along with the "publication".
