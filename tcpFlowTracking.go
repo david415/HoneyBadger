@@ -252,35 +252,57 @@ func (c *Connection) getOverlapRings(p PacketManifest, flow TcpIpFlow) (*ring.Ri
 // The other return values are the slice offsets of the original packet payload that can be used to compute
 // the new overlapping portion of the stream segment.
 func (c *Connection) getOverlapBytes(head, tail *ring.Ring, start, end tcpassembly.Sequence) ([]byte, int, int) {
-	var sliceStart, sliceEnd tcpassembly.Sequence
+	var sliceStart, sliceEnd int
+	var seqEnd int
 	var rangeStartOffset, rangeEndOffset int
-	overlapBytes := make([]byte, 1)
+
+	overlapBytes := make([]byte, 0, 0)
 	diff := head.Value.(Reassembly).Seq.Difference(start)
 	if diff >= 0 {
-		sliceStart = start
+		sliceStart = int(start)
 	} else {
-		sliceStart = head.Value.(Reassembly).Seq //XXX our copy of the stream doesn't go back far enough
+		sliceStart = int(head.Value.(Reassembly).Seq)
 	}
-	rangeStartOffset = int(sliceStart - start)
+	rangeStartOffset = sliceStart - int(start)
+	sliceStart += 1
+
+	log.Printf("rangeStartOffset %d sliceStart %d\n", rangeStartOffset, sliceStart)
+
 	diff = tail.Value.(Reassembly).Seq.Add(len(tail.Value.(Reassembly).Bytes)).Difference(end)
-	if diff < 0 {
-		sliceEnd = end
+	if diff <= 0 {
+		seqEnd = int(end)
 	} else {
-		sliceEnd = tail.Value.(Reassembly).Seq.Add(len(tail.Value.(Reassembly).Bytes))
+		seqEnd = int(tail.Value.(Reassembly).Seq.Add(len(tail.Value.(Reassembly).Bytes)))
 	}
-	rangeEndOffset = int(end - sliceEnd)
+	rangeEndOffset = int(end) - seqEnd
+	sliceEnd = len(tail.Value.(Reassembly).Bytes) - rangeEndOffset
+
+	log.Printf("rangeEndOffset %d sliceEnd %d\n", rangeEndOffset, sliceEnd)
+	log.Printf("head seq %d tail seq %d\n", head.Value.(Reassembly).Seq, tail.Value.(Reassembly).Seq)
+
 	if head.Value.(Reassembly).Seq.Difference(tail.Value.(Reassembly).Seq) == 0 {
+		// XXX
 		overlapBytes = head.Value.(Reassembly).Bytes[sliceStart:sliceEnd]
 	} else {
+		log.Printf("total value len %d\n", len(head.Value.(Reassembly).Bytes))
 		// construct our contiguous byte array and return it
 		overlapBytes = append(overlapBytes, head.Value.(Reassembly).Bytes[sliceStart:]...)
-		current := head.Next()
-		for current != tail {
+		log.Printf("1 overlapBytes len %d\n", len(overlapBytes))
+		current := head
+		current = current.Next()
+		for current.Value.(Reassembly).Seq != tail.Value.(Reassembly).Seq {
 			overlapBytes = append(overlapBytes, current.Value.(Reassembly).Bytes...) // XXX
+			log.Printf("2 overlapBytes len %d\n", len(overlapBytes))
 			current = current.Next()
 		}
-		overlapBytes = append(overlapBytes, tail.Value.(Reassembly).Bytes[:sliceEnd+1]...) // XXX
+		log.Printf("after for loop; len of tail Bytes %d\n", len(tail.Value.(Reassembly).Bytes))
+		if sliceEnd == 0 {
+			overlapBytes = append(overlapBytes, tail.Value.(Reassembly).Bytes...) // XXX
+		} else {
+			overlapBytes = append(overlapBytes, tail.Value.(Reassembly).Bytes[:sliceEnd]...) // XXX
+		}
 	}
+	log.Printf("3 overlapBytes len %d\nrangeStartOffset %d rangeEndOffset %d\n", len(overlapBytes), rangeStartOffset, rangeEndOffset)
 	return overlapBytes, rangeStartOffset, rangeEndOffset
 }
 

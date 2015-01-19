@@ -1,6 +1,7 @@
 package HoneyBadger
 
 import (
+	"bytes"
 	"code.google.com/p/gopacket"
 	"code.google.com/p/gopacket/layers"
 	"code.google.com/p/gopacket/tcpassembly"
@@ -8,6 +9,89 @@ import (
 	"net"
 	"testing"
 )
+
+type reassemblyInput struct {
+	Seq     uint32
+	Payload []byte
+}
+
+// test in: reassemblyInput (sequence, payload bytes)
+// test want: bytes, startOffset, endOffset
+type TestOverlapBytesWant struct {
+	bytes       []byte
+	startOffset int
+	endOffset   int
+}
+
+func TestGetOverlapBytes(t *testing.T) {
+
+	overlapBytesTests := []struct {
+		in   reassemblyInput
+		want TestOverlapBytesWant
+	}{
+		{
+			reassemblyInput{2, []byte{1, 2, 3, 4, 5, 6, 7}}, TestOverlapBytesWant{
+				bytes:       []byte{4, 5, 1, 2, 3, 4, 5},
+				startOffset: 0,
+				endOffset:   0,
+			},
+		},
+		{
+			reassemblyInput{3, []byte{1, 2, 3, 4, 5, 6, 7}}, TestOverlapBytesWant{
+				bytes:       []byte{5, 1, 2, 3, 4, 5, 1},
+				startOffset: 0,
+				endOffset:   0,
+			},
+		},
+	}
+
+	conn := NewConnection()
+	for j := 0; j < 40; j += 5 {
+		conn.ClientStreamRing.Value = Reassembly{
+			Seq:   tcpassembly.Sequence(j),
+			Bytes: []byte{1, 2, 3, 4, 5},
+		}
+		conn.ClientStreamRing = conn.ClientStreamRing.Next()
+	}
+
+	for i := 0; i < len(overlapBytesTests); i++ {
+		var startSeq uint32 = overlapBytesTests[i].in.Seq
+		start := tcpassembly.Sequence(startSeq)
+		end := start.Add(len(overlapBytesTests[i].in.Payload))
+		p := PacketManifest{
+			IP: layers.IPv4{
+				SrcIP:    net.IP{1, 2, 3, 4},
+				DstIP:    net.IP{2, 3, 4, 5},
+				Version:  4,
+				TTL:      64,
+				Protocol: layers.IPProtocolTCP,
+			},
+			TCP: layers.TCP{
+				Seq:     startSeq,
+				SrcPort: 1,
+				DstPort: 2,
+			},
+			Payload: overlapBytesTests[i].in.Payload,
+		}
+		flow := NewTcpIpFlowFromLayers(p.IP, p.TCP)
+		head, tail := conn.getOverlapRings(p, flow)
+		payloadBytes, startOffset, endOffset := conn.getOverlapBytes(head, tail, start, end)
+		if startOffset != overlapBytesTests[i].want.startOffset {
+			t.Fail()
+		}
+		if endOffset != overlapBytesTests[i].want.endOffset {
+			t.Fail()
+		}
+		if len(payloadBytes) != len(overlapBytesTests[i].want.bytes) {
+			fmt.Printf("payload bytes len unequal %d %d\n", len(payloadBytes), len(overlapBytesTests[i].want.bytes))
+			t.Fail()
+		}
+		if !bytes.Equal(payloadBytes, overlapBytesTests[i].want.bytes) {
+			t.Fail()
+			fmt.Printf("payload bytes unequal %x %x\n", payloadBytes, overlapBytesTests[i].want.bytes)
+		}
+	}
+}
 
 func TestGetOverlapRingsWithZeroRings(t *testing.T) {
 	ip := layers.IPv4{
@@ -38,11 +122,6 @@ func TestGetOverlapRingsWithZeroRings(t *testing.T) {
 		t.Fail()
 	}
 	return
-}
-
-type reassemblyInput struct {
-	Seq     uint32
-	Payload []byte
 }
 
 type OverlapTest struct {
