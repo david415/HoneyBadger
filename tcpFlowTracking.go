@@ -247,6 +247,46 @@ func (c *Connection) getOverlapRings(p PacketManifest, flow TcpIpFlow) (*ring.Ri
 	}
 }
 
+func getStartOffset(head *ring.Ring, start tcpassembly.Sequence) int {
+	var sliceStart int
+	diff := head.Value.(Reassembly).Seq.Difference(start)
+	if diff >= 0 {
+		sliceStart = int(start)
+	} else {
+		sliceStart = int(head.Value.(Reassembly).Seq)
+	}
+	return sliceStart
+}
+
+func getEndSequence(tail *ring.Ring, end tcpassembly.Sequence) int {
+	var seqEnd int
+	diff := tail.Value.(Reassembly).Seq.Add(len(tail.Value.(Reassembly).Bytes) - 1).Difference(end)
+	if diff <= 0 {
+		seqEnd = int(end)
+	} else {
+		seqEnd = int(tail.Value.(Reassembly).Seq.Add(len(tail.Value.(Reassembly).Bytes) - 1))
+	}
+	return seqEnd
+}
+
+func getRingSlice(head, tail *ring.Ring, sliceStart, sliceEnd int) []byte {
+	var overlapBytes []byte
+	overlapBytes = append(overlapBytes, head.Value.(Reassembly).Bytes[sliceStart:]...)
+	current := head
+	current = current.Next()
+	for current.Value.(Reassembly).Seq != tail.Value.(Reassembly).Seq {
+		overlapBytes = append(overlapBytes, current.Value.(Reassembly).Bytes...) // XXX
+		current = current.Next()
+	}
+	if sliceEnd == 0 {
+		overlapBytes = append(overlapBytes, tail.Value.(Reassembly).Bytes...) // XXX
+	} else {
+		sliceEnd = len(tail.Value.(Reassembly).Bytes) - sliceEnd
+		overlapBytes = append(overlapBytes, tail.Value.(Reassembly).Bytes[:sliceEnd]...) // XXX
+	}
+	return overlapBytes
+}
+
 // getOverlapBytes returns the overlap byte array; that is the contiguous data stored in our ring buffer
 // that overlaps with the stream segment specified by the start and end Sequence boundaries.
 // The other return values are the slice offsets of the original packet payload that can be used to compute
@@ -257,52 +297,20 @@ func (c *Connection) getOverlapBytes(head, tail *ring.Ring, start, end tcpassemb
 	var rangeStartOffset, rangeEndOffset int
 
 	overlapBytes := make([]byte, 0, 0)
-	diff := head.Value.(Reassembly).Seq.Difference(start)
-	if diff >= 0 {
-		sliceStart = int(start)
-	} else {
-		sliceStart = int(head.Value.(Reassembly).Seq)
-	}
+	sliceStart = getStartOffset(head, start)
 	rangeStartOffset = sliceStart - int(start)
-	sliceStart += 1
 
-	log.Printf("rangeStartOffset %d sliceStart %d\n", rangeStartOffset, sliceStart)
-
-	diff = tail.Value.(Reassembly).Seq.Add(len(tail.Value.(Reassembly).Bytes)).Difference(end)
-	if diff <= 0 {
-		seqEnd = int(end)
-	} else {
-		seqEnd = int(tail.Value.(Reassembly).Seq.Add(len(tail.Value.(Reassembly).Bytes)))
-	}
+	seqEnd = getEndSequence(tail, end)
 	rangeEndOffset = int(end) - seqEnd
 	sliceEnd = len(tail.Value.(Reassembly).Bytes) - rangeEndOffset
-
-	log.Printf("rangeEndOffset %d sliceEnd %d\n", rangeEndOffset, sliceEnd)
-	log.Printf("head seq %d tail seq %d\n", head.Value.(Reassembly).Seq, tail.Value.(Reassembly).Seq)
 
 	if head.Value.(Reassembly).Seq.Difference(tail.Value.(Reassembly).Seq) == 0 {
 		// XXX
 		overlapBytes = head.Value.(Reassembly).Bytes[sliceStart:sliceEnd]
 	} else {
-		log.Printf("total value len %d\n", len(head.Value.(Reassembly).Bytes))
 		// construct our contiguous byte array and return it
-		overlapBytes = append(overlapBytes, head.Value.(Reassembly).Bytes[sliceStart:]...)
-		log.Printf("1 overlapBytes len %d\n", len(overlapBytes))
-		current := head
-		current = current.Next()
-		for current.Value.(Reassembly).Seq != tail.Value.(Reassembly).Seq {
-			overlapBytes = append(overlapBytes, current.Value.(Reassembly).Bytes...) // XXX
-			log.Printf("2 overlapBytes len %d\n", len(overlapBytes))
-			current = current.Next()
-		}
-		log.Printf("after for loop; len of tail Bytes %d\n", len(tail.Value.(Reassembly).Bytes))
-		if sliceEnd == 0 {
-			overlapBytes = append(overlapBytes, tail.Value.(Reassembly).Bytes...) // XXX
-		} else {
-			overlapBytes = append(overlapBytes, tail.Value.(Reassembly).Bytes[:sliceEnd]...) // XXX
-		}
+		overlapBytes = getRingSlice(head, tail, sliceStart, sliceEnd)
 	}
-	log.Printf("3 overlapBytes len %d\nrangeStartOffset %d rangeEndOffset %d\n", len(overlapBytes), rangeStartOffset, rangeEndOffset)
 	return overlapBytes, rangeStartOffset, rangeEndOffset
 }
 

@@ -5,6 +5,7 @@ import (
 	"code.google.com/p/gopacket"
 	"code.google.com/p/gopacket/layers"
 	"code.google.com/p/gopacket/tcpassembly"
+	"container/ring"
 	"fmt"
 	"net"
 	"testing"
@@ -15,12 +16,109 @@ type reassemblyInput struct {
 	Payload []byte
 }
 
-// test in: reassemblyInput (sequence, payload bytes)
-// test want: bytes, startOffset, endOffset
+func TestGetRingSlice(t *testing.T) {
+	conn := NewConnection()
+	for j := 0; j < 40; j += 5 {
+		conn.ClientStreamRing.Value = Reassembly{
+			Seq:   tcpassembly.Sequence(j),
+			Bytes: []byte{1, 2, 3, 4, 5},
+		}
+		conn.ClientStreamRing = conn.ClientStreamRing.Next()
+	}
+	var startSeq uint32 = 0
+	p := PacketManifest{
+		IP: layers.IPv4{
+			SrcIP:    net.IP{1, 2, 3, 4},
+			DstIP:    net.IP{2, 3, 4, 5},
+			Version:  4,
+			TTL:      64,
+			Protocol: layers.IPProtocolTCP,
+		},
+		TCP: layers.TCP{
+			Seq:     startSeq,
+			SrcPort: 1,
+			DstPort: 2,
+		},
+		Payload: []byte{1, 2, 3, 4, 5, 6, 7},
+	}
+	flow := NewTcpIpFlowFromLayers(p.IP, p.TCP)
+	head, tail := conn.getOverlapRings(p, flow)
+
+	ringSlice := getRingSlice(head, tail, 0, 1)
+	if !bytes.Equal(ringSlice, []byte{1, 2, 3, 4, 5, 1, 2, 3, 4}) {
+		t.Fail()
+	}
+
+	ringSlice = getRingSlice(head, tail, 0, 3)
+	if !bytes.Equal(ringSlice, []byte{1, 2, 3, 4, 5, 1, 2}) {
+		t.Fail()
+	}
+
+	ringSlice = getRingSlice(head, tail, 0, 0)
+	if !bytes.Equal(ringSlice, []byte{1, 2, 3, 4, 5, 1, 2, 3, 4, 5}) {
+		t.Fail()
+	}
+
+	ringSlice = getRingSlice(head, tail, 1, 0)
+	if !bytes.Equal(ringSlice, []byte{2, 3, 4, 5, 1, 2, 3, 4, 5}) {
+		t.Fail()
+	}
+
+	ringSlice = getRingSlice(head, tail, 2, 0)
+	if !bytes.Equal(ringSlice, []byte{3, 4, 5, 1, 2, 3, 4, 5}) {
+		t.Fail()
+	}
+
+}
+
+func TestGetEndSequence(t *testing.T) {
+	var tail *ring.Ring = ring.New(10)
+	tail.Value = Reassembly{
+		Seq:   0,
+		Bytes: []byte{1, 2, 3, 4, 5, 6, 7},
+	}
+	var end tcpassembly.Sequence = 5
+	endSeq := getEndSequence(tail, end)
+	if endSeq != int(end) {
+		t.Fail()
+	}
+
+	end = 10
+	endSeq = getEndSequence(tail, end)
+	if endSeq != 6 {
+		t.Fail()
+	}
+
+	end = 7
+	endSeq = getEndSequence(tail, end)
+	if endSeq != 6 {
+		t.Fail()
+	}
+}
+
 type TestOverlapBytesWant struct {
 	bytes       []byte
 	startOffset int
 	endOffset   int
+}
+
+func TestGetStartOffset(t *testing.T) {
+	var start tcpassembly.Sequence = 4
+	var head *ring.Ring = ring.New(10)
+	head.Value = Reassembly{
+		Seq:   3,
+		Bytes: []byte{1, 2, 3, 4, 5, 6, 7},
+	}
+	sliceStart := getStartOffset(head, start)
+	if sliceStart != int(start) {
+		t.Fail()
+	}
+
+	start = 2
+	sliceStart = getStartOffset(head, start)
+	if sliceStart == int(start) {
+		t.Fail()
+	}
 }
 
 func TestGetOverlapBytes(t *testing.T) {
