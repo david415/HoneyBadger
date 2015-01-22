@@ -192,22 +192,6 @@ func (c *Connection) isHijack(p PacketManifest, flow TcpIpFlow) bool {
 	return false
 }
 
-// displayRing prints the ring element
-func displayRing(val interface{}) {
-	if v, ok := val.(Reassembly); ok {
-		log.Printf("%s\n", v.String())
-	}
-}
-
-// displayRings prints the contents of the ring buffers.
-// This is used for debugging purposes.
-func (c *Connection) displayRings() {
-	log.Print("client ring\n")
-	c.ClientStreamRing.Do(displayRing)
-	log.Print("server ring\n")
-	c.ServerStreamRing.Do(displayRing)
-}
-
 // getOverlapRings returns the head and tail ring elements corresponding to the first and last
 // overlapping ring segments... that overlap with the given packet (PacketManifest).
 func (c *Connection) getOverlapRings(p PacketManifest, flow TcpIpFlow) (*ring.Ring, *ring.Ring) {
@@ -278,13 +262,13 @@ func getRingSlice(head, tail *ring.Ring, sliceStart, sliceEnd int) []byte {
 	current := head
 	current = current.Next()
 	for current.Value.(Reassembly).Seq != tail.Value.(Reassembly).Seq {
-		overlapBytes = append(overlapBytes, current.Value.(Reassembly).Bytes...) // XXX
+		overlapBytes = append(overlapBytes, current.Value.(Reassembly).Bytes...)
 		current = current.Next()
 	}
 	if sliceEnd == len(tail.Value.(Reassembly).Bytes) {
-		overlapBytes = append(overlapBytes, tail.Value.(Reassembly).Bytes...) // XXX
+		overlapBytes = append(overlapBytes, tail.Value.(Reassembly).Bytes...)
 	} else {
-		overlapBytes = append(overlapBytes, tail.Value.(Reassembly).Bytes[:sliceEnd]...) // XXX
+		overlapBytes = append(overlapBytes, tail.Value.(Reassembly).Bytes[:sliceEnd]...)
 	}
 	return overlapBytes
 }
@@ -294,14 +278,14 @@ func getRingSlice(head, tail *ring.Ring, sliceStart, sliceEnd int) []byte {
 // The other return values are the slice offsets of the original packet payload that can be used to derive
 // the new overlapping portion of the stream segment.
 func (c *Connection) getOverlapBytes(head, tail *ring.Ring, start, end tcpassembly.Sequence) ([]byte, int, int) {
-	var sliceStart, sliceEnd int
+	var sliceEnd int
 	var rangeStartOffset, rangeEndOffset int
-	var seqEnd tcpassembly.Sequence
+	var seqStart, seqEnd tcpassembly.Sequence
 
 	overlapBytes := make([]byte, 0, 0)
-	sliceStart = int(getStartSequence(head, start))
+	seqStart = getStartSequence(head, start)
 
-	rangeStartOffset = sliceStart - int(start)
+	rangeStartOffset = int(seqStart.Difference(start))
 
 	ringSegmentSeqEnd := tail.Value.(Reassembly).Seq.Add(len(tail.Value.(Reassembly).Bytes))
 	seqEnd = getEndSequence(tail, end)
@@ -315,11 +299,11 @@ func (c *Connection) getOverlapBytes(head, tail *ring.Ring, start, end tcpassemb
 	}
 	sliceEnd = (len(tail.Value.(Reassembly).Bytes) - diff)
 
-	if int(head.Value.(Reassembly).Seq) == int(tail.Value.(Reassembly).Seq) { // are they the same?
-		overlapBytes = head.Value.(Reassembly).Bytes[sliceStart:sliceEnd]
+	if int(head.Value.(Reassembly).Seq) == int(tail.Value.(Reassembly).Seq) {
+		overlapBytes = head.Value.(Reassembly).Bytes[rangeStartOffset:sliceEnd]
 	} else {
-		// construct our contiguous byte array and return it
-		overlapBytes = getRingSlice(head, tail, sliceStart, sliceEnd)
+		// construct our contiguous byte slice
+		overlapBytes = getRingSlice(head, tail, rangeStartOffset, sliceEnd)
 	}
 	return overlapBytes, rangeStartOffset, rangeEndOffset
 }
@@ -337,6 +321,7 @@ func (c *Connection) isInjection(p PacketManifest, flow TcpIpFlow) bool {
 	end := start.Add(len(p.Payload))
 
 	overlapBytes, startOffset, endOffset := c.getOverlapBytes(head, tail, start, end)
+	log.Printf("overlapBytes %s startOffset %d endOffset %d\n", string(overlapBytes), startOffset, endOffset)
 	return !bytes.Equal(overlapBytes, p.Payload[startOffset:endOffset+1])
 }
 
@@ -438,8 +423,6 @@ func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
 		log.Printf("overlap case: TCP.Seq %d before nextSeqPtr %d\n", p.TCP.Seq, *nextSeqPtr)
 		if c.isInjection(p, flow) {
 			log.Print("TCP injection attack detected.\n")
-		} else {
-			c.displayRings()
 		}
 	} else if diff == 0 {
 		// contiguous!
