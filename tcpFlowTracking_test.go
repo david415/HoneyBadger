@@ -15,6 +15,12 @@ type reassemblyInput struct {
 	Payload []byte
 }
 
+type TestOverlapBytesWant struct {
+	bytes       []byte
+	startOffset int
+	endOffset   int
+}
+
 func TestGetRingSlice(t *testing.T) {
 	conn := NewConnection()
 	for j := 0; j < 40; j += 5 {
@@ -142,12 +148,6 @@ func TestGetEndSequence(t *testing.T) {
 	}
 }
 
-type TestOverlapBytesWant struct {
-	bytes       []byte
-	startOffset int
-	endOffset   int
-}
-
 func TestGetStartSequence(t *testing.T) {
 	var start tcpassembly.Sequence = 4
 	var head *ring.Ring = ring.New(10)
@@ -227,18 +227,27 @@ func TestGetOverlapBytes(t *testing.T) {
 		flow := NewTcpIpFlowFromLayers(p.IP, p.TCP)
 		head, tail := conn.getOverlapRings(p, flow)
 
-		payloadBytes, startOffset, endOffset := conn.getOverlapBytes(head, tail, start, end)
+		if head == nil || tail == nil {
+			t.Error("getOverlapRings returned a nil\n")
+			t.Fail()
+		}
+
+		overlapBytes, startOffset, endOffset := conn.getOverlapBytes(head, tail, start, end)
 
 		if startOffset != overlapBytesTests[i].want.startOffset {
+			t.Errorf("startOffset %d does not match want.startOffset %d\n", startOffset, overlapBytesTests[i].want.startOffset)
 			t.Fail()
 		}
 		if endOffset != overlapBytesTests[i].want.endOffset {
+			t.Errorf("endOffset %d does not match want.endOffset %d\n", endOffset, overlapBytesTests[i].want.endOffset)
 			t.Fail()
 		}
-		if len(payloadBytes) != len(overlapBytesTests[i].want.bytes) {
+		if len(overlapBytes) != len(overlapBytesTests[i].want.bytes) {
+			t.Errorf("overlapBytes len %d not equal to want.bytes len %d\n", len(overlapBytes), len(overlapBytesTests[i].want.bytes))
 			t.Fail()
 		}
-		if !bytes.Equal(payloadBytes, overlapBytesTests[i].want.bytes) {
+		if !bytes.Equal(overlapBytes, overlapBytesTests[i].want.bytes) {
+			t.Errorf("overlapBytes %x not equal to want.bytes %x\n", overlapBytes, overlapBytesTests[i].want.bytes)
 			t.Fail()
 		}
 	}
@@ -273,11 +282,6 @@ func TestGetOverlapRingsWithZeroRings(t *testing.T) {
 		t.Fail()
 	}
 	return
-}
-
-type OverlapTest struct {
-	in   reassemblyInput
-	want []Reassembly
 }
 
 func TestGetOverlapRings(t *testing.T) {
