@@ -195,40 +195,71 @@ func (c *Connection) isHijack(p PacketManifest, flow TcpIpFlow) bool {
 // getOverlapRings returns the head and tail ring elements corresponding to the first and last
 // overlapping ring segments... that overlap with the given packet (PacketManifest).
 func (c *Connection) getOverlapRings(p PacketManifest, flow TcpIpFlow) (*ring.Ring, *ring.Ring) {
-	var ringPtr *ring.Ring
-
+	var ringPtr, head, tail, prev, current *ring.Ring
 	start := tcpassembly.Sequence(p.TCP.Seq)
-	end := start.Add(len(p.Payload))
-
+	end := start.Add(len(p.Payload) - 1)
 	if flow.Equal(c.clientFlow) {
 		ringPtr = c.ServerStreamRing
 	} else {
 		ringPtr = c.ClientStreamRing
 	}
-
-	current := ringPtr.Prev()
+	current = ringPtr.Prev()
 	_, ok := current.Value.(Reassembly)
-	if !ok {
+	if !ok { // do we NOT have any data in our ring buffer?
+		fmt.Print("fuck1\n")
 		return nil, nil
 	}
-	for *current != *ringPtr && (ok && current.Value.(Reassembly).Seq.Difference(start) < 0) {
+	if start.Difference(current.Value.(Reassembly).Seq.Add(len(current.Value.(Reassembly).Bytes)-1)) < 0 {
+		fmt.Print("fuck2\n")
+		return nil, nil
+	}
+	for current != ringPtr {
+		if !ok {
+			if prev.Value.(Reassembly).Seq.Difference(end) < 0 {
+				fmt.Print("fuck3\n")
+				return nil, nil
+			}
+			head = prev
+			break
+		}
+		diff := current.Value.(Reassembly).Seq.Difference(start)
+		if diff == 0 {
+			head = current
+			break
+		} else if diff > 0 {
+			diff = start.Difference(current.Value.(Reassembly).Seq.Add(len(current.Value.(Reassembly).Bytes) - 1))
+			if diff == 0 {
+				head = current
+				break
+			} else if diff > 0 {
+				head = current
+				break
+			} else {
+				fmt.Print("fuck4\n")
+				return nil, nil
+				break
+			}
+		}
+		prev = current
 		current = current.Prev()
 		_, ok = current.Value.(Reassembly)
 	}
-	head := current
-	_, ok = current.Value.(Reassembly)
-	if ok {
-		seq := head.Value.(Reassembly).Seq
-		numBytes := len(current.Value.(Reassembly).Bytes)
-		for current != ringPtr && seq.Add(numBytes).Difference(end) > 0 {
-			current = current.Next()
-			seq = current.Value.(Reassembly).Seq
-			numBytes = len(current.Value.(Reassembly).Bytes)
+	current = head
+	for current != ringPtr {
+		diff := current.Value.(Reassembly).Seq.Add(len(current.Value.(Reassembly).Bytes) - 1).Difference(end)
+		if diff <= 0 {
+			tail = current
+			break
 		}
-		return head, current
-	} else {
-		return nil, nil
+		prev = current
+		current = current.Next()
+		_, ok = current.Value.(Reassembly)
+		if !ok {
+			tail = prev
+			break
+		}
 	}
+	return head, tail
 }
 
 func getStartSequence(head *ring.Ring, start tcpassembly.Sequence) tcpassembly.Sequence {
@@ -258,6 +289,13 @@ func getEndSequence(tail *ring.Ring, end tcpassembly.Sequence) tcpassembly.Seque
 // the head that we should copy from; sliceEnd indicates the number of bytes into tail.
 func getRingSlice(head, tail *ring.Ring, sliceStart, sliceEnd int) []byte {
 	var overlapBytes []byte
+	if sliceStart >= len(head.Value.(Reassembly).Bytes) {
+		panic(fmt.Sprintf("getRingSlice: sliceStart %d >= head len %d\n", sliceStart, len(head.Value.(Reassembly).Bytes)))
+	}
+
+	if head == tail {
+		return head.Value.(Reassembly).Bytes[sliceStart:sliceEnd]
+	}
 	overlapBytes = append(overlapBytes, head.Value.(Reassembly).Bytes[sliceStart:]...)
 	current := head
 	current = current.Next()
@@ -278,30 +316,42 @@ func (c *Connection) getOverlapBytes(head, tail *ring.Ring, start, end tcpassemb
 	var rangeStartOffset, rangeEndOffset int
 	var seqStart, seqEnd tcpassembly.Sequence
 
+	if head == nil || tail == nil {
+		panic("head or tail is nil\n")
+	}
+
+	fmt.Printf("getOverlapBytes head %d tail %d start %d end %d\n", int(head.Value.(Reassembly).Seq), int(tail.Value.(Reassembly).Seq), int(start), int(end))
+
 	overlapBytes := make([]byte, 0, 0)
 	seqStart = getStartSequence(head, start)
+	fmt.Printf("seqStart %d\n", seqStart)
+
+	//diff := head.Value.(Reassembly).Seq.Difference(seqStart)
 	diff := head.Value.(Reassembly).Seq.Difference(seqStart)
+	fmt.Printf("diff = head.Seq %d diff seqStart %d\n", diff, head.Value.(Reassembly).Seq, seqStart)
 	if diff <= 0 {
 		sliceStart = 0
 	} else {
-		sliceStart = diff
+		sliceStart = diff - 1
 	}
+	rangeStartOffset = int(start.Difference(seqStart))
 
-	rangeStartOffset = int(seqStart.Difference(start))
+	fmt.Printf("rangeStartOffset %d = start %d diff seqStart %d\n", rangeStartOffset, start, seqStart)
 
-	ringSegmentSeqEnd := tail.Value.(Reassembly).Seq.Add(len(tail.Value.(Reassembly).Bytes))
+	ringSegmentSeqEnd := tail.Value.(Reassembly).Seq.Add(len(tail.Value.(Reassembly).Bytes) - 1)
 	seqEnd = getEndSequence(tail, end)
 	diff = seqEnd.Difference(ringSegmentSeqEnd)
-	diff -= 1
 	if diff >= 0 {
 		// if ringSegmentSeqEnd is equal or comes after SeqEnd
 		rangeEndOffset = 0
 	} else {
 		rangeEndOffset = diff
 	}
+
 	sliceEnd = (len(tail.Value.(Reassembly).Bytes) - diff)
 
 	if int(head.Value.(Reassembly).Seq) == int(tail.Value.(Reassembly).Seq) {
+		fmt.Print("-------------\n")
 		overlapBytes = head.Value.(Reassembly).Bytes[rangeStartOffset:sliceEnd]
 	} else {
 		// construct our contiguous byte slice
@@ -318,10 +368,8 @@ func (c *Connection) isInjection(p PacketManifest, flow TcpIpFlow) bool {
 		log.Print("getOverlapRings returned a nil\n")
 		return false
 	}
-
 	start := tcpassembly.Sequence(p.TCP.Seq)
-	end := start.Add(len(p.Payload))
-
+	end := start.Add(len(p.Payload) - 1)
 	overlapBytes, startOffset, endOffset := c.getOverlapBytes(head, tail, start, end)
 	return !bytes.Equal(overlapBytes, p.Payload[startOffset:len(p.Payload)-endOffset])
 }
@@ -455,9 +503,12 @@ func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
 				c.ClientStreamRing.Value = reassembly
 				log.Printf("expected tcp Sequence from server; payload len %d\n", len(p.Payload))
 			}
+
+			fmt.Printf("nextSeq %d\n", *nextSeqPtr)
+			fmt.Printf("len payload %d\n", len(p.Payload))
 			*nextSeqPtr = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload)) // XXX
-		} else {
-			//log.Print("ignoring useless zero size payload packet\n")
+			fmt.Printf("new nextSeq %d\n", *nextSeqPtr)
+
 		}
 	} else if diff < 0 {
 		// p.TCP.Seq comes after *nextSeqPtr
