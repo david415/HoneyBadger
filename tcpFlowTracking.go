@@ -206,17 +206,14 @@ func (c *Connection) getOverlapRings(p PacketManifest, flow TcpIpFlow) (*ring.Ri
 	current = ringPtr.Prev()
 	_, ok := current.Value.(Reassembly)
 	if !ok { // do we NOT have any data in our ring buffer?
-		fmt.Print("fuck1\n")
 		return nil, nil
 	}
 	if start.Difference(current.Value.(Reassembly).Seq.Add(len(current.Value.(Reassembly).Bytes)-1)) < 0 {
-		fmt.Print("fuck2\n")
 		return nil, nil
 	}
 	for current != ringPtr {
 		if !ok {
 			if prev.Value.(Reassembly).Seq.Difference(end) < 0 {
-				fmt.Print("fuck3\n")
 				return nil, nil
 			}
 			head = prev
@@ -235,7 +232,6 @@ func (c *Connection) getOverlapRings(p PacketManifest, flow TcpIpFlow) (*ring.Ri
 				head = current
 				break
 			} else {
-				fmt.Print("fuck4\n")
 				return nil, nil
 				break
 			}
@@ -307,57 +303,58 @@ func getRingSlice(head, tail *ring.Ring, sliceStart, sliceEnd int) []byte {
 	return overlapBytes
 }
 
+func getHeadRingOffset(head *ring.Ring, start tcpassembly.Sequence) int {
+	return head.Value.(Reassembly).Seq.Difference(start)
+}
+
+func getStartOverlapSequenceAndOffset(head *ring.Ring, start tcpassembly.Sequence) (tcpassembly.Sequence, int) {
+	seqStart := getStartSequence(head, start)
+	offset := int(start.Difference(seqStart))
+	return seqStart, offset
+}
+
+func getRingSegmentLastSequence(segment *ring.Ring) tcpassembly.Sequence {
+	return segment.Value.(Reassembly).Seq.Add(len(segment.Value.(Reassembly).Bytes) - 1)
+}
+
+func getTailRingOffset(tail *ring.Ring, end tcpassembly.Sequence) int {
+	tailEndSequence := getRingSegmentLastSequence(tail)
+	return end.Difference(tailEndSequence)
+}
+
+func getEndOverlapSequenceAndOffset(tail *ring.Ring, end tcpassembly.Sequence) (tcpassembly.Sequence, int) {
+	seqEnd := getEndSequence(tail, end)
+	offset := int(seqEnd.Difference(end))
+	return seqEnd, offset
+}
+
 // getOverlapBytes returns the overlap byte array; that is the contiguous data stored in our ring buffer
 // that overlaps with the stream segment specified by the start and end Sequence boundaries.
 // The other return values are the slice offsets of the original packet payload that can be used to derive
 // the new overlapping portion of the stream segment.
 func (c *Connection) getOverlapBytes(head, tail *ring.Ring, start, end tcpassembly.Sequence) ([]byte, int, int) {
-	var sliceStart, sliceEnd int
-	var rangeStartOffset, rangeEndOffset int
-	var seqStart, seqEnd tcpassembly.Sequence
-
+	var overlapStartSlice, overlapEndSlice int
+	var overlapBytes []byte
 	if head == nil || tail == nil {
-		panic("head or tail is nil\n")
+		panic("wtf; head or tail is nil\n")
 	}
+	sequenceStart, overlapStartSlice := getStartOverlapSequenceAndOffset(head, start)
+	headOffset := getHeadRingOffset(head, sequenceStart)
 
-	fmt.Printf("getOverlapBytes head %d tail %d start %d end %d\n", int(head.Value.(Reassembly).Seq), int(tail.Value.(Reassembly).Seq), int(start), int(end))
-
-	overlapBytes := make([]byte, 0, 0)
-	seqStart = getStartSequence(head, start)
-	fmt.Printf("seqStart %d\n", seqStart)
-
-	//diff := head.Value.(Reassembly).Seq.Difference(seqStart)
-	diff := head.Value.(Reassembly).Seq.Difference(seqStart)
-	fmt.Printf("diff = head.Seq %d diff seqStart %d\n", diff, head.Value.(Reassembly).Seq, seqStart)
-	if diff <= 0 {
-		sliceStart = 0
-	} else {
-		sliceStart = diff - 1
-	}
-	rangeStartOffset = int(start.Difference(seqStart))
-
-	fmt.Printf("rangeStartOffset %d = start %d diff seqStart %d\n", rangeStartOffset, start, seqStart)
-
-	ringSegmentSeqEnd := tail.Value.(Reassembly).Seq.Add(len(tail.Value.(Reassembly).Bytes) - 1)
-	seqEnd = getEndSequence(tail, end)
-	diff = seqEnd.Difference(ringSegmentSeqEnd)
-	if diff >= 0 {
-		// if ringSegmentSeqEnd is equal or comes after SeqEnd
-		rangeEndOffset = 0
-	} else {
-		rangeEndOffset = diff
-	}
-
-	sliceEnd = (len(tail.Value.(Reassembly).Bytes) - diff)
+	sequenceEnd, overlapEndOffset := getEndOverlapSequenceAndOffset(tail, end)
+	tailOffset := getTailRingOffset(tail, sequenceEnd)
 
 	if int(head.Value.(Reassembly).Seq) == int(tail.Value.(Reassembly).Seq) {
-		fmt.Print("-------------\n")
-		overlapBytes = head.Value.(Reassembly).Bytes[rangeStartOffset:sliceEnd]
+		endOffset := len(head.Value.(Reassembly).Bytes) - tailOffset
+		overlapEndSlice = len(head.Value.(Reassembly).Bytes) - tailOffset + overlapStartSlice - headOffset
+		overlapBytes = head.Value.(Reassembly).Bytes[headOffset:endOffset]
 	} else {
-		// construct our contiguous byte slice
-		overlapBytes = getRingSlice(head, tail, sliceStart, sliceEnd)
+		totalLen := start.Difference(end) + 1
+		overlapEndSlice = totalLen - overlapEndOffset
+		tailSlice := len(tail.Value.(Reassembly).Bytes) - tailOffset
+		overlapBytes = getRingSlice(head, tail, headOffset, tailSlice)
 	}
-	return overlapBytes, rangeStartOffset, rangeEndOffset
+	return overlapBytes, overlapStartSlice, overlapEndSlice
 }
 
 // isInjection returns true if the given packet indicates a TCP injection attack
@@ -371,7 +368,7 @@ func (c *Connection) isInjection(p PacketManifest, flow TcpIpFlow) bool {
 	start := tcpassembly.Sequence(p.TCP.Seq)
 	end := start.Add(len(p.Payload) - 1)
 	overlapBytes, startOffset, endOffset := c.getOverlapBytes(head, tail, start, end)
-	return !bytes.Equal(overlapBytes, p.Payload[startOffset:len(p.Payload)-endOffset])
+	return !bytes.Equal(overlapBytes, p.Payload[startOffset:endOffset])
 }
 
 // stateListen gets called by our TCP finite state machine runtime

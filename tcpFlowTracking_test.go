@@ -94,31 +94,31 @@ func TestGetRingSlice(t *testing.T) {
 
 	ringSlice := getRingSlice(head, tail, 0, 1)
 	if !bytes.Equal(ringSlice, []byte{1, 2, 3, 4, 5, 1}) {
-		t.Error("1\n")
+		t.Error("byte comparison failed")
 		t.Fail()
 	}
 
 	ringSlice = getRingSlice(head, tail, 0, 3)
 	if !bytes.Equal(ringSlice, []byte{1, 2, 3, 4, 5, 1, 2, 3}) {
-		t.Error("1\n")
+		t.Error("byte comparison failed")
 		t.Fail()
 	}
 
 	ringSlice = getRingSlice(head, tail, 0, 0)
 	if !bytes.Equal(ringSlice, []byte{1, 2, 3, 4, 5}) {
-		t.Error("1\n")
+		t.Error("byte comparison failed")
 		t.Fail()
 	}
 
 	ringSlice = getRingSlice(head, tail, 1, 0)
 	if !bytes.Equal(ringSlice, []byte{2, 3, 4, 5}) {
-		t.Error("1\n")
+		t.Error("byte comparison failed")
 		t.Fail()
 	}
 
 	ringSlice = getRingSlice(head, tail, 2, 0)
 	if !bytes.Equal(ringSlice, []byte{3, 4, 5}) {
-		t.Error("1\n")
+		t.Error("byte comparison failed")
 		t.Fail()
 	}
 
@@ -200,37 +200,268 @@ func TestGetStartSequence(t *testing.T) {
 	}
 }
 
+func TestGetHeadRingOffset(t *testing.T) {
+	head := ring.New(3)
+	head.Value = Reassembly{
+		Seq:   3,
+		Bytes: []byte{1, 2, 3, 4, 5, 6, 7},
+	}
+	offset := getHeadRingOffset(head, 5)
+	if offset < 0 {
+		t.Error("offset less than zero\n")
+		t.Fail()
+	}
+	if offset != 2 {
+		t.Error("offset incorrect\n")
+		t.Fail()
+	}
+	offset = getHeadRingOffset(head, 3)
+	if offset != 0 {
+		t.Error("offset incorrect\n")
+		t.Fail()
+	}
+
+	offset = getHeadRingOffset(head, 4)
+	if offset != 1 {
+		t.Error("offset incorrect\n")
+		t.Fail()
+	}
+}
+
+func TestGetTailRingOffset(t *testing.T) {
+	tail := ring.New(3)
+	tail.Value = Reassembly{
+		Seq:   3,
+		Bytes: []byte{1, 2, 3, 4, 5, 6, 7},
+	}
+
+	offset := getTailRingOffset(tail, 4)
+	if offset != 5 {
+		t.Errorf("want 5 got %d\n", offset)
+		t.Fail()
+	}
+
+	offset = getTailRingOffset(tail, 5)
+	if offset != 4 {
+		t.Errorf("want 4 got %d\n", offset)
+		t.Fail()
+	}
+
+	offset = getTailRingOffset(tail, 6)
+	if offset != 3 {
+		t.Errorf("want 3 got %d\n", offset)
+		t.Fail()
+	}
+}
+
+func TestGetStartOverlapSequenceAndOffset(t *testing.T) {
+	var start tcpassembly.Sequence = 3
+	head := ring.New(3)
+	head.Value = Reassembly{
+		Seq:   3,
+		Bytes: []byte{1, 2, 3, 4, 5, 6, 7},
+	}
+	sequence, offset := getStartOverlapSequenceAndOffset(head, start)
+	if offset != 0 {
+		t.Error("offset != 0\n")
+		t.Fail()
+	}
+	if sequence != 3 {
+		t.Error("incorrect sequence")
+		t.Fail()
+	}
+
+	start = 4
+	sequence, offset = getStartOverlapSequenceAndOffset(head, start)
+	if offset != 0 {
+		t.Errorf("offset %d != 1\n", offset)
+		t.Fail()
+	}
+	if sequence != 4 {
+		t.Error("incorrect sequence")
+		t.Fail()
+	}
+
+	start = 2
+	sequence, offset = getStartOverlapSequenceAndOffset(head, start)
+	if offset != 1 {
+		t.Errorf("offset %d != 1\n", offset)
+		t.Fail()
+	}
+	if sequence != 3 {
+		t.Error("incorrect sequence")
+		t.Fail()
+	}
+
+	start = 1
+	sequence, offset = getStartOverlapSequenceAndOffset(head, start)
+	if offset != 2 {
+		t.Errorf("offset %d != 2\n", offset)
+		t.Fail()
+	}
+	if sequence != 3 {
+		t.Error("incorrect sequence")
+		t.Fail()
+	}
+}
+
+func TestGetEndOverlapSequenceAndOffset(t *testing.T) {
+	var end tcpassembly.Sequence = 3
+	tail := ring.New(3)
+	tail.Value = Reassembly{
+		Seq:   3,
+		Bytes: []byte{1, 2, 3, 4, 5, 6, 7},
+	}
+	sequence, offset := getEndOverlapSequenceAndOffset(tail, end)
+	if offset != 0 {
+		t.Error("offset != 0\n")
+		t.Fail()
+	}
+	if sequence != 3 {
+		t.Error("incorrect sequence")
+		t.Fail()
+	}
+
+	end = 9
+	sequence, offset = getEndOverlapSequenceAndOffset(tail, end)
+	if offset != 0 {
+		t.Error("offset != 0\n")
+		t.Fail()
+	}
+	if sequence != end {
+		t.Error("incorrect sequence")
+		t.Fail()
+	}
+
+	end = 10
+	sequence, offset = getEndOverlapSequenceAndOffset(tail, end)
+	if offset != 1 {
+		t.Error("offset != 1\n")
+		t.Fail()
+	}
+	if sequence != end-1 {
+		t.Error("incorrect sequence")
+		t.Fail()
+	}
+
+	end = 11
+	sequence, offset = getEndOverlapSequenceAndOffset(tail, end)
+	if offset != 2 {
+		t.Error("offset != 2\n")
+		t.Fail()
+	}
+	if sequence != end-2 {
+		t.Error("incorrect sequence")
+		t.Fail()
+	}
+}
+
 func TestGetOverlapBytes(t *testing.T) {
 	overlapBytesTests := []struct {
 		in   reassemblyInput
 		want TestOverlapBytesWant
 	}{
 		{
-			reassemblyInput{5, []byte{2, 3, 4}}, TestOverlapBytesWant{
-				bytes:       []byte{6, 7, 8},
-				startOffset: 0,
-				endOffset:   0,
+			reassemblyInput{3, []byte{2, 3, 4}}, TestOverlapBytesWant{
+				bytes:       []byte{6},
+				startOffset: 2,
+				endOffset:   3,
 			},
 		},
 		{
-			reassemblyInput{2, []byte{1, 2, 3, 4, 5, 6, 7}}, TestOverlapBytesWant{
-				bytes:       []byte{3, 4, 5, 1, 2, 3, 4},
+			reassemblyInput{4, []byte{2, 3, 4}}, TestOverlapBytesWant{
+				bytes:       []byte{6, 7},
+				startOffset: 1,
+				endOffset:   3,
+			},
+		},
+		{
+			reassemblyInput{5, []byte{2, 3, 4}}, TestOverlapBytesWant{
+				bytes:       []byte{6, 7, 8},
 				startOffset: 0,
-				endOffset:   0,
+				endOffset:   3,
+			},
+		},
+		{
+			reassemblyInput{6, []byte{1, 2, 3}}, TestOverlapBytesWant{
+				bytes:       []byte{7, 8, 9},
+				startOffset: 0,
+				endOffset:   3,
+			},
+		},
+		{
+			reassemblyInput{4, []byte{1, 2, 3, 4, 5, 6, 7}}, TestOverlapBytesWant{
+				bytes:       []byte{6, 7, 8, 9, 10, 11},
+				startOffset: 1,
+				endOffset:   7,
 			},
 		},
 		{
 			reassemblyInput{3, []byte{1, 2, 3, 4, 5, 6, 7}}, TestOverlapBytesWant{
-				bytes:       []byte{4, 5, 1, 2, 3, 4, 5},
-				startOffset: 0,
-				endOffset:   0,
+				bytes:       []byte{6, 7, 8, 9, 10},
+				startOffset: 2,
+				endOffset:   7,
 			},
 		},
 		{
 			reassemblyInput{34, []byte{1, 2, 3, 4, 5, 6, 7}}, TestOverlapBytesWant{
-				bytes:       []byte{5, 1, 2, 3, 4, 5},
+				bytes:       []byte{35, 36, 37, 38, 39, 40},
 				startOffset: 0,
-				endOffset:   1,
+				endOffset:   6,
+			},
+		},
+		{
+			reassemblyInput{34, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}}, TestOverlapBytesWant{
+				bytes:       []byte{35, 36, 37, 38, 39, 40},
+				startOffset: 0,
+				endOffset:   6,
+			},
+		},
+		{
+			reassemblyInput{5, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}}, TestOverlapBytesWant{
+				bytes:       []byte{6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40},
+				startOffset: 0,
+				endOffset:   35,
+			},
+		},
+
+		{
+			reassemblyInput{5, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}}, TestOverlapBytesWant{
+				bytes:       []byte{6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40},
+				startOffset: 0,
+				endOffset:   35,
+			},
+		},
+
+		{
+			reassemblyInput{5, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}}, TestOverlapBytesWant{
+				bytes:       []byte{6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40},
+				startOffset: 0,
+				endOffset:   35,
+			},
+		},
+
+		{
+			reassemblyInput{4, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}}, TestOverlapBytesWant{
+				bytes:       []byte{6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40},
+				startOffset: 1,
+				endOffset:   36,
+			},
+		},
+
+		{
+			reassemblyInput{3, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}}, TestOverlapBytesWant{
+				bytes:       []byte{6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40},
+				startOffset: 2,
+				endOffset:   37,
+			},
+		},
+
+		{
+			reassemblyInput{4, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}}, TestOverlapBytesWant{
+				bytes:       []byte{6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40},
+				startOffset: 1,
+				endOffset:   36,
 			},
 		},
 	}
@@ -270,20 +501,21 @@ func TestGetOverlapBytes(t *testing.T) {
 		}
 
 		overlapBytes, startOffset, endOffset := conn.getOverlapBytes(head, tail, start, end)
+
 		if startOffset != overlapBytesTests[i].want.startOffset {
-			t.Errorf("startOffset %d does not match want.startOffset %d\n", startOffset, overlapBytesTests[i].want.startOffset)
+			t.Errorf("test %d startOffset %d does not match want.startOffset %d\n", i, startOffset, overlapBytesTests[i].want.startOffset)
 			t.Fail()
 		}
 		if endOffset != overlapBytesTests[i].want.endOffset {
-			t.Errorf("%d endOffset %d does not match want.endOffset %d\n", i, endOffset, overlapBytesTests[i].want.endOffset)
+			t.Errorf("test %d endOffset %d does not match want.endOffset %d\n", i, endOffset, overlapBytesTests[i].want.endOffset)
 			t.Fail()
 		}
 		if len(overlapBytes) != len(overlapBytesTests[i].want.bytes) {
-			t.Errorf("overlapBytes len %d not equal to want.bytes len %d\n", len(overlapBytes), len(overlapBytesTests[i].want.bytes))
+			t.Errorf("test %d overlapBytes len %d not equal to want.bytes len %d\n", i, len(overlapBytes), len(overlapBytesTests[i].want.bytes))
 			t.Fail()
 		}
 		if !bytes.Equal(overlapBytes, overlapBytesTests[i].want.bytes) {
-			t.Errorf("overlapBytes %x not equal to want.bytes %x\n", overlapBytes, overlapBytesTests[i].want.bytes)
+			t.Errorf("test %d overlapBytes %x not equal to want.bytes %x\n", i, overlapBytes, overlapBytesTests[i].want.bytes)
 			t.Fail()
 		}
 	}
