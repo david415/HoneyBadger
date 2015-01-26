@@ -519,12 +519,12 @@ func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
 				Bytes: []byte(p.Payload),
 			}
 			if flow == c.clientFlow {
-				c.ServerStreamRing = c.ServerStreamRing.Next()
 				c.ServerStreamRing.Value = reassembly
+				c.ServerStreamRing = c.ServerStreamRing.Next()
 				log.Printf("expected tcp Sequence from client; payload len %d; ring len %d\n", len(p.Payload), c.ServerStreamRing.Len())
 			} else {
-				c.ClientStreamRing = c.ClientStreamRing.Next()
 				c.ClientStreamRing.Value = reassembly
+				c.ClientStreamRing = c.ClientStreamRing.Next()
 				log.Printf("expected tcp Sequence from server; payload len %d; ring len %d\n", len(p.Payload), c.ClientStreamRing.Len())
 			}
 			*nextSeqPtr = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload)) // XXX
