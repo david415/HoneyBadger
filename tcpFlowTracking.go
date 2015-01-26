@@ -822,3 +822,29 @@ func decodeTcp(packetChan chan []byte, connTracker *ConnTracker, stopDecodeChan 
 		}
 	}
 }
+
+type HoneyBadgerService struct {
+	connTracker   *ConnTracker
+	stopChan      chan bool
+	rawPacketChan chan []byte
+}
+
+// NewHoneyBadgerService creates and starts an instance of HoneyBadgerService
+// which passively observes TCP connections and logs information about observed TCP attacks.
+// `iface` specifies the network interface to watch.
+// The `filter` arguement is a Berkeley Packet Filter string; observe packets that match this filter.
+// `snaplen` is the max packet size.
+// `logDir` is the directory to write logs to.
+func NewHoneyBadgerService(iface, filter string, snaplen int, logDir string) *HoneyBadgerService {
+	service := HoneyBadgerService{
+		connTracker: NewConnTracker(),
+	}
+	service.stopChan, service.rawPacketChan = StartReceivingTcp(filter, iface, snaplen)
+	StartDecodingTcp(service.rawPacketChan, service.connTracker)
+	return &service
+}
+
+// Stop the HoneyBadgerService
+func (b *HoneyBadgerService) Stop() {
+	b.stopChan <- true
+}
