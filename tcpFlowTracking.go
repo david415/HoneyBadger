@@ -192,29 +192,24 @@ func (c *Connection) isHijack(p PacketManifest, flow TcpIpFlow) bool {
 	return false
 }
 
-// getOverlapRings returns the head and tail ring elements corresponding to the first and last
-// overlapping ring segments... that overlap with the given packet (PacketManifest).
-func (c *Connection) getOverlapRings(p PacketManifest, flow TcpIpFlow) (*ring.Ring, *ring.Ring) {
-	var ringPtr, head, tail, prev, current *ring.Ring
-	start := tcpassembly.Sequence(p.TCP.Seq)
-	end := start.Add(len(p.Payload) - 1)
-	if flow.Equal(c.clientFlow) {
-		ringPtr = c.ServerStreamRing
-	} else {
-		ringPtr = c.ClientStreamRing
-	}
-	current = ringPtr.Prev()
+func getHeadFromRing(ringPtr *ring.Ring, start, end tcpassembly.Sequence) *ring.Ring {
+	var head, prev *ring.Ring
+	current := ringPtr.Prev()
 	_, ok := current.Value.(Reassembly)
 	if !ok { // do we NOT have any data in our ring buffer?
-		return nil, nil
+		log.Print("ring buffer is still empty\n")
+		return nil
 	}
 	if start.Difference(current.Value.(Reassembly).Seq.Add(len(current.Value.(Reassembly).Bytes)-1)) < 0 {
-		return nil, nil
+		log.Print("latest ring buffer entry is before start of segment\n")
+		return nil
 	}
 	for current != ringPtr {
 		if !ok {
 			if prev.Value.(Reassembly).Seq.Difference(end) < 0 {
-				return nil, nil
+				log.Print("end of segment is before oldest ring buffer entry\n")
+				head = nil
+				break
 			}
 			head = prev
 			break
@@ -232,13 +227,31 @@ func (c *Connection) getOverlapRings(p PacketManifest, flow TcpIpFlow) (*ring.Ri
 				head = current
 				break
 			} else {
-				return nil, nil
+				head = nil
 				break
 			}
 		}
 		prev = current
 		current = current.Prev()
 		_, ok = current.Value.(Reassembly)
+	}
+	return head
+}
+
+// getOverlapRings returns the head and tail ring elements corresponding to the first and last
+// overlapping ring segments... that overlap with the given packet (PacketManifest).
+func (c *Connection) getOverlapRings(p PacketManifest, flow TcpIpFlow) (*ring.Ring, *ring.Ring) {
+	var ringPtr, head, tail, prev, current *ring.Ring
+	start := tcpassembly.Sequence(p.TCP.Seq)
+	end := start.Add(len(p.Payload) - 1)
+	if flow.Equal(c.clientFlow) {
+		ringPtr = c.ServerStreamRing
+	} else {
+		ringPtr = c.ClientStreamRing
+	}
+	head = getHeadFromRing(ringPtr, start, end)
+	if head == nil {
+		return nil, nil
 	}
 	current = head
 	for {
@@ -249,7 +262,7 @@ func (c *Connection) getOverlapRings(p PacketManifest, flow TcpIpFlow) (*ring.Ri
 		}
 		prev = current
 		current = current.Next()
-		_, ok = current.Value.(Reassembly)
+		_, ok := current.Value.(Reassembly)
 		if !ok {
 			tail = prev
 			break

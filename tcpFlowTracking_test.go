@@ -45,21 +45,44 @@ func TestInjectionDetector(t *testing.T) {
 		Payload: []byte{1, 2, 3, 4, 5, 6, 7},
 	}
 	flow := NewTcpIpFlowFromLayers(p.IP, p.TCP)
-
 	if !conn.isInjection(p, flow) {
 		t.Error("isInjection failed: false positive\n")
 		t.Fail()
 	}
 
+	// next test case
 	p.TCP = layers.TCP{
 		Seq:     7,
 		SrcPort: 1,
 		DstPort: 2,
 	}
 	p.Payload = []byte{3, 4, 5}
-
 	if conn.isInjection(p, flow) {
 		t.Error("isInjection failed: false negative\n")
+		t.Fail()
+	}
+
+	// next test case
+	p.TCP = layers.TCP{
+		Seq:     1,
+		SrcPort: 1,
+		DstPort: 2,
+	}
+	p.Payload = []byte{1, 2, 3, 4, 5, 6}
+	if !conn.isInjection(p, flow) {
+		t.Error("isInjection failed\n")
+		t.Fail()
+	}
+
+	// next test case
+	p.TCP = layers.TCP{
+		Seq:     1,
+		SrcPort: 1,
+		DstPort: 2,
+	}
+	p.Payload = []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17}
+	if !conn.isInjection(p, flow) {
+		t.Error("isInjection failed\n")
 		t.Fail()
 	}
 }
@@ -581,6 +604,36 @@ func TestGetOverlapRings(t *testing.T) {
 			},
 		},
 		{
+			reassemblyInput{5, []byte{1, 2, 3, 4, 5}}, []*Reassembly{
+				&Reassembly{
+					Seq: 5,
+				},
+				&Reassembly{
+					Seq: 5,
+				},
+			},
+		},
+		{
+			reassemblyInput{5, []byte{1, 2, 3, 4, 5, 6}}, []*Reassembly{
+				&Reassembly{
+					Seq: 5,
+				},
+				&Reassembly{
+					Seq: 10,
+				},
+			},
+		},
+		{
+			reassemblyInput{6, []byte{1, 2, 3, 4, 5}}, []*Reassembly{
+				&Reassembly{
+					Seq: 5,
+				},
+				&Reassembly{
+					Seq: 10,
+				},
+			},
+		},
+		{
 			reassemblyInput{7, []byte{1, 2, 3, 4, 5}}, []*Reassembly{
 				&Reassembly{
 					Seq: 5,
@@ -627,7 +680,29 @@ func TestGetOverlapRings(t *testing.T) {
 			},
 		},
 		{
+			reassemblyInput{0, []byte{1, 2, 3}}, []*Reassembly{
+				nil,
+				nil,
+			},
+		},
+		{
 			reassemblyInput{0, []byte{1, 2, 3, 4, 5}}, []*Reassembly{
+				nil,
+				nil,
+			},
+		},
+		{
+			reassemblyInput{0, []byte{1, 2, 3, 4, 5, 6}}, []*Reassembly{
+				&Reassembly{
+					Seq: 5,
+				},
+				&Reassembly{
+					Seq: 5,
+				},
+			},
+		},
+		{
+			reassemblyInput{40, []byte{1}}, []*Reassembly{
 				nil,
 				nil,
 			},
@@ -636,6 +711,16 @@ func TestGetOverlapRings(t *testing.T) {
 			reassemblyInput{42, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}}, []*Reassembly{
 				nil,
 				nil,
+			},
+		},
+		{
+			reassemblyInput{38, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}}, []*Reassembly{
+				&Reassembly{
+					Seq: 35,
+				},
+				&Reassembly{
+					Seq: 35,
+				},
 			},
 		},
 	}
