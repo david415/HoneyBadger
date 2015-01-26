@@ -32,11 +32,11 @@ import (
 
 func main() {
 	var (
-		iface    = flag.String("i", "eth0", "Interface to get packets from")
-		snaplen  = flag.Int("s", 65536, "SnapLen for pcap packet capture")
-		filter   = flag.String("f", "tcp", "BPF filter for pcap")
-		logDir   = flag.String("l", "honeyBadger-logs", "log directory")
-		isDaemon = flag.Bool("d", false, "daemonize")
+		iface       = flag.String("i", "eth0", "Interface to get packets from")
+		snaplen     = flag.Int("s", 65536, "SnapLen for pcap packet capture")
+		filter      = flag.String("f", "tcp", "BPF filter for pcap")
+		logDir      = flag.String("l", "honeyBadger-logs", "log directory")
+		isDaemonLog = flag.Bool("d", false, "daemon-log")
 	)
 	flag.Parse()
 
@@ -44,22 +44,21 @@ func main() {
 	stopChan, packetChan := HoneyBadger.StartReceivingTcp(*filter, *iface, *snaplen)
 	HoneyBadger.StartDecodingTcp(packetChan, connTracker)
 
-	if !*isDaemon {
+	if *isDaemonLog {
 		f, err := os.OpenFile(filepath.Join(*logDir, "honeyBadger.log"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 		if err != nil {
 			panic(fmt.Sprintf("error opening file: %v", err))
 		}
 		defer f.Close()
 		log.SetOutput(f)
-
-		// XXX daemonize how?
-
-	} else {
-		c := make(chan os.Signal, 1)
-		signal.Notify(c, os.Interrupt)
-		<-c
-		stopChan <- true
 	}
 
 	log.Println("HoneyBadger: comprehensive TCP injection attack detection.")
+
+	// quit when we detect a control-c
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	<-c
+	stopChan <- true
+
 }
