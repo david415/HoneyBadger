@@ -3,8 +3,12 @@
 HoneyBadger
 ===========
 
+
 .. image:: https://drone.io/github.com/david415/HoneyBadger/status.png
   :target: https://drone.io/github.com/david415/HoneyBadger/latest
+
+.. image:: https://coveralls.io/repos/david415/HoneyBadger/badge.svg?branch=master
+  :target: https://coveralls.io/r/david415/HoneyBadger?branch=master 
 
 
 project goals
