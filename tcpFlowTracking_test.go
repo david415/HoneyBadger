@@ -6,6 +6,7 @@ import (
 	"code.google.com/p/gopacket/layers"
 	"code.google.com/p/gopacket/tcpassembly"
 	"container/ring"
+	//"fmt"
 	"net"
 	"testing"
 )
@@ -906,7 +907,7 @@ func TestStateDataTransfer(t *testing.T) {
 		t.Fail()
 	}
 
-	// next set of tests
+	// next test
 	tcp = layers.TCP{
 		Seq:     5,
 		SYN:     false,
@@ -933,5 +934,217 @@ func TestStateDataTransfer(t *testing.T) {
 	if clientRingCount != 2 {
 		t.Errorf("clientRingCount %d not correct", clientRingCount)
 		t.Fail()
+	}
+
+}
+
+func TestTCPConnect(t *testing.T) {
+	conn := NewConnection()
+	ip := layers.IPv4{
+		SrcIP:    net.IP{1, 2, 3, 4},
+		DstIP:    net.IP{2, 3, 4, 5},
+		Version:  4,
+		TTL:      64,
+		Protocol: layers.IPProtocolTCP,
+	}
+	tcp := layers.TCP{
+		Seq:     3,
+		SYN:     true,
+		ACK:     false,
+		SrcPort: 1,
+		DstPort: 2,
+	}
+	p := PacketManifest{
+		IP:      ip,
+		TCP:     tcp,
+		Payload: []byte{},
+	}
+	flow := NewTcpIpFlowFromLayers(ip, tcp)
+	conn.clientFlow = flow
+	conn.serverFlow = flow.Reverse()
+	conn.receivePacket(p, flow)
+	if conn.state != TCP_CONNECTION_REQUEST {
+		t.Error("invalid state transition\n")
+		t.Fail()
+	}
+
+	// next state transition test
+	ip = layers.IPv4{
+		SrcIP:    net.IP{2, 3, 4, 5},
+		DstIP:    net.IP{1, 2, 3, 4},
+		Version:  4,
+		TTL:      64,
+		Protocol: layers.IPProtocolTCP,
+	}
+	tcp = layers.TCP{
+		Seq:     9,
+		SYN:     true,
+		ACK:     true,
+		Ack:     4,
+		SrcPort: 2,
+		DstPort: 1,
+	}
+	p = PacketManifest{
+		IP:      ip,
+		TCP:     tcp,
+		Payload: []byte{},
+	}
+	flow = NewTcpIpFlowFromLayers(ip, tcp)
+	conn.receivePacket(p, flow)
+	if conn.state != TCP_CONNECTION_ESTABLISHED {
+		t.Error("invalid state transition\n")
+		t.Fail()
+	}
+
+	// next state transition test
+	ip = layers.IPv4{
+		SrcIP:    net.IP{1, 2, 3, 4},
+		DstIP:    net.IP{2, 3, 4, 5},
+		Version:  4,
+		TTL:      64,
+		Protocol: layers.IPProtocolTCP,
+	}
+	tcp = layers.TCP{
+		Seq:     4,
+		SYN:     false,
+		ACK:     true,
+		Ack:     10,
+		SrcPort: 1,
+		DstPort: 2,
+	}
+	p = PacketManifest{
+		IP:      ip,
+		TCP:     tcp,
+		Payload: []byte{},
+	}
+	flow = NewTcpIpFlowFromLayers(ip, tcp)
+	conn.receivePacket(p, flow)
+	if conn.state != TCP_DATA_TRANSFER {
+		t.Error("invalid state transition\n")
+		t.Fail()
+	}
+
+}
+
+func TestClientThreeWayClose(t *testing.T) {
+	HelperTestThreeWayClose(true, t)
+}
+
+func TestServerThreeWayClose(t *testing.T) {
+	HelperTestThreeWayClose(false, t)
+}
+
+func HelperTestThreeWayClose(isClient bool, t *testing.T) {
+	var closerState, remoteState *uint8
+
+	conn := NewConnection()
+	conn.state = TCP_DATA_TRANSFER
+	conn.serverNextSeq = 4666
+	conn.clientNextSeq = 9666
+
+	if isClient {
+		closerState = &conn.clientState
+		remoteState = &conn.serverState
+	} else {
+		closerState = &conn.serverState
+		remoteState = &conn.clientState
+	}
+
+	ip := layers.IPv4{
+		SrcIP:    net.IP{1, 2, 3, 4},
+		DstIP:    net.IP{2, 3, 4, 5},
+		Version:  4,
+		TTL:      64,
+		Protocol: layers.IPProtocolTCP,
+	}
+	tcp := layers.TCP{
+		Seq:     9666,
+		FIN:     true,
+		SYN:     false,
+		ACK:     false,
+		SrcPort: 1,
+		DstPort: 2,
+	}
+	p := PacketManifest{
+		IP:      ip,
+		TCP:     tcp,
+		Payload: []byte{},
+	}
+	flow := NewTcpIpFlowFromLayers(ip, tcp)
+
+	conn.clientFlow = flow
+	conn.serverFlow = flow.Reverse()
+
+	conn.receivePacket(p, flow)
+	if conn.state != TCP_CONNECTION_CLOSING {
+		t.Error("connection state must transition to TCP_CONNECTION_CLOSING\n")
+		t.Fail()
+	}
+	if *closerState != TCP_FIN_WAIT1 {
+		t.Error("closer state must be in TCP_FINE_WAIT1\n")
+		t.Fail()
+	}
+	if *remoteState != TCP_CLOSE_WAIT {
+		t.Error("remote state must be in TCP_CLOSE_WAIT\n")
+		t.Fail()
+	}
+
+	// next state transition
+	ip = layers.IPv4{
+		SrcIP:    net.IP{2, 3, 4, 5},
+		DstIP:    net.IP{1, 2, 3, 4},
+		Version:  4,
+		TTL:      64,
+		Protocol: layers.IPProtocolTCP,
+	}
+	tcp = layers.TCP{
+		Seq:     4666,
+		SYN:     false,
+		FIN:     true,
+		ACK:     true,
+		Ack:     9667,
+		SrcPort: 2,
+		DstPort: 1,
+	}
+	p = PacketManifest{
+		IP:      ip,
+		TCP:     tcp,
+		Payload: []byte{},
+	}
+	flow = NewTcpIpFlowFromLayers(ip, tcp)
+
+	conn.receivePacket(p, flow)
+	if conn.state != TCP_CONNECTION_CLOSING {
+		t.Error("connection state must transition to TCP_CONNECTION_CLOSING\n")
+		t.Fail()
+	}
+
+	// next state transition
+	ip = layers.IPv4{
+		SrcIP:    net.IP{1, 2, 3, 4},
+		DstIP:    net.IP{2, 3, 4, 5},
+		Version:  4,
+		TTL:      64,
+		Protocol: layers.IPProtocolTCP,
+	}
+	tcp = layers.TCP{
+		Seq:     9667,
+		SYN:     false,
+		FIN:     false,
+		ACK:     true,
+		Ack:     4667,
+		SrcPort: 1,
+		DstPort: 2,
+	}
+	p = PacketManifest{
+		IP:      ip,
+		TCP:     tcp,
+		Payload: []byte{},
+	}
+	flow = NewTcpIpFlowFromLayers(ip, tcp)
+
+	conn.receivePacket(p, flow)
+	if conn.state != TCP_CLOSED {
+		t.Error("failed to close")
 	}
 }

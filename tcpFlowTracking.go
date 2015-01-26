@@ -424,15 +424,15 @@ func (c *Connection) stateListen(p PacketManifest, flow TcpIpFlow) {
 // a SYN/ACK packet.
 func (c *Connection) stateConnectionRequest(p PacketManifest, flow TcpIpFlow) {
 	if !flow.Equal(c.serverFlow) {
-		log.Print("handshake anomaly\n")
+		log.Print("handshake anomaly1\n")
 		return
 	}
 	if !(p.TCP.SYN && p.TCP.ACK) {
-		log.Print("handshake anomaly\n")
+		log.Print("handshake anomaly2\n")
 		return
 	}
-	if tcpassembly.Sequence(c.clientNextSeq).Difference(tcpassembly.Sequence(p.TCP.Ack)) != 0 {
-		log.Print("handshake anomaly\n")
+	if c.clientNextSeq.Difference(tcpassembly.Sequence(p.TCP.Ack)) != 0 {
+		log.Printf("handshake anomaly: clientNextSeq %d != current Ack %d\n", c.clientNextSeq, p.TCP.Ack)
 		return
 	}
 	log.Print("TCP_CONNECTION_ESTABLISHED\n")
@@ -539,7 +539,7 @@ func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
 // stateFinWait1 handles packets for the FIN-WAIT-1 state
 func (c *Connection) stateFinWait1(p PacketManifest, flow TcpIpFlow, nextSeqPtr *tcpassembly.Sequence, nextAckPtr *tcpassembly.Sequence, statePtr, otherStatePtr *uint8) {
 	if tcpassembly.Sequence(p.TCP.Seq).Difference(*nextSeqPtr) != 0 {
-		log.Print("FIN-WAIT-1: out of order packet received\n")
+		log.Printf("FIN-WAIT-1: out of order packet received. sequence %d != nextSeq %d\n", p.TCP.Seq, *nextSeqPtr)
 		return
 	}
 	if p.TCP.ACK {
@@ -598,7 +598,7 @@ func (c *Connection) stateLastAck(p PacketManifest, flow TcpIpFlow, nextSeqPtr *
 	if tcpassembly.Sequence(p.TCP.Seq).Difference(*nextSeqPtr) == 0 { //XXX
 		if p.TCP.ACK && (!p.TCP.FIN && !p.TCP.SYN) {
 			if tcpassembly.Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 {
-				log.Print("LAST-ACK: out of order ACK packet received.\n")
+				log.Print("LAST-ACK: out of order ACK packet received. seq %d != nextAck %d\n", p.TCP.Ack, *nextAckPtr)
 				return
 			}
 			// XXX
@@ -610,7 +610,7 @@ func (c *Connection) stateLastAck(p PacketManifest, flow TcpIpFlow, nextSeqPtr *
 		}
 	} else {
 		log.Print("LAST-ACK: out of order packet received\n")
-		//log.Printf("LAST-ACK: out of order packet received; got %d expected %d\n", p.TCP.Seq, *nextSeqPtr)
+		log.Printf("LAST-ACK: out of order packet received; got %d expected %d\n", p.TCP.Seq, *nextSeqPtr)
 	}
 }
 
