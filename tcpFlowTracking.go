@@ -202,6 +202,8 @@ func getHeadFromRing(ringPtr *ring.Ring, start, end tcpassembly.Sequence) *ring.
 	}
 	if start.Difference(current.Value.(Reassembly).Seq.Add(len(current.Value.(Reassembly).Bytes)-1)) < 0 {
 		log.Print("latest ring buffer entry is before start of segment\n")
+		log.Printf("lastestSeq %d < newStartSeq %d\n", current.Value.(Reassembly).Seq.Add(len(current.Value.(Reassembly).Bytes)-1), start)
+		log.Printf("lastest ring payload:%s\n", string(current.Value.(Reassembly).Bytes))
 		return nil
 	}
 	for current != ringPtr {
@@ -238,21 +240,8 @@ func getHeadFromRing(ringPtr *ring.Ring, start, end tcpassembly.Sequence) *ring.
 	return head
 }
 
-// getOverlapRings returns the head and tail ring elements corresponding to the first and last
-// overlapping ring segments... that overlap with the given packet (PacketManifest).
-func (c *Connection) getOverlapRings(p PacketManifest, flow TcpIpFlow) (*ring.Ring, *ring.Ring) {
-	var ringPtr, head, tail, prev, current *ring.Ring
-	start := tcpassembly.Sequence(p.TCP.Seq)
-	end := start.Add(len(p.Payload) - 1)
-	if flow.Equal(c.clientFlow) {
-		ringPtr = c.ServerStreamRing
-	} else {
-		ringPtr = c.ClientStreamRing
-	}
-	head = getHeadFromRing(ringPtr, start, end)
-	if head == nil {
-		return nil, nil
-	}
+func getTailFromRing(head *ring.Ring, end tcpassembly.Sequence) *ring.Ring {
+	var current, prev, tail *ring.Ring
 	current = head
 	for {
 		diff := current.Value.(Reassembly).Seq.Add(len(current.Value.(Reassembly).Bytes) - 1).Difference(end)
@@ -268,6 +257,25 @@ func (c *Connection) getOverlapRings(p PacketManifest, flow TcpIpFlow) (*ring.Ri
 			break
 		}
 	}
+	return tail
+}
+
+// getOverlapRings returns the head and tail ring elements corresponding to the first and last
+// overlapping ring segments... that overlap with the given packet (PacketManifest).
+func (c *Connection) getOverlapRings(p PacketManifest, flow TcpIpFlow) (*ring.Ring, *ring.Ring) {
+	var ringPtr, head, tail *ring.Ring
+	start := tcpassembly.Sequence(p.TCP.Seq)
+	end := start.Add(len(p.Payload) - 1)
+	if flow.Equal(c.clientFlow) {
+		ringPtr = c.ServerStreamRing
+	} else {
+		ringPtr = c.ClientStreamRing
+	}
+	head = getHeadFromRing(ringPtr, start, end)
+	if head == nil {
+		return nil, nil
+	}
+	tail = getTailFromRing(head, end)
 	return head, tail
 }
 
