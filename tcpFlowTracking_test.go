@@ -104,8 +104,8 @@ func TestGetRingSlice(t *testing.T) {
 		t.Fail()
 	}
 
-	ringSlice = getRingSlice(head, tail, 0, 0)
-	if !bytes.Equal(ringSlice, []byte{1, 2, 3, 4, 5}) {
+	ringSlice = getRingSlice(head, tail, 0, 1)
+	if !bytes.Equal(ringSlice, []byte{1, 2, 3, 4, 5, 1}) {
 		t.Error("byte comparison failed")
 		t.Fail()
 	}
@@ -116,13 +116,24 @@ func TestGetRingSlice(t *testing.T) {
 		t.Fail()
 	}
 
+	ringSlice = getRingSlice(head, tail, 1, 1)
+	if !bytes.Equal(ringSlice, []byte{2, 3, 4, 5, 1}) {
+		t.Error("byte comparison failed")
+		t.Fail()
+	}
+
 	ringSlice = getRingSlice(head, tail, 2, 0)
 	if !bytes.Equal(ringSlice, []byte{3, 4, 5}) {
 		t.Error("byte comparison failed")
 		t.Fail()
 	}
+	ringSlice = getRingSlice(head, tail, 2, 3)
+	if !bytes.Equal(ringSlice, []byte{3, 4, 5, 1, 2, 3}) {
+		t.Error("byte comparison failed")
+		t.Fail()
+	}
 
-	startSeq = 0
+	startSeq = 1
 	p = PacketManifest{
 		IP: layers.IPv4{
 			SrcIP:    net.IP{1, 2, 3, 4},
@@ -136,17 +147,19 @@ func TestGetRingSlice(t *testing.T) {
 			SrcPort: 1,
 			DstPort: 2,
 		},
-		Payload: []byte{1, 2, 3, 4, 5, 6, 7},
+		Payload: []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
 	}
+
 	head, tail = conn.getOverlapRings(p, flow)
-	ringSlice = getRingSlice(head, tail, 1, 3)
-	if !bytes.Equal(ringSlice, []byte{2, 3}) {
+	ringSlice = getRingSlice(head, tail, 0, 2)
+
+	if !bytes.Equal(ringSlice, []byte{1, 2, 3, 4, 5, 1, 2}) {
 		t.Errorf("ringSlice is %x\n", ringSlice)
 		t.Fail()
 	}
 
 	ringSlice = getRingSlice(head, tail, 2, 4)
-	if !bytes.Equal(ringSlice, []byte{3, 4}) {
+	if !bytes.Equal(ringSlice, []byte{3, 4, 5, 1, 2, 3, 4}) {
 		t.Errorf("ringSlice is %x\n", ringSlice) //XXX
 		t.Fail()
 	}
@@ -732,5 +745,108 @@ func TestSequenceFromPacket(t *testing.T) {
 	} else {
 		t.Fail()
 		return
+	}
+}
+
+func TestStateDataTransfer(t *testing.T) {
+	conn := NewConnection()
+	conn.state = TCP_DATA_TRANSFER
+	clientRingCount := 0
+	ip := layers.IPv4{
+		SrcIP:    net.IP{1, 2, 3, 4},
+		DstIP:    net.IP{2, 3, 4, 5},
+		Version:  4,
+		TTL:      64,
+		Protocol: layers.IPProtocolTCP,
+	}
+	tcp := layers.TCP{
+		Seq:     3,
+		SYN:     false,
+		SrcPort: 1,
+		DstPort: 2,
+	}
+	p := PacketManifest{
+		IP:      ip,
+		TCP:     tcp,
+		Payload: []byte{1, 2, 3, 4, 5, 6, 7},
+	}
+	flow := NewTcpIpFlowFromLayers(ip, tcp)
+	conn.serverFlow = flow
+	conn.clientFlow = flow.Reverse()
+	conn.clientNextSeq = 9666
+	conn.serverNextSeq = 3
+
+	conn.receivePacket(p, flow)
+	if conn.state != TCP_DATA_TRANSFER {
+		t.Error("invalid state transition\n")
+		t.Fail()
+	}
+	conn.ClientStreamRing.Do(func(x interface{}) {
+		_, ok := x.(Reassembly)
+		if ok {
+			clientRingCount += 1
+		}
+	})
+	if clientRingCount != 1 {
+		t.Errorf("clientRingCount %d not correct", clientRingCount)
+		t.Fail()
+	}
+
+	// next set of tests
+	tcp = layers.TCP{
+		Seq:     10,
+		SYN:     false,
+		SrcPort: 1,
+		DstPort: 2,
+	}
+	p = PacketManifest{
+		IP:      ip,
+		TCP:     tcp,
+		Payload: []byte{1, 2, 3, 4, 5, 6, 7},
+	}
+	conn.receivePacket(p, flow)
+	if conn.state != TCP_DATA_TRANSFER {
+		t.Error("invalid state transition\n")
+		t.Fail()
+	}
+	clientRingCount = 0
+	conn.ClientStreamRing.Do(func(x interface{}) {
+		_, ok := x.(Reassembly)
+		if ok {
+			clientRingCount += 1
+		}
+	})
+	if clientRingCount != 2 {
+		t.Errorf("clientRingCount %d not correct", clientRingCount)
+		t.Fail()
+	}
+
+	// next set of tests
+	tcp = layers.TCP{
+		Seq:     5,
+		SYN:     false,
+		SrcPort: 1,
+		DstPort: 2,
+	}
+	p = PacketManifest{
+		IP:      ip,
+		TCP:     tcp,
+		Payload: []byte{1, 2, 3, 4, 5, 6, 7},
+	}
+	conn.receivePacket(p, flow)
+	if conn.state != TCP_DATA_TRANSFER {
+		t.Error("invalid state transition\n")
+		t.Fail()
+	}
+	clientRingCount = 0
+	conn.ClientStreamRing.Do(func(x interface{}) {
+		_, ok := x.(Reassembly)
+		if ok {
+			clientRingCount += 1
+		}
+	})
+	if clientRingCount != 2 {
+		t.Errorf("clientRingCount %d not correct", clientRingCount)
+		t.Fail()
 	}
 }

@@ -241,7 +241,7 @@ func (c *Connection) getOverlapRings(p PacketManifest, flow TcpIpFlow) (*ring.Ri
 		_, ok = current.Value.(Reassembly)
 	}
 	current = head
-	for current != ringPtr {
+	for {
 		diff := current.Value.(Reassembly).Seq.Add(len(current.Value.(Reassembly).Bytes) - 1).Difference(end)
 		if diff <= 0 {
 			tail = current
@@ -285,13 +285,19 @@ func getEndSequence(tail *ring.Ring, end tcpassembly.Sequence) tcpassembly.Seque
 // the head that we should copy from; sliceEnd indicates the number of bytes into tail.
 func getRingSlice(head, tail *ring.Ring, sliceStart, sliceEnd int) []byte {
 	var overlapBytes []byte
+	if sliceStart < 0 || sliceEnd < 0 {
+		panic("sliceStart < 0 || sliceEnd < 0")
+	}
 	if sliceStart >= len(head.Value.(Reassembly).Bytes) {
-		panic(fmt.Sprintf("getRingSlice: sliceStart %d >= head len %d\n", sliceStart, len(head.Value.(Reassembly).Bytes)))
+		panic(fmt.Sprintf("getRingSlice: sliceStart %d >= head len %d", sliceStart, len(head.Value.(Reassembly).Bytes)))
+	}
+	if sliceEnd > len(tail.Value.(Reassembly).Bytes) {
+		panic("impossible; sliceEnd is greater than ring segment")
+	}
+	if head == tail {
+		panic("head == tail")
 	}
 
-	if head == tail {
-		return head.Value.(Reassembly).Bytes[sliceStart:sliceEnd]
-	}
 	overlapBytes = append(overlapBytes, head.Value.(Reassembly).Bytes[sliceStart:]...)
 	current := head
 	current = current.Next()
@@ -494,21 +500,18 @@ func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
 			if flow == c.clientFlow {
 				c.ServerStreamRing = c.ServerStreamRing.Next()
 				c.ServerStreamRing.Value = reassembly
-				log.Printf("expected tcp Sequence from client; payload len %d\n", len(p.Payload))
+				log.Printf("expected tcp Sequence from client; payload len %d; ring len %d\n", len(p.Payload), c.ServerStreamRing.Len())
 			} else {
 				c.ClientStreamRing = c.ClientStreamRing.Next()
 				c.ClientStreamRing.Value = reassembly
-				log.Printf("expected tcp Sequence from server; payload len %d\n", len(p.Payload))
+				log.Printf("expected tcp Sequence from server; payload len %d; ring len %d\n", len(p.Payload), c.ClientStreamRing.Len())
 			}
-
-			fmt.Printf("nextSeq %d\n", *nextSeqPtr)
-			fmt.Printf("len payload %d\n", len(p.Payload))
 			*nextSeqPtr = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload)) // XXX
-			fmt.Printf("new nextSeq %d\n", *nextSeqPtr)
-
 		}
 	} else if diff < 0 {
 		// p.TCP.Seq comes after *nextSeqPtr
+		// futute-out-of-order packet case
+		// ...
 	}
 }
 
