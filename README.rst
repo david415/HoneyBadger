@@ -3,6 +3,9 @@
 HoneyBadger
 ===========
 
+.. image:: https://drone.io/github.com/david415/HoneyBadger/status.png
+  :target: https://drone.io/github.com/david415/HoneyBadger/latest
+
 
 project goals
 -------------
