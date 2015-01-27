@@ -97,6 +97,10 @@ func NewTcpIpFlowFromFlows(ipFlow gopacket.Flow, tcpFlow gopacket.Flow) TcpIpFlo
 	}
 }
 
+func (t *TcpIpFlow) String() string {
+	return fmt.Sprintf("%s:%s-%s:%s", t.ipFlow.Src().String(), t.tcpFlow.Src().String(), t.ipFlow.Dst().String(), t.tcpFlow.Dst().String())
+}
+
 // Reverse returns a reversed TcpIpFlow, that is to say the resulting
 // TcpIpFlow flow will be made up of a reversed IP flow and a reversed
 // TCP flow.
@@ -168,15 +172,21 @@ type Connection struct {
 	ClientStreamRing *ring.Ring
 	ServerStreamRing *ring.Ring
 	packetCount      uint64
+	PacketLogger     *ConnectionPacketLogger
 }
 
 // NewConnection returns a new Connection struct
-func NewConnection() Connection {
-	return Connection{
+func NewConnection() *Connection {
+	return &Connection{
 		state:            TCP_LISTEN,
 		ClientStreamRing: ring.New(MAX_CONN_PACKETS),
 		ServerStreamRing: ring.New(MAX_CONN_PACKETS),
 	}
+}
+
+// PacketLoggerWrite writes the specified raw packet to the raw packet log.
+func (c *Connection) PacketLoggerWrite(packetBytes []byte, flow TcpIpFlow) {
+	c.PacketLogger.WritePacket(packetBytes, flow)
 }
 
 // isHijack checks for duplicate SYN/ACK indicating handshake hijake
@@ -735,6 +745,112 @@ func (c *ConnTracker) Put(key TcpIpFlow, conn *Connection) {
 	c.flowBMap[key.Reverse()] = conn
 }
 
+type HoneyBadgerServiceOptions struct {
+	Interface string
+	Filter    string
+	LogDir    string
+	Snaplen   int
+}
+
+type HoneyBadgerService struct {
+	HoneyBadgerServiceOptions
+	stopChan       chan bool
+	stopDecodeChan chan bool
+	rawPacketChan  chan []byte
+	connTracker    *ConnTracker
+}
+
+// NewHoneyBadgerService creates and starts an instance of HoneyBadgerService
+// which passively observes TCP connections and logs information about observed TCP attacks.
+// `iface` specifies the network interface to watch.
+// The `filter` arguement is a Berkeley Packet Filter string; observe packets that match this filter.
+// `snaplen` is the max packet size.
+// `logDir` is the directory to write logs to.
+func NewHoneyBadgerService(iface, filter string, snaplen int, logDir string) *HoneyBadgerService {
+	service := HoneyBadgerService{
+		connTracker: NewConnTracker(),
+		HoneyBadgerServiceOptions: HoneyBadgerServiceOptions{
+			Interface: iface,
+			Filter:    filter,
+			Snaplen:   snaplen,
+			LogDir:    logDir,
+		},
+	}
+	return &service
+}
+
+// Start the HoneyBadgerService
+func (b *HoneyBadgerService) Start() {
+	b.stopChan, b.rawPacketChan = StartReceivingTcp(b.Filter, b.Interface, b.Snaplen)
+	b.stopDecodeChan = make(chan bool)
+	b.startDecodingTcp(b.rawPacketChan, b.connTracker)
+}
+
+// Stop the HoneyBadgerService
+func (b *HoneyBadgerService) Stop() {
+	b.stopChan <- true
+	b.stopDecodeChan <- true
+	close(b.stopChan)
+	close(b.rawPacketChan)
+	close(b.stopDecodeChan)
+}
+
+// startDecodingTcp calls decodeTcp in a new goroutine...
+func (b *HoneyBadgerService) startDecodingTcp(packetChan chan []byte, connTracker *ConnTracker) {
+	go b.decodeTcp()
+}
+
+// decodeTcp receives packets from a channel and decodes them with gopacket,
+// creates a bidirectional flow identifier for each TCP packet and determines
+// which flow tracker instance is tracking that connection. If none is found then
+// a new flow tracker is created. Either way the parsed packet structs are passed
+// to the flow tracker for further processing.
+func (b *HoneyBadgerService) decodeTcp() {
+	var eth layers.Ethernet
+	var ip layers.IPv4
+	var tcp layers.TCP
+	var payload gopacket.Payload
+	var conn *Connection
+	var err error
+
+	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet, &eth, &ip, &tcp, &payload)
+	decoded := make([]gopacket.LayerType, 0, 4)
+
+	for {
+		select {
+		case packetBytes := <-b.rawPacketChan:
+			newPayload := new(gopacket.Payload)
+			payload = *newPayload
+			err = parser.DecodeLayers(packetBytes, &decoded)
+			if err != nil {
+				continue
+			}
+			tcpipflow := NewTcpIpFlowFromFlows(ip.NetworkFlow(), tcp.TransportFlow())
+			packetManifest := PacketManifest{
+				IP:      ip,
+				TCP:     tcp,
+				Payload: payload,
+			}
+			if b.connTracker.Has(tcpipflow) {
+				conn, err = b.connTracker.Get(tcpipflow)
+				if err != nil {
+					panic(err) // wtf
+				}
+			} else {
+				conn = NewConnection()
+				conn.PacketLogger = NewConnectionPacketLogger(b.LogDir, tcpipflow)
+				b.connTracker.Put(tcpipflow, conn)
+			}
+
+			conn.receivePacket(packetManifest, tcpipflow)
+			// XXX
+			conn.PacketLoggerWrite(packetBytes, tcpipflow)
+		case <-b.stopDecodeChan:
+			return
+		}
+	}
+}
+
 // startReceivingTcp is a generator function which returns two channels;
 // a stop channel and a packet channel. This function creates a goroutine
 // which continually reads packets off the network interface and sends them
@@ -767,82 +883,4 @@ func StartReceivingTcp(filter, iface string, snaplen int) (chan bool, chan []byt
 		}
 	}()
 	return stopReceiveChan, receiveParseChan
-}
-
-// startDecodingTcp calls decodeTcp in a new goroutine...
-func StartDecodingTcp(packetChan chan []byte, connTracker *ConnTracker) {
-	stopDecodeChan := make(chan bool)
-	go decodeTcp(packetChan, connTracker, stopDecodeChan)
-}
-
-// decodeTcp receives packets from a channel and decodes them with gopacket,
-// creates a bidirectional flow identifier for each TCP packet and determines
-// which flow tracker instance is tracking that connection. If none is found then
-// a new flow tracker is created. Either way the parsed packet structs are passed
-// to the flow tracker for further processing.
-func decodeTcp(packetChan chan []byte, connTracker *ConnTracker, stopDecodeChan chan bool) {
-	var eth layers.Ethernet
-	var ip layers.IPv4
-	var tcp layers.TCP
-	var payload gopacket.Payload
-
-	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet, &eth, &ip, &tcp, &payload)
-	decoded := make([]gopacket.LayerType, 0, 4)
-
-	for {
-		select {
-		case packetBytes := <-packetChan:
-			newPayload := new(gopacket.Payload)
-			payload = *newPayload
-			err := parser.DecodeLayers(packetBytes, &decoded)
-			if err != nil {
-				continue
-			}
-			tcpipflow := NewTcpIpFlowFromFlows(ip.NetworkFlow(), tcp.TransportFlow())
-			packetManifest := PacketManifest{
-				IP:      ip,
-				TCP:     tcp,
-				Payload: payload,
-			}
-			if connTracker.Has(tcpipflow) {
-				conn, err := connTracker.Get(tcpipflow)
-				if err != nil {
-					panic(err) // wtf
-				}
-				conn.receivePacket(packetManifest, tcpipflow)
-			} else {
-				conn := NewConnection()
-				connTracker.Put(tcpipflow, &conn)
-				conn.receivePacket(packetManifest, tcpipflow)
-			}
-		case <-stopDecodeChan:
-			return
-		}
-	}
-}
-
-type HoneyBadgerService struct {
-	connTracker   *ConnTracker
-	stopChan      chan bool
-	rawPacketChan chan []byte
-}
-
-// NewHoneyBadgerService creates and starts an instance of HoneyBadgerService
-// which passively observes TCP connections and logs information about observed TCP attacks.
-// `iface` specifies the network interface to watch.
-// The `filter` arguement is a Berkeley Packet Filter string; observe packets that match this filter.
-// `snaplen` is the max packet size.
-// `logDir` is the directory to write logs to.
-func NewHoneyBadgerService(iface, filter string, snaplen int, logDir string) *HoneyBadgerService {
-	service := HoneyBadgerService{
-		connTracker: NewConnTracker(),
-	}
-	service.stopChan, service.rawPacketChan = StartReceivingTcp(filter, iface, snaplen)
-	StartDecodingTcp(service.rawPacketChan, service.connTracker)
-	return &service
-}
-
-// Stop the HoneyBadgerService
-func (b *HoneyBadgerService) Stop() {
-	b.stopChan <- true
 }

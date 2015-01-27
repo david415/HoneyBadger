@@ -50,8 +50,8 @@ func main() {
 	}
 
 	service := HoneyBadger.NewHoneyBadgerService(*iface, *filter, *snaplen, *logDir)
-
 	log.Println("HoneyBadger: comprehensive TCP injection attack detection.")
+	service.Start()
 
 	// quit when we detect a control-c
 	c := make(chan os.Signal, 1)
