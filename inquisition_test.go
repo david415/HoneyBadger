@@ -6,9 +6,10 @@ import (
 	"code.google.com/p/gopacket/layers"
 	"code.google.com/p/gopacket/tcpassembly"
 	"container/ring"
-	//"fmt"
+	"fmt"
 	"net"
 	"testing"
+	"time"
 )
 
 type reassemblyInput struct {
@@ -22,13 +23,37 @@ type TestOverlapBytesWant struct {
 	endOffset   int
 }
 
+type DummyAttackLogger struct {
+	Count int
+}
+
+func NewDummyAttackLogger() *DummyAttackLogger {
+	a := DummyAttackLogger{
+		Count: 0,
+	}
+	return &a
+}
+
+func (d *DummyAttackLogger) ReportHijackAttack(instant time.Time, flow TcpIpFlow) {
+	d.Count += 1
+}
+
+func (d *DummyAttackLogger) ReportInjectionAttack(instant time.Time, flow TcpIpFlow, attemptPayload []byte, overlap []byte, start, end tcpassembly.Sequence, overlapStart, overlapEnd int) {
+	d.Count += 1
+}
+
 func TestInjectionDetector(t *testing.T) {
+	attackLogger := NewDummyAttackLogger()
+
+	fmt.Printf("attackLogger %v\n", attackLogger.Count)
+
 	conn := NewConnection()
 	conn.ClientStreamRing.Value = Reassembly{
 		Seq:   tcpassembly.Sequence(5),
 		Bytes: []byte{1, 2, 3, 4, 5},
 	}
 	conn.ClientStreamRing = conn.ClientStreamRing.Next()
+	conn.AttackLogger = attackLogger
 
 	p := PacketManifest{
 		IP: layers.IPv4{
@@ -46,8 +71,9 @@ func TestInjectionDetector(t *testing.T) {
 		Payload: []byte{1, 2, 3, 4, 5, 6, 7},
 	}
 	flow := NewTcpIpFlowFromLayers(p.IP, p.TCP)
-	if !conn.isInjection(p, flow) {
-		t.Error("isInjection failed: false positive\n")
+	conn.detectInjection(p, flow)
+	if attackLogger.Count == 0 {
+		t.Errorf("detectInjection failed; count == %d\n", attackLogger.Count)
 		t.Fail()
 	}
 
@@ -58,32 +84,37 @@ func TestInjectionDetector(t *testing.T) {
 		DstPort: 2,
 	}
 	p.Payload = []byte{3, 4, 5}
-	if conn.isInjection(p, flow) {
-		t.Error("isInjection failed: false negative\n")
+	conn.detectInjection(p, flow)
+	if attackLogger.Count == 0 {
+		t.Error("failed to detect injection\n")
 		t.Fail()
 	}
 
 	// next test case
+	attackLogger.Count = 0
 	p.TCP = layers.TCP{
 		Seq:     1,
 		SrcPort: 1,
 		DstPort: 2,
 	}
 	p.Payload = []byte{1, 2, 3, 4, 5, 6}
-	if !conn.isInjection(p, flow) {
-		t.Error("isInjection failed\n")
+	conn.detectInjection(p, flow)
+	if attackLogger.Count == 0 {
+		t.Error("failed to detect injection\n")
 		t.Fail()
 	}
 
 	// next test case
+	attackLogger.Count = 0
 	p.TCP = layers.TCP{
 		Seq:     1,
 		SrcPort: 1,
 		DstPort: 2,
 	}
 	p.Payload = []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17}
-	if !conn.isInjection(p, flow) {
-		t.Error("isInjection failed\n")
+	conn.detectInjection(p, flow)
+	if attackLogger.Count != 1 {
+		t.Error("injection detectin failure\n")
 		t.Fail()
 	}
 }
@@ -836,6 +867,8 @@ func TestSequenceFromPacket(t *testing.T) {
 
 func TestStateDataTransfer(t *testing.T) {
 	conn := NewConnection()
+	conn.AttackLogger = NewDummyAttackLogger()
+
 	conn.state = TCP_DATA_TRANSFER
 	clientRingCount := 0
 	ip := layers.IPv4{
@@ -1151,6 +1184,7 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 
 func BenchmarkSingleOneWayDataTransfer(b *testing.B) {
 	conn := NewConnection()
+	conn.AttackLogger = NewDummyAttackLogger()
 	conn.state = TCP_DATA_TRANSFER
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},
@@ -1187,6 +1221,7 @@ func BenchmarkSingleOneWayDataTransfer(b *testing.B) {
 
 func BenchmarkSingleOneWayDataTransferOccasionalInjection(b *testing.B) {
 	conn := NewConnection()
+	conn.AttackLogger = NewDummyAttackLogger()
 	conn.state = TCP_DATA_TRANSFER
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},
@@ -1227,6 +1262,7 @@ func BenchmarkSingleOneWayDataTransferOccasionalInjection(b *testing.B) {
 
 func BenchmarkSingleTwoWayDataTransfer(b *testing.B) {
 	conn := NewConnection()
+	conn.AttackLogger = NewDummyAttackLogger()
 	conn.state = TCP_DATA_TRANSFER
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},
@@ -1283,6 +1319,7 @@ func BenchmarkSingleTwoWayDataTransfer(b *testing.B) {
 
 func BenchmarkSingleTwoWayDataTransferWithOccasionalInjection(b *testing.B) {
 	conn := NewConnection()
+	conn.AttackLogger = NewDummyAttackLogger()
 	conn.state = TCP_DATA_TRANSFER
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},

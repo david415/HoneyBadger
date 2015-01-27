@@ -28,6 +28,7 @@ import (
 	"container/ring"
 	"fmt"
 	"log"
+	"time"
 )
 
 const (
@@ -83,6 +84,7 @@ func (r *Reassembly) String() string {
 // We implement a basic TCP finite state machine and track state in order to detect
 // hanshake hijack and other TCP attacks such as segment veto and stream injection.
 type Connection struct {
+	AttackLogger     AttackLogger
 	state            uint8
 	clientState      uint8
 	serverState      uint8
@@ -92,9 +94,9 @@ type Connection struct {
 	clientNextSeq    tcpassembly.Sequence
 	serverNextSeq    tcpassembly.Sequence
 	hijackNextAck    tcpassembly.Sequence
+	packetCount      uint64
 	ClientStreamRing *ring.Ring
 	ServerStreamRing *ring.Ring
-	packetCount      uint64
 	PacketLogger     *ConnectionPacketLogger
 }
 
@@ -112,17 +114,18 @@ func (c *Connection) PacketLoggerWrite(packetBytes []byte, flow TcpIpFlow) {
 	c.PacketLogger.WritePacket(packetBytes, flow)
 }
 
-// isHijack checks for duplicate SYN/ACK indicating handshake hijake
-func (c *Connection) isHijack(p PacketManifest, flow TcpIpFlow) bool {
+// detectHijack checks for duplicate SYN/ACK indicating handshake hijake
+// and submits a report if an attack was observed
+func (c *Connection) detectHijack(p PacketManifest, flow TcpIpFlow) {
 	// check for duplicate SYN/ACK indicating handshake hijake
-	if flow.Equal(c.serverFlow) {
-		if p.TCP.ACK && p.TCP.SYN {
-			if tcpassembly.Sequence(p.TCP.Ack).Difference(c.hijackNextAck) == 0 {
-				return true
-			}
+	if !flow.Equal(c.serverFlow) {
+		return
+	}
+	if p.TCP.ACK && p.TCP.SYN {
+		if tcpassembly.Sequence(p.TCP.Ack).Difference(c.hijackNextAck) == 0 {
+			c.AttackLogger.ReportHijackAttack(time.Now(), flow)
 		}
 	}
-	return false
 }
 
 func getHeadFromRing(ringPtr *ring.Ring, start, end tcpassembly.Sequence) *ring.Ring {
@@ -317,18 +320,20 @@ func (c *Connection) getOverlapBytes(head, tail *ring.Ring, start, end tcpassemb
 	return overlapBytes, overlapStartSlice, overlapEndSlice
 }
 
-// isInjection returns true if the given packet indicates a TCP injection attack
-// such as segment veto. Returns false otherwise.
-func (c *Connection) isInjection(p PacketManifest, flow TcpIpFlow) bool {
+// detectInjection write an attack report if the given packet indicates a TCP injection attack
+// such as segment veto.
+func (c *Connection) detectInjection(p PacketManifest, flow TcpIpFlow) {
+	log.Print("detectInjection\n")
 	head, tail := c.getOverlapRings(p, flow)
 	if head == nil || tail == nil {
-		log.Print("getOverlapRings returned a nil\n")
-		return false
+		log.Printf("suspected injection on flow %s; zero ring elements with relevant info. no retrospective analysis possible\n", flow.String())
 	}
 	start := tcpassembly.Sequence(p.TCP.Seq)
 	end := start.Add(len(p.Payload) - 1)
 	overlapBytes, startOffset, endOffset := c.getOverlapBytes(head, tail, start, end)
-	return !bytes.Equal(overlapBytes, p.Payload[startOffset:endOffset])
+	if !bytes.Equal(overlapBytes, p.Payload[startOffset:endOffset]) {
+		c.AttackLogger.ReportInjectionAttack(time.Now(), flow, p.Payload, overlapBytes, start, end, startOffset, endOffset)
+	}
 }
 
 // stateListen gets called by our TCP finite state machine runtime
@@ -336,7 +341,6 @@ func (c *Connection) isInjection(p PacketManifest, flow TcpIpFlow) bool {
 // a SYN packet.
 func (c *Connection) stateListen(p PacketManifest, flow TcpIpFlow) {
 	if p.TCP.SYN && !p.TCP.ACK {
-		log.Print("TCP_CONNECTION_REQUEST\n")
 		c.state = TCP_CONNECTION_REQUEST
 		c.clientFlow = flow
 		c.serverFlow = c.clientFlow.Reverse()
@@ -348,7 +352,7 @@ func (c *Connection) stateListen(p PacketManifest, flow TcpIpFlow) {
 		c.clientNextSeq = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1) // XXX
 		c.hijackNextAck = c.clientNextSeq
 	} else {
-		log.Print("unknown TCP state\n")
+		//unknown TCP state
 	}
 }
 
@@ -357,18 +361,17 @@ func (c *Connection) stateListen(p PacketManifest, flow TcpIpFlow) {
 // a SYN/ACK packet.
 func (c *Connection) stateConnectionRequest(p PacketManifest, flow TcpIpFlow) {
 	if !flow.Equal(c.serverFlow) {
-		log.Print("handshake anomaly1\n")
+		//handshake anomaly
 		return
 	}
 	if !(p.TCP.SYN && p.TCP.ACK) {
-		log.Print("handshake anomaly2\n")
+		//handshake anomaly
 		return
 	}
 	if c.clientNextSeq.Difference(tcpassembly.Sequence(p.TCP.Ack)) != 0 {
-		log.Printf("handshake anomaly: clientNextSeq %d != current Ack %d\n", c.clientNextSeq, p.TCP.Ack)
+		//handshake anomaly
 		return
 	}
-	log.Print("TCP_CONNECTION_ESTABLISHED\n")
 	c.state = TCP_CONNECTION_ESTABLISHED
 	c.serverNextSeq = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1) // XXX see above comment about TCP extentions
 }
@@ -377,28 +380,24 @@ func (c *Connection) stateConnectionRequest(p PacketManifest, flow TcpIpFlow) {
 // changes our state to TCP_DATA_TRANSFER if we receive a valid final
 // handshake ACK packet.
 func (c *Connection) stateConnectionEstablished(p PacketManifest, flow TcpIpFlow) {
-	if c.isHijack(p, flow) {
-		log.Print("handshake hijack attack detected.\n")
-		return
-	}
+	c.detectHijack(p, flow)
 	if !flow.Equal(c.clientFlow) {
-		log.Print("handshake anomaly\n")
+		// handshake anomaly
 		return
 	}
 	if !p.TCP.ACK || p.TCP.SYN {
-		log.Print("handshake anomaly\n")
+		// handshake anomaly
 		return
 	}
 	if tcpassembly.Sequence(p.TCP.Seq).Difference(c.clientNextSeq) != 0 {
-		log.Print("handshake anomaly\n")
+		// handshake anomaly
 		return
 	}
 	if tcpassembly.Sequence(p.TCP.Ack).Difference(c.serverNextSeq) != 0 {
-		log.Print("handshake anomaly\n")
+		// handshake anomaly
 		return
 	}
 	c.state = TCP_DATA_TRANSFER
-	log.Print("TCP_DATA_TRANSFER\n")
 }
 
 // stateDataTransfer is called by our TCP FSM and processes packets
@@ -407,10 +406,7 @@ func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
 	var nextSeqPtr *tcpassembly.Sequence
 	var closerState, remoteState *uint8
 	if c.packetCount < FIRST_FEW_PACKETS {
-		if c.isHijack(p, flow) {
-			log.Print("handshake hijack detected\n")
-			return
-		}
+		c.detectHijack(p, flow)
 	}
 	if flow.Equal(c.clientFlow) {
 		nextSeqPtr = &c.clientNextSeq
@@ -425,11 +421,7 @@ func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
 	if diff > 0 {
 		// *nextSeqPtr comes after p.TCP.Seq
 		// stream overlap case
-
-		log.Printf("overlap case: TCP.Seq %d before nextSeqPtr %d\n", p.TCP.Seq, *nextSeqPtr)
-		if c.isInjection(p, flow) {
-			log.Print("TCP injection attack detected.\n")
-		}
+		c.detectInjection(p, flow)
 	} else if diff == 0 {
 		// contiguous!
 		if p.TCP.FIN {
@@ -438,7 +430,6 @@ func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
 			c.state = TCP_CONNECTION_CLOSING
 			*closerState = TCP_FIN_WAIT1
 			*remoteState = TCP_CLOSE_WAIT
-			log.Print("TCP_CONNECTION_CLOSING: FIN packet\n")
 			return
 		}
 		if p.TCP.RST {

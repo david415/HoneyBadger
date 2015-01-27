@@ -121,6 +121,7 @@ func (b *HoneyBadgerService) decodeTcp() {
 			} else {
 				conn = NewConnection()
 				conn.PacketLogger = NewConnectionPacketLogger(b.LogDir, tcpipflow)
+				conn.AttackLogger = NewAttackJsonLogger(b.LogDir)
 				b.connTracker.Put(tcpipflow, conn)
 			}
 
