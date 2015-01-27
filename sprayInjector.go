@@ -1,5 +1,5 @@
 /*
- *    tcpStreamInjector.go - TCP stream injector API
+ *    sprayInjector.go - TCP stream injector API
  *    Copyright (C) 2014  David Stainton
  *
  *    This program is free software: you can redistribute it and/or modify
