@@ -31,38 +31,29 @@ import (
 )
 
 type ConnectionPacketLogger struct {
-	dir            string
-	aPacketLogChan chan []byte
-	bPacketLogChan chan []byte
-	closeChan      chan bool
-	aFlow          TcpIpFlow
-	aLogger        *PcapLogger
-	bLogger        *PcapLogger
+	Dir           string
+	PacketLogChan chan []byte
+	CloseChan     chan bool
+	Flow          TcpIpFlow
+	Logger        *PcapLogger
 }
 
-func NewConnectionPacketLogger(dir string, aFlow TcpIpFlow) *ConnectionPacketLogger {
+func NewConnectionPacketLogger(dir string, flow TcpIpFlow) *ConnectionPacketLogger {
 	return &ConnectionPacketLogger{
-		aPacketLogChan: make(chan []byte),
-		bPacketLogChan: make(chan []byte),
-		closeChan:      make(chan bool),
-		aLogger:        NewPcapLogger(dir, aFlow),
-		bLogger:        NewPcapLogger(dir, aFlow.Reverse()),
-		aFlow:          aFlow,
-		dir:            dir,
+		PacketLogChan: make(chan []byte),
+		CloseChan:     make(chan bool),
+		Logger:        NewPcapLogger(dir, flow),
+		Flow:          flow,
+		Dir:           dir,
 	}
 }
 
 func (c *ConnectionPacketLogger) WritePacket(packet []byte, flow TcpIpFlow) {
-	if flow.Equal(c.aFlow) {
-		c.aLogger.WritePacket(packet)
-	} else {
-		c.bLogger.WritePacket(packet)
-	}
+	c.Logger.WritePacket(packet)
 }
 
 func (c *ConnectionPacketLogger) Close() {
-	c.aLogger.Close()
-	c.bLogger.Close()
+	c.Logger.Close()
 }
 
 type PcapLogger struct {
