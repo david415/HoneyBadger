@@ -22,32 +22,20 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"github.com/david415/HoneyBadger"
 	"log"
 	"os"
 	"os/signal"
-	"path/filepath"
 )
 
 func main() {
 	var (
-		iface       = flag.String("i", "eth0", "Interface to get packets from")
-		snaplen     = flag.Int("s", 65536, "SnapLen for pcap packet capture")
-		filter      = flag.String("f", "tcp", "BPF filter for pcap")
-		logDir      = flag.String("l", "honeyBadger-logs", "log directory")
-		isDaemonLog = flag.Bool("d", false, "daemon-log")
+		iface   = flag.String("i", "eth0", "Interface to get packets from")
+		snaplen = flag.Int("s", 65536, "SnapLen for pcap packet capture")
+		filter  = flag.String("f", "tcp", "BPF filter for pcap")
+		logDir  = flag.String("l", "honeyBadger-logs", "log directory")
 	)
 	flag.Parse()
-
-	if *isDaemonLog {
-		f, err := os.OpenFile(filepath.Join(*logDir, "honeyBadger.log"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-		if err != nil {
-			panic(fmt.Sprintf("error opening file: %v", err))
-		}
-		defer f.Close()
-		log.SetOutput(f)
-	}
 
 	service := HoneyBadger.NewHoneyBadgerService(*iface, *filter, *snaplen, *logDir)
 	log.Println("HoneyBadger: comprehensive TCP injection attack detection.")
