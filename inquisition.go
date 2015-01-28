@@ -84,7 +84,7 @@ func (r *Reassembly) String() string {
 // We implement a basic TCP finite state machine and track state in order to detect
 // hanshake hijack and other TCP attacks such as segment veto and stream injection.
 type Connection struct {
-	AttackLogger     AttackLogger
+	connTracker      *ConnTracker
 	state            uint8
 	clientState      uint8
 	serverState      uint8
@@ -98,14 +98,27 @@ type Connection struct {
 	ClientStreamRing *ring.Ring
 	ServerStreamRing *ring.Ring
 	PacketLogger     *ConnectionPacketLogger
+	AttackLogger     AttackLogger
 }
 
 // NewConnection returns a new Connection struct
-func NewConnection() *Connection {
+func NewConnection(connTracker *ConnTracker) *Connection {
 	return &Connection{
+		connTracker:      connTracker,
 		state:            TCP_LISTEN,
 		ClientStreamRing: ring.New(MAX_CONN_PACKETS),
 		ServerStreamRing: ring.New(MAX_CONN_PACKETS),
+	}
+}
+
+func (c *Connection) Close() {
+	log.Printf("closing %s\n", c.clientFlow.String())
+	c.AttackLogger.Close()
+	if c.PacketLogger != nil {
+		c.PacketLogger.Close()
+	}
+	if c.connTracker != nil {
+		c.connTracker.Delete(c.clientFlow)
 	}
 }
 
@@ -333,6 +346,8 @@ func (c *Connection) detectInjection(p PacketManifest, flow TcpIpFlow) {
 	overlapBytes, startOffset, endOffset := c.getOverlapBytes(head, tail, start, end)
 	if !bytes.Equal(overlapBytes, p.Payload[startOffset:endOffset]) {
 		c.AttackLogger.ReportInjectionAttack(time.Now(), flow, p.Payload, overlapBytes, start, end, startOffset, endOffset)
+	} else {
+		log.Print("not an attack attempt\n")
 	}
 }
 
@@ -425,6 +440,7 @@ func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
 	} else if diff == 0 {
 		// contiguous!
 		if p.TCP.FIN {
+			log.Print("got FIN moving to TCP_CONNECTION_CLOSING state\n")
 			c.closingFlow = c.clientFlow // XXX
 			*nextSeqPtr += 1
 			c.state = TCP_CONNECTION_CLOSING
@@ -433,8 +449,10 @@ func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
 			return
 		}
 		if p.TCP.RST {
+			log.Print("got RST!\n")
 			// XXX
 			c.state = TCP_CLOSED
+			c.Close()
 			return
 		}
 		if len(p.Payload) > 0 {
@@ -526,7 +544,7 @@ func (c *Connection) stateLastAck(p PacketManifest, flow TcpIpFlow, nextSeqPtr *
 			// XXX
 			log.Print("TCP_CLOSED\n")
 			c.state = TCP_CLOSED
-			// ...
+			c.Close()
 		} else {
 			log.Print("LAST-ACK: protocol anamoly\n")
 		}
@@ -626,6 +644,13 @@ func NewConnTracker() *ConnTracker {
 	}
 }
 
+func (c *ConnTracker) Close() {
+	for k, v := range c.flowAMap {
+		log.Printf("ConnTracker: closing %s\n", k.String())
+		v.Close()
+	}
+}
+
 // Has returns true if the given TcpIpFlow is a key in our
 // either of flowAMap or flowBMap
 func (c *ConnTracker) Has(key TcpIpFlow) bool {
@@ -657,4 +682,20 @@ func (c *ConnTracker) Get(key TcpIpFlow) (*Connection, error) {
 func (c *ConnTracker) Put(key TcpIpFlow, conn *Connection) {
 	c.flowAMap[key] = conn
 	c.flowBMap[key.Reverse()] = conn
+}
+
+func (c *ConnTracker) Delete(key TcpIpFlow) {
+	_, ok := c.flowAMap[key]
+	if ok {
+		delete(c.flowAMap, key)
+		delete(c.flowBMap, key.Reverse())
+	} else {
+		_, ok = c.flowBMap[key]
+		if ok {
+			delete(c.flowBMap, key)
+			delete(c.flowAMap, key.Reverse())
+		} else {
+			panic(fmt.Sprintf("ConnTracker flow key %s not found\n", key.String()))
+		}
+	}
 }

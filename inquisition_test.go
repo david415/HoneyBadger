@@ -34,6 +34,9 @@ func NewDummyAttackLogger() *DummyAttackLogger {
 	return &a
 }
 
+func (d *DummyAttackLogger) Close() {
+}
+
 func (d *DummyAttackLogger) ReportHijackAttack(instant time.Time, flow TcpIpFlow) {
 	d.Count += 1
 }
@@ -47,7 +50,7 @@ func TestInjectionDetector(t *testing.T) {
 
 	fmt.Printf("attackLogger %v\n", attackLogger.Count)
 
-	conn := NewConnection()
+	conn := NewConnection(nil)
 	conn.ClientStreamRing.Value = Reassembly{
 		Seq:   tcpassembly.Sequence(5),
 		Bytes: []byte{1, 2, 3, 4, 5},
@@ -120,7 +123,7 @@ func TestInjectionDetector(t *testing.T) {
 }
 
 func TestGetRingSlice(t *testing.T) {
-	conn := NewConnection()
+	conn := NewConnection(nil)
 	for j := 5; j < 40; j += 5 {
 		conn.ClientStreamRing.Value = Reassembly{
 			Seq:   tcpassembly.Sequence(j),
@@ -533,7 +536,7 @@ func TestGetOverlapBytes(t *testing.T) {
 			},
 		},
 	}
-	conn := NewConnection()
+	conn := NewConnection(nil)
 	for j := 5; j < 40; j += 5 {
 		conn.ClientStreamRing.Value = Reassembly{
 			Seq:   tcpassembly.Sequence(j),
@@ -610,7 +613,7 @@ func TestGetOverlapRingsWithZeroRings(t *testing.T) {
 		TCP:     tcp,
 		Payload: payload,
 	}
-	conn := NewConnection()
+	conn := NewConnection(nil)
 	head, tail := conn.getOverlapRings(p, flow)
 	if head == nil || tail == nil {
 		return
@@ -765,7 +768,7 @@ func TestGetOverlapRings(t *testing.T) {
 		Protocol: layers.IPProtocolTCP,
 	}
 
-	conn := NewConnection()
+	conn := NewConnection(nil)
 	for j := 5; j < 40; j += 5 {
 		conn.ClientStreamRing.Value = Reassembly{
 			Seq:   tcpassembly.Sequence(j),
@@ -833,7 +836,7 @@ func TestGetOverlapRings(t *testing.T) {
 }
 
 func TestStateDataTransfer(t *testing.T) {
-	conn := NewConnection()
+	conn := NewConnection(nil)
 	conn.AttackLogger = NewDummyAttackLogger()
 
 	conn.state = TCP_DATA_TRANSFER
@@ -939,7 +942,7 @@ func TestStateDataTransfer(t *testing.T) {
 }
 
 func TestTCPConnect(t *testing.T) {
-	conn := NewConnection()
+	conn := NewConnection(nil)
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},
 		DstIP:    net.IP{2, 3, 4, 5},
@@ -1036,8 +1039,9 @@ func TestServerThreeWayClose(t *testing.T) {
 
 func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 	var closerState, remoteState *uint8
-
-	conn := NewConnection()
+	attackLogger := NewDummyAttackLogger()
+	conn := NewConnection(nil)
+	conn.AttackLogger = attackLogger
 	conn.state = TCP_DATA_TRANSFER
 	conn.serverNextSeq = 4666
 	conn.clientNextSeq = 9666
@@ -1050,6 +1054,9 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		remoteState = &conn.clientState
 	}
 
+	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
+	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
+
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},
 		DstIP:    net.IP{2, 3, 4, 5},
@@ -1057,6 +1064,7 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		TTL:      64,
 		Protocol: layers.IPProtocolTCP,
 	}
+
 	tcp := layers.TCP{
 		Seq:     9666,
 		FIN:     true,
@@ -1070,8 +1078,8 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		TCP:     tcp,
 		Payload: []byte{},
 	}
-	flow := NewTcpIpFlowFromLayers(ip, tcp)
-
+	//flow := NewTcpIpFlowFromLayers(ip, tcp)
+	flow := NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 	conn.clientFlow = flow
 	conn.serverFlow = flow.Reverse()
 
@@ -1111,9 +1119,9 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		TCP:     tcp,
 		Payload: []byte{},
 	}
-	flow = NewTcpIpFlowFromLayers(ip, tcp)
 
-	conn.receivePacket(p, flow)
+	flow2 := flow.Reverse()
+	conn.receivePacket(p, flow2)
 	if conn.state != TCP_CONNECTION_CLOSING {
 		t.Error("connection state must transition to TCP_CONNECTION_CLOSING\n")
 		t.Fail()
@@ -1141,16 +1149,15 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		TCP:     tcp,
 		Payload: []byte{},
 	}
-	flow = NewTcpIpFlowFromLayers(ip, tcp)
 
 	conn.receivePacket(p, flow)
 	if conn.state != TCP_CLOSED {
-		t.Error("failed to close")
+		t.Errorf("failed to close; current state == %d\n", conn.state)
 	}
 }
 
 func BenchmarkSingleOneWayDataTransfer(b *testing.B) {
-	conn := NewConnection()
+	conn := NewConnection(nil)
 	conn.AttackLogger = NewDummyAttackLogger()
 	conn.state = TCP_DATA_TRANSFER
 	ip := layers.IPv4{
@@ -1187,7 +1194,7 @@ func BenchmarkSingleOneWayDataTransfer(b *testing.B) {
 }
 
 func BenchmarkSingleOneWayDataTransferOccasionalInjection(b *testing.B) {
-	conn := NewConnection()
+	conn := NewConnection(nil)
 	conn.AttackLogger = NewDummyAttackLogger()
 	conn.state = TCP_DATA_TRANSFER
 	ip := layers.IPv4{
@@ -1228,7 +1235,7 @@ func BenchmarkSingleOneWayDataTransferOccasionalInjection(b *testing.B) {
 }
 
 func BenchmarkSingleTwoWayDataTransfer(b *testing.B) {
-	conn := NewConnection()
+	conn := NewConnection(nil)
 	conn.AttackLogger = NewDummyAttackLogger()
 	conn.state = TCP_DATA_TRANSFER
 	ip := layers.IPv4{
@@ -1285,7 +1292,7 @@ func BenchmarkSingleTwoWayDataTransfer(b *testing.B) {
 }
 
 func BenchmarkSingleTwoWayDataTransferWithOccasionalInjection(b *testing.B) {
-	conn := NewConnection()
+	conn := NewConnection(nil)
 	conn.AttackLogger = NewDummyAttackLogger()
 	conn.state = TCP_DATA_TRANSFER
 	ip := layers.IPv4{

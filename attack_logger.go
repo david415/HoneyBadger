@@ -46,17 +46,26 @@ type AttackReport struct {
 type AttackLogger interface {
 	ReportHijackAttack(instant time.Time, flow TcpIpFlow)
 	ReportInjectionAttack(instant time.Time, flow TcpIpFlow, attemptPayload []byte, overlap []byte, start, end tcpassembly.Sequence, overlapStart, overlapEnd int)
+	Close()
 }
 
 type AttackJsonLogger struct {
 	LogDir string
+	Flow   TcpIpFlow
+	count  int
 }
 
-func NewAttackJsonLogger(logDir string) *AttackJsonLogger {
+func NewAttackJsonLogger(logDir string, flow TcpIpFlow) *AttackJsonLogger {
 	a := AttackJsonLogger{
 		LogDir: logDir,
+		Flow:   flow,
+		count:  0,
 	}
 	return &a
+}
+
+func (a *AttackJsonLogger) Close() {
+	log.Print("AttackJsonLogger Close method not yet implemented...\n")
 }
 
 func (a *AttackJsonLogger) ReportHijackAttack(instant time.Time, flow TcpIpFlow) {
@@ -96,13 +105,18 @@ func (a *AttackJsonLogger) ReportInjectionAttack(instant time.Time, flow TcpIpFl
 	a.Publish(report)
 }
 
+// Publish writes a JSON report to the attack-report file for that flow.
+// I've tried to use the json.Encoder to do this... and I think we should do it
+// that way... but I'm holding off on adding that feature to debug other problems.
+//
 func (a *AttackJsonLogger) Publish(report *AttackReport) {
-	log.Print("Publish\n")
+	log.Printf("Publish count %d\n", a.count)
+	a.count += 1
 	b, err := json.Marshal(*report)
 	f, err := os.OpenFile(filepath.Join(a.LogDir, fmt.Sprintf("%s.attackreport.json", report.Flow)), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		panic(fmt.Sprintf("error opening file: %v", err))
 	}
 	defer f.Close()
-	f.Write(b)
+	f.Write([]byte(fmt.Sprintf("%s\n", string(b))))
 }

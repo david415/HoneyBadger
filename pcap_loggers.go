@@ -25,26 +25,23 @@ import (
 	"code.google.com/p/gopacket/layers"
 	"code.google.com/p/gopacket/pcapgo"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
 )
 
 type ConnectionPacketLogger struct {
-	Dir           string
-	PacketLogChan chan []byte
-	CloseChan     chan bool
-	Flow          TcpIpFlow
-	Logger        *PcapLogger
+	Dir    string
+	Flow   TcpIpFlow
+	Logger *PcapLogger
 }
 
 func NewConnectionPacketLogger(dir string, flow TcpIpFlow) *ConnectionPacketLogger {
 	return &ConnectionPacketLogger{
-		PacketLogChan: make(chan []byte),
-		CloseChan:     make(chan bool),
-		Logger:        NewPcapLogger(dir, flow),
-		Flow:          flow,
-		Dir:           dir,
+		Logger: NewPcapLogger(dir, flow),
+		Flow:   flow,
+		Dir:    dir,
 	}
 }
 
@@ -53,6 +50,7 @@ func (c *ConnectionPacketLogger) WritePacket(packet []byte, flow TcpIpFlow) {
 }
 
 func (c *ConnectionPacketLogger) Close() {
+	log.Print("ConnectionPacketLogger Close\n")
 	c.Logger.Close()
 }
 

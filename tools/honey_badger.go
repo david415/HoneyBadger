@@ -26,18 +26,25 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"time"
 )
 
 func main() {
 	var (
-		iface   = flag.String("i", "eth0", "Interface to get packets from")
-		snaplen = flag.Int("s", 65536, "SnapLen for pcap packet capture")
-		filter  = flag.String("f", "tcp", "BPF filter for pcap")
-		logDir  = flag.String("l", "honeyBadger-logs", "log directory")
+		iface       = flag.String("i", "eth0", "Interface to get packets from")
+		snaplen     = flag.Int("s", 65536, "SnapLen for pcap packet capture")
+		filter      = flag.String("f", "tcp", "BPF filter for pcap")
+		logDir      = flag.String("l", "honeyBadger-logs", "log directory")
+		wireTimeout = flag.String("w", "10s", "timeout for reading packets off the wire")
 	)
 	flag.Parse()
 
-	service := HoneyBadger.NewHoneyBadgerService(*iface, *filter, *snaplen, *logDir)
+	wireDuration, err := time.ParseDuration(*wireTimeout)
+	if err != nil {
+		log.Fatal("invalid wire timeout duration: ", *wireTimeout)
+	}
+
+	service := HoneyBadger.NewHoneyBadgerService(*iface, wireDuration, *filter, *snaplen, *logDir)
 	log.Println("HoneyBadger: comprehensive TCP injection attack detection.")
 	service.Start()
 
