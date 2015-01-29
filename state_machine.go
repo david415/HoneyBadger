@@ -1,5 +1,5 @@
 /*
- *    inquisition.go - HoneyBadger core library for detecting TCP attacks
+ *    state_machine.go - HoneyBadger core library for detecting TCP attacks
  *    such as handshake-hijack, segment veto and sloppy injection.
  *
  *    Copyright (C) 2014  David Stainton
