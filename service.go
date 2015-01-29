@@ -40,7 +40,7 @@ type HoneyBadgerService struct {
 	HoneyBadgerServiceOptions
 	stopChan      chan bool
 	rawPacketChan chan []byte
-	connTracker   *ConnTracker
+	connTracker   *ConnectionPool
 }
 
 // NewHoneyBadgerService creates and starts an instance of HoneyBadgerService
@@ -58,7 +58,7 @@ func NewHoneyBadgerService(iface string, wireDuration time.Duration, filter stri
 			Snaplen:      snaplen,
 			LogDir:       logDir,
 		},
-		connTracker:   NewConnTracker(),
+		connTracker:   NewConnectionPool(),
 		stopChan:      make(chan bool),
 		rawPacketChan: make(chan []byte),
 	}

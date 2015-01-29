@@ -84,7 +84,7 @@ func (r *Reassembly) String() string {
 // We implement a basic TCP finite state machine and track state in order to detect
 // hanshake hijack and other TCP attacks such as segment veto and stream injection.
 type Connection struct {
-	connTracker      *ConnTracker
+	connTracker      *ConnectionPool
 	state            uint8
 	clientState      uint8
 	serverState      uint8
@@ -102,7 +102,7 @@ type Connection struct {
 }
 
 // NewConnection returns a new Connection struct
-func NewConnection(connTracker *ConnTracker) *Connection {
+func NewConnection(connTracker *ConnectionPool) *Connection {
 	return &Connection{
 		connTracker:      connTracker,
 		state:            TCP_LISTEN,
@@ -481,77 +481,5 @@ func (c *Connection) receivePacket(p PacketManifest, flow TcpIpFlow) {
 		c.stateConnectionClosing(p, flow)
 	case TCP_CLOSED:
 		c.stateClosed(p, flow)
-	}
-}
-
-// ConnTracker is used to track TCP connections using
-// two maps. One for each flow... where a TcpIpFlow
-// is the key and *Connection is the value.
-type ConnTracker struct {
-	flowAMap map[TcpIpFlow]*Connection
-	flowBMap map[TcpIpFlow]*Connection
-}
-
-// NewConnTracker returns a new ConnTracker struct
-func NewConnTracker() *ConnTracker {
-	return &ConnTracker{
-		flowAMap: make(map[TcpIpFlow]*Connection),
-		flowBMap: make(map[TcpIpFlow]*Connection),
-	}
-}
-
-func (c *ConnTracker) Close() {
-	for k, v := range c.flowAMap {
-		log.Printf("ConnTracker: closing %s\n", k.String())
-		v.Close()
-	}
-}
-
-// Has returns true if the given TcpIpFlow is a key in our
-// either of flowAMap or flowBMap
-func (c *ConnTracker) Has(key TcpIpFlow) bool {
-	_, ok := c.flowAMap[key]
-	if !ok {
-		_, ok = c.flowBMap[key]
-	}
-	return ok
-}
-
-// Get returns the Connection struct pointer corresponding
-// to the given TcpIpFlow key in one of the flow maps
-// flowAMap or flowBMap
-func (c *ConnTracker) Get(key TcpIpFlow) (*Connection, error) {
-	val, ok := c.flowAMap[key]
-	if ok {
-		return val, nil
-	} else {
-		val, ok = c.flowBMap[key]
-		if !ok {
-			return nil, fmt.Errorf("failed to retreive flow\n")
-		}
-	}
-	return val, nil
-}
-
-// Put sets the connectionMap's key/value.. where a given TcpBidirectionalFlow
-// is the key and a Connection struct pointer is the value.
-func (c *ConnTracker) Put(key TcpIpFlow, conn *Connection) {
-	c.flowAMap[key] = conn
-	c.flowBMap[key.Reverse()] = conn
-}
-
-func (c *ConnTracker) Delete(key TcpIpFlow) {
-	_, ok := c.flowAMap[key]
-	if ok {
-		delete(c.flowAMap, key)
-		delete(c.flowBMap, key.Reverse())
-	} else {
-		_, ok = c.flowBMap[key]
-		if ok {
-			delete(c.flowBMap, key)
-			delete(c.flowAMap, key.Reverse())
-		} else {
-			panic(fmt.Sprintf("ConnTracker flow key %s not found\n", key.String()))
-		}
 	}
 }
