@@ -82,6 +82,7 @@ func NewPcapLogger(dir string, flow TcpIpFlow) *PcapLogger {
 	if err != nil {
 		panic(err)
 	}
+	//p.StartWriter()
 	return &p
 }
 
@@ -97,9 +98,9 @@ func (p *PcapLogger) WritePacket(packet []byte) {
 }
 
 func (p *PcapLogger) Close() {
-	close(p.writeChan)
+	//p.closeChan <- true
 	close(p.closeChan)
-	p.fileHandle.Close()
+	close(p.writeChan)
 }
 
 func (p *PcapLogger) StartWriter() {
@@ -110,9 +111,13 @@ func (p *PcapLogger) startWriter() {
 	for {
 		select {
 		case <-p.closeChan:
+			log.Print("pcapLogger closeChan message received...\n")
+			p.fileHandle.Close()
 			return
 		case packetBytes := <-p.writeChan:
+			log.Print("writing pcap packet\n")
 			p.WritePacket(packetBytes)
 		}
 	}
+	log.Print("EXITING pcapLogger writer goroutine")
 }

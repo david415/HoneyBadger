@@ -44,7 +44,7 @@ func main() {
 		log.Fatal("invalid wire timeout duration: ", *wireTimeout)
 	}
 
-	service := HoneyBadger.NewHoneyBadgerService(*iface, wireDuration, *filter, *snaplen, *logDir)
+	service := HoneyBadger.NewInquisitor(*iface, wireDuration, *filter, *snaplen, *logDir)
 	log.Println("HoneyBadger: comprehensive TCP injection attack detection.")
 	service.Start()
 

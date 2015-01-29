@@ -22,13 +22,17 @@ package HoneyBadger
 
 import (
 	"fmt"
-	"log"
+	"sync"
 )
 
 // ConnectionPool is used to track TCP connections.
+// This is inspired by gopacket.tcpassembly's StreamPool.
 type ConnectionPool struct {
+	sync.RWMutex
+
 	flowAMap map[TcpIpFlow]*Connection
 	flowBMap map[TcpIpFlow]*Connection
+	size     int
 }
 
 // NewConnectionPool returns a new ConnectionPool struct
@@ -39,16 +43,23 @@ func NewConnectionPool() *ConnectionPool {
 	}
 }
 
-func (c *ConnectionPool) Close() {
-	for k, v := range c.flowAMap {
-		log.Printf("ConnectionPool: closing %s\n", k.String())
-		v.Close()
+func (c *ConnectionPool) Connections() []*Connection {
+	c.RLock()
+	defer c.RUnlock()
+
+	conns := make([]*Connection, 0, len(c.flowAMap))
+	for _, conn := range c.flowAMap {
+		conns = append(conns, conn)
 	}
+	return conns
 }
 
 // Has returns true if the given TcpIpFlow is a key in our
 // either of flowAMap or flowBMap
 func (c *ConnectionPool) Has(key TcpIpFlow) bool {
+	c.RLock()
+	defer c.RUnlock()
+
 	_, ok := c.flowAMap[key]
 	if !ok {
 		_, ok = c.flowBMap[key]
@@ -60,6 +71,9 @@ func (c *ConnectionPool) Has(key TcpIpFlow) bool {
 // to the given TcpIpFlow key in one of the flow maps
 // flowAMap or flowBMap
 func (c *ConnectionPool) Get(key TcpIpFlow) (*Connection, error) {
+	c.RLock()
+	defer c.RUnlock()
+
 	val, ok := c.flowAMap[key]
 	if ok {
 		return val, nil
@@ -75,11 +89,17 @@ func (c *ConnectionPool) Get(key TcpIpFlow) (*Connection, error) {
 // Put sets the connectionMap's key/value.. where a given TcpBidirectionalFlow
 // is the key and a Connection struct pointer is the value.
 func (c *ConnectionPool) Put(key TcpIpFlow, conn *Connection) {
+	c.Lock()
+	defer c.Unlock()
+
 	c.flowAMap[key] = conn
 	c.flowBMap[key.Reverse()] = conn
 }
 
 func (c *ConnectionPool) Delete(key TcpIpFlow) {
+	c.Lock()
+	defer c.Unlock()
+
 	_, ok := c.flowAMap[key]
 	if ok {
 		delete(c.flowAMap, key)

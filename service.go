@@ -24,140 +24,157 @@ import (
 	"code.google.com/p/gopacket"
 	"code.google.com/p/gopacket/layers"
 	"code.google.com/p/gopacket/pcap"
+	"io"
 	"log"
 	"time"
 )
 
-type HoneyBadgerServiceOptions struct {
+const timeout time.Duration = time.Minute * 5
+
+type InquisitorOptions struct {
 	Interface    string
+	Filename     string
 	WireDuration time.Duration
 	Filter       string
 	LogDir       string
 	Snaplen      int
 }
 
-type HoneyBadgerService struct {
-	HoneyBadgerServiceOptions
-	stopChan      chan bool
-	rawPacketChan chan []byte
-	connTracker   *ConnectionPool
+type Inquisitor struct {
+	InquisitorOptions
+	stopChan chan bool
+	connPool *ConnectionPool
+	handle   *pcap.Handle
 }
 
-// NewHoneyBadgerService creates and starts an instance of HoneyBadgerService
-// which passively observes TCP connections and logs information about observed TCP attacks.
-// `iface` specifies the network interface to watch.
-// The `filter` arguement is a Berkeley Packet Filter string; observe packets that match this filter.
-// `snaplen` is the max packet size.
-// `logDir` is the directory to write logs to.
-func NewHoneyBadgerService(iface string, wireDuration time.Duration, filter string, snaplen int, logDir string) *HoneyBadgerService {
-	service := HoneyBadgerService{
-		HoneyBadgerServiceOptions: HoneyBadgerServiceOptions{
+func NewInquisitor(iface string, wireDuration time.Duration, filter string, snaplen int, logDir string) *Inquisitor {
+	i := Inquisitor{
+		InquisitorOptions: InquisitorOptions{
 			Interface:    iface,
 			WireDuration: wireDuration,
 			Filter:       filter,
 			Snaplen:      snaplen,
 			LogDir:       logDir,
 		},
-		connTracker:   NewConnectionPool(),
-		stopChan:      make(chan bool),
-		rawPacketChan: make(chan []byte),
+		connPool: NewConnectionPool(),
+		stopChan: make(chan bool),
 	}
-	return &service
+	return &i
 }
 
-// Start the HoneyBadgerService
-func (b *HoneyBadgerService) Start() {
-	b.StartReceivingTcp()
-	b.StartDecodingTcp()
+func (a *Inquisitor) CloseOlderThan(t time.Time) int {
+	closed := 0
+	conns := a.connPool.Connections()
+	for _, conn := range conns {
+		if conn.lastSeen.Before(t) {
+			conn.Close()
+			closed += 1
+		}
+	}
+	return closed
 }
 
-// Stop the HoneyBadgerService
-func (b *HoneyBadgerService) Stop() {
-	b.stopChan <- true
-	close(b.rawPacketChan)
-	b.connTracker.Close()
-	close(b.stopChan)
+func (i *Inquisitor) CloseAllConnections() {
+	conns := i.connPool.Connections()
+	for _, conn := range conns {
+		conn.Close()
+	}
 }
 
-// startDecodingTcp calls decodeTcp in a new goroutine...
-func (b *HoneyBadgerService) StartDecodingTcp() {
-	go b.decodeTcp()
+func (i *Inquisitor) Stop() {
+	i.stopChan <- true
+	i.handle.Close()
 }
 
-// decodeTcp receives packets from a channel and decodes them with gopacket,
-// creates a bidirectional flow identifier for each TCP packet and determines
-// which flow tracker instance is tracking that connection. If none is found then
-// a new flow tracker is created. Either way the parsed packet structs are passed
-// to the flow tracker for further processing.
-func (b *HoneyBadgerService) decodeTcp() {
+func (i *Inquisitor) Start() {
+	go i.receivePackets()
+}
+
+func (i *Inquisitor) receivePackets() {
+	var err error
 	var eth layers.Ethernet
 	var ip layers.IPv4
 	var tcp layers.TCP
 	var payload gopacket.Payload
-	var conn *Connection
-	var err error
 
 	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet, &eth, &ip, &tcp, &payload)
 	decoded := make([]gopacket.LayerType, 0, 4)
 
-	for packetBytes := range b.rawPacketChan {
-		newPayload := new(gopacket.Payload)
-		payload = *newPayload
-		err = parser.DecodeLayers(packetBytes, &decoded)
-		if err != nil {
-			continue
-		}
-		tcpipflow := NewTcpIpFlowFromFlows(ip.NetworkFlow(), tcp.TransportFlow())
-		packetManifest := PacketManifest{
-			IP:      ip,
-			TCP:     tcp,
-			Payload: payload,
-		}
-		if b.connTracker.Has(tcpipflow) {
-			conn, err = b.connTracker.Get(tcpipflow)
-			if err != nil {
-				panic(err) // wtf
-			}
-		} else {
-			conn = NewConnection(b.connTracker)
-			conn.PacketLogger = NewConnectionPacketLogger(b.LogDir, tcpipflow)
-			conn.AttackLogger = NewAttackJsonLogger(b.LogDir, tcpipflow)
-			b.connTracker.Put(tcpipflow, conn)
-		}
-
-		conn.receivePacket(packetManifest, tcpipflow)
-		conn.PacketLoggerWrite(packetBytes, tcpipflow)
+	if i.Filename != "" {
+		log.Printf("Reading from pcap dump %q", i.Filename)
+		i.handle, err = pcap.OpenOffline(i.Filename)
+	} else {
+		log.Printf("Starting capture on interface %q", i.Interface)
+		i.handle, err = pcap.OpenLive(i.Interface, int32(i.Snaplen), true, i.WireDuration)
 	}
-}
-
-func (b *HoneyBadgerService) StartReceivingTcp() {
-	go b.receiveTcp()
-}
-
-// startReceivingTcp is a generator function which returns two channels;
-// a stop channel and a packet channel. This function creates a goroutine
-// which continually reads packets off the network interface and sends them
-// to the packet channel.
-func (b *HoneyBadgerService) receiveTcp() {
-	//handle, err := pcap.OpenLive(iface, int32(snaplen), true, pcap.BlockForever)
-	handle, err := pcap.OpenLive(b.Interface, int32(b.Snaplen), true, b.WireDuration)
 	if err != nil {
-		log.Fatal("error opening pcap handle: ", err)
+		log.Fatal(err)
 	}
-	if err := handle.SetBPFFilter(b.Filter); err != nil {
-		log.Fatal("error setting BPF filter: ", err)
+	if err = i.handle.SetBPFFilter(i.Filter); err != nil {
+		log.Fatal(err)
 	}
 
+	// XXX
+	ticker := time.Tick(timeout)
+	var lastTimestamp time.Time
 	for {
 		select {
-		case <-b.stopChan:
+		case <-i.stopChan:
+			close(i.stopChan)
+			i.CloseAllConnections()
 			return
+		case <-ticker:
+			if !lastTimestamp.IsZero() {
+				closed := i.CloseOlderThan(lastTimestamp)
+				if closed != 0 {
+					log.Printf("timeout closed %d connections\n", closed)
+				}
+			}
 		default:
-			data, _, err := handle.ReadPacketData()
+			rawPacket, captureInfo, err := i.handle.ReadPacketData()
+			if err == io.EOF {
+				i.CloseAllConnections()
+				return
+			}
 			if err != nil {
 				continue
 			}
-			b.rawPacketChan <- data
+
+			newPayload := new(gopacket.Payload)
+			payload = *newPayload
+			err = parser.DecodeLayers(rawPacket, &decoded)
+			if err != nil {
+				continue
+			}
+
+			flow := NewTcpIpFlowFromFlows(ip.NetworkFlow(), tcp.TransportFlow())
+			packetManifest := PacketManifest{
+				IP:      ip,
+				TCP:     tcp,
+				Payload: payload,
+			}
+			lastTimestamp = captureInfo.Timestamp
+			i.InquestWithTimestamp(rawPacket, packetManifest, flow, captureInfo.Timestamp)
 		}
 	}
+}
+
+func (i *Inquisitor) InquestWithTimestamp(rawPacket []byte, packetManifest PacketManifest, flow TcpIpFlow, timestamp time.Time) {
+	var err error
+	var conn *Connection
+
+	if i.connPool.Has(flow) {
+		conn, err = i.connPool.Get(flow)
+		if err != nil {
+			panic(err) // wtf
+		}
+	} else {
+		conn = NewConnection(i.connPool)
+		conn.PacketLogger = NewConnectionPacketLogger(i.LogDir, flow)
+		conn.AttackLogger = NewAttackJsonLogger(i.LogDir, flow)
+		i.connPool.Put(flow, conn)
+	}
+
+	conn.receivePacket(packetManifest, flow, timestamp)
+	conn.PacketLoggerWrite(rawPacket, flow)
 }

@@ -5,6 +5,7 @@ import (
 	"code.google.com/p/gopacket/tcpassembly"
 	"net"
 	"testing"
+	"time"
 )
 
 func BenchmarkSingleOneWayDataTransfer(b *testing.B) {
@@ -36,7 +37,7 @@ func BenchmarkSingleOneWayDataTransfer(b *testing.B) {
 	conn.serverNextSeq = 3
 
 	for i := 0; i < b.N; i++ {
-		conn.receivePacket(p, flow)
+		conn.receivePacket(p, flow, time.Now())
 		if conn.state != TCP_DATA_TRANSFER {
 			panic("state transition error")
 		}
@@ -73,7 +74,7 @@ func BenchmarkSingleOneWayDataTransferOccasionalInjection(b *testing.B) {
 	conn.serverNextSeq = 3
 
 	for i := 0; i < b.N; i++ {
-		conn.receivePacket(p, flow)
+		conn.receivePacket(p, flow, time.Now())
 		if conn.state != TCP_DATA_TRANSFER {
 			panic("state transition error")
 		}
@@ -128,13 +129,13 @@ func BenchmarkSingleTwoWayDataTransfer(b *testing.B) {
 	conn.serverNextSeq = tcpassembly.Sequence(serverPacket.TCP.Seq)
 
 	for i := 0; i < b.N; i++ {
-		conn.receivePacket(serverPacket, serverFlow)
+		conn.receivePacket(serverPacket, serverFlow, time.Now())
 		if conn.state != TCP_DATA_TRANSFER {
 			panic("state transition error")
 		}
 		serverPacket.TCP.Seq += 11
 
-		conn.receivePacket(clientPacket, clientFlow)
+		conn.receivePacket(clientPacket, clientFlow, time.Now())
 		if conn.state != TCP_DATA_TRANSFER {
 			panic("state transition error")
 		}
@@ -185,7 +186,7 @@ func BenchmarkSingleTwoWayDataTransferWithOccasionalInjection(b *testing.B) {
 	conn.serverNextSeq = tcpassembly.Sequence(serverPacket.TCP.Seq)
 
 	for i := 0; i < b.N; i++ {
-		conn.receivePacket(serverPacket, serverFlow)
+		conn.receivePacket(serverPacket, serverFlow, time.Now())
 		if conn.state != TCP_DATA_TRANSFER {
 			panic("state transition error")
 		}
@@ -194,7 +195,7 @@ func BenchmarkSingleTwoWayDataTransferWithOccasionalInjection(b *testing.B) {
 		} else {
 			serverPacket.TCP.Seq += 10
 		}
-		conn.receivePacket(clientPacket, clientFlow)
+		conn.receivePacket(clientPacket, clientFlow, time.Now())
 		if conn.state != TCP_DATA_TRANSFER {
 			panic("state transition error")
 		}
