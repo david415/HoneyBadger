@@ -105,8 +105,8 @@ func main() {
 			continue
 		}
 
-		// after 10 packets from a given flow then inject packets into the stream
-		if trackedFlows[flow]%10 == 0 {
+		// after 3 packets from a given flow then inject packets into the stream
+		if trackedFlows[flow]%3 == 0 {
 			err = streamInjector.SetIPLayer(ip4)
 			if err != nil {
 				panic(err)
