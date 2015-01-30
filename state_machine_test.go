@@ -135,9 +135,14 @@ func TestTCPConnect(t *testing.T) {
 		TCP:     tcp,
 		Payload: []byte{},
 	}
-	flow := NewTcpIpFlowFromLayers(ip, tcp)
+	tcp.SetNetworkLayerForChecksum(&ip)
+	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
+	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
+	flow := NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
+	flowReversed := flow.Reverse()
+
 	conn.clientFlow = flow
-	conn.serverFlow = flow.Reverse()
+	conn.serverFlow = flowReversed
 	conn.receivePacket(p, flow, time.Now())
 	if conn.state != TCP_CONNECTION_REQUEST {
 		t.Error("invalid state transition\n")
@@ -165,10 +170,9 @@ func TestTCPConnect(t *testing.T) {
 		TCP:     tcp,
 		Payload: []byte{},
 	}
-	flow = NewTcpIpFlowFromLayers(ip, tcp)
-	conn.receivePacket(p, flow, time.Now())
+	conn.receivePacket(p, flowReversed, time.Now())
 	if conn.state != TCP_CONNECTION_ESTABLISHED {
-		t.Error("invalid state transition\n")
+		t.Errorf("invalid state transition: current state %d\n", conn.state)
 		t.Fail()
 	}
 
@@ -193,7 +197,6 @@ func TestTCPConnect(t *testing.T) {
 		TCP:     tcp,
 		Payload: []byte{},
 	}
-	flow = NewTcpIpFlowFromLayers(ip, tcp)
 	conn.receivePacket(p, flow, time.Now())
 	if conn.state != TCP_DATA_TRANSFER {
 		t.Error("invalid state transition\n")

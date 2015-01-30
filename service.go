@@ -29,7 +29,7 @@ import (
 	"time"
 )
 
-const timeout time.Duration = time.Minute * 5
+const timeout time.Duration = time.Minute * 5 // XXX timeout connections after 5 minutes
 
 type InquisitorOptions struct {
 	Interface    string
@@ -63,10 +63,11 @@ func NewInquisitor(iface string, wireDuration time.Duration, filter string, snap
 }
 
 func (a *Inquisitor) CloseOlderThan(t time.Time) int {
+	log.Printf("CloseOlderThan %s", t)
 	closed := 0
 	conns := a.connPool.Connections()
 	for _, conn := range conns {
-		if conn.lastSeen.Before(t) {
+		if conn.lastSeen.Equal(t) || conn.lastSeen.Before(t) {
 			conn.Close()
 			closed += 1
 		}
@@ -75,6 +76,7 @@ func (a *Inquisitor) CloseOlderThan(t time.Time) int {
 }
 
 func (i *Inquisitor) CloseAllConnections() {
+	log.Print("CloseAllConnections()\n")
 	conns := i.connPool.Connections()
 	for _, conn := range conns {
 		conn.Close()
@@ -124,7 +126,10 @@ func (i *Inquisitor) receivePackets() {
 			i.CloseAllConnections()
 			return
 		case <-ticker:
+			log.Print("stopChan received a value\n")
 			if !lastTimestamp.IsZero() {
+				log.Printf("lastTimestamp is %s\n", lastTimestamp)
+				lastTimestamp = lastTimestamp.Add(timeout)
 				closed := i.CloseOlderThan(lastTimestamp)
 				if closed != 0 {
 					log.Printf("timeout closed %d connections\n", closed)
@@ -133,7 +138,8 @@ func (i *Inquisitor) receivePackets() {
 		default:
 			rawPacket, captureInfo, err := i.handle.ReadPacketData()
 			if err == io.EOF {
-				i.CloseAllConnections()
+				log.Print("ReadPacketData got EOF\n")
+				i.Stop()
 				return
 			}
 			if err != nil {

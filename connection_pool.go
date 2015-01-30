@@ -48,10 +48,16 @@ func (c *ConnectionPool) Connections() []*Connection {
 	defer c.RUnlock()
 
 	conns := make([]*Connection, 0, len(c.flowAMap))
+	count := 0
 	for _, conn := range c.flowAMap {
 		conns = append(conns, conn)
+		count += 1
 	}
-	return conns
+	if count == 0 {
+		return nil
+	} else {
+		return conns
+	}
 }
 
 // Has returns true if the given TcpIpFlow is a key in our

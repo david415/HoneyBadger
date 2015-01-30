@@ -277,6 +277,7 @@ func (c *Connection) stateConnectionEstablished(p PacketManifest, flow TcpIpFlow
 		return
 	}
 	c.state = TCP_DATA_TRANSFER
+	log.Printf("connected %s\n", c.clientFlow.String())
 }
 
 // stateDataTransfer is called by our TCP FSM and processes packets
