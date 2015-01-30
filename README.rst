@@ -4,6 +4,10 @@ HoneyBadger
 ===========
 
 
+.. image:: http://honeybadger.readthedocs.org/en/latest/_images/honey_badger-white-sm-1.png
+
+|
+
 .. image:: https://drone.io/github.com/david415/HoneyBadger/status.png
   :target: https://drone.io/github.com/david415/HoneyBadger/latest
 
@@ -12,6 +16,7 @@ HoneyBadger
 
 .. image:: https://api.flattr.com/button/flattr-badge-large.png
   :target: https://flattr.com/submit/auto?user_id=david415&url=https%3A%2F%2Fgithub.com%2Fdavid415%2FHoneyBadger
+
 
 
 project goals
