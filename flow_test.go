@@ -45,6 +45,17 @@ func TestSequenceFromPacket(t *testing.T) {
 	}
 }
 
+func TestFlows(t *testing.T) {
+	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
+	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
+	tcpIpFlow := NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
+	ipFlow2, tcpFlow2 = tcpIpFlow.Flows()
+	if !ipFlow2.Equal(ipFlow) || !tcpFlow2.Equal(tcpFlow) {
+		t.Error("Flows method fail")
+		t.Fail()
+	}
+}
+
 func TestFlowString(t *testing.T) {
 	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
@@ -109,6 +120,12 @@ func TestNewTcpIpFlowFromPacket(t *testing.T) {
 	flow2 := NewTcpIpFlowFromFlows(ipFlow2, tcpFlow2)
 
 	if err != nil && !flow2.Equal(flow1) {
+		t.Error("NewTcpIpFlowFromPacket fail")
+		t.Fail()
+	}
+
+	flow1, err = NewTcpIpFlowFromPacket([]byte{1, 2, 3, 4, 5, 6, 7})
+	if err == nil || !flow1.Equal(TcpIpFlow{}) {
 		t.Error("NewTcpIpFlowFromPacket fail")
 		t.Fail()
 	}
