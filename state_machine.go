@@ -98,7 +98,7 @@ type Connection struct {
 	packetCount      uint64
 	ClientStreamRing *ring.Ring
 	ServerStreamRing *ring.Ring
-	PacketLogger     *ConnectionPacketLogger
+	PcapLogger       *PcapLogger
 	AttackLogger     AttackLogger
 }
 
@@ -113,26 +113,25 @@ func NewConnection(connPool *ConnectionPool) *Connection {
 }
 
 func (c *Connection) Close() {
-	fmt.Print("Close()\n")
 	if c.state == TCP_CLOSED {
-		log.Printf("already closed\n")
-		return
+		panic("already closed")
 	} else {
 		log.Printf("closing %s\n", c.clientFlow.String())
 		c.state = TCP_CLOSED
 	}
-	c.AttackLogger.Close()
-	if c.PacketLogger != nil {
-		c.PacketLogger.Close()
+
+	if c.PcapLogger != nil {
+		c.PcapLogger.Close()
 	}
+
 	if c.connPool != nil {
 		c.connPool.Delete(c.clientFlow)
 	}
 }
 
-// PacketLoggerWrite writes the specified raw packet to the raw packet log.
-func (c *Connection) PacketLoggerWrite(packetBytes []byte, flow TcpIpFlow) {
-	c.PacketLogger.WritePacket(packetBytes, flow)
+// PcapLoggerWrite writes the specified raw packet to the raw packet log.
+func (c *Connection) PcapLoggerWrite(packetBytes []byte, timestamp time.Time) {
+	c.PcapLogger.WritePacket(packetBytes, timestamp)
 }
 
 // detectHijack checks for duplicate SYN/ACK indicating handshake hijake
@@ -200,10 +199,9 @@ func (c *Connection) getOverlapBytes(head, tail *ring.Ring, start, end tcpassemb
 // detectInjection write an attack report if the given packet indicates a TCP injection attack
 // such as segment veto.
 func (c *Connection) detectInjection(p PacketManifest, flow TcpIpFlow) {
-	log.Print("detectInjection\n")
 	head, tail := c.getOverlapRings(p, flow)
 	if head == nil || tail == nil {
-		log.Printf("suspected injection on flow %s; zero ring elements with relevant info. no retrospective analysis possible\n", flow.String())
+		log.Printf("ring buffer not adequately filled. retrospective analysis impossible\n", flow.String())
 	}
 	start := tcpassembly.Sequence(p.TCP.Seq)
 	end := start.Add(len(p.Payload) - 1)
@@ -211,7 +209,7 @@ func (c *Connection) detectInjection(p PacketManifest, flow TcpIpFlow) {
 	if !bytes.Equal(overlapBytes, p.Payload[startOffset:endOffset]) {
 		c.AttackLogger.ReportInjectionAttack(time.Now(), flow, p.Payload, overlapBytes, start, end, startOffset, endOffset)
 	} else {
-		log.Print("not an attack attempt\n")
+		log.Print("not an attack attempt; a normal TCP retransmission.\n")
 	}
 }
 
@@ -384,7 +382,7 @@ func (c *Connection) stateFinWait2(p PacketManifest, flow TcpIpFlow, nextSeqPtr 
 
 func (c *Connection) stateCloseWait(p PacketManifest) {
 	flow := NewTcpIpFlowFromLayers(p.IP, p.TCP)
-	log.Printf("cstateCloseWait: flow %s\n", flow.String())
+	log.Printf("stateCloseWait: flow %s\n", flow.String())
 	log.Print("CLOSE-WAIT: invalid protocol state\n")
 }
 

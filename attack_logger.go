@@ -46,7 +46,6 @@ type AttackReport struct {
 type AttackLogger interface {
 	ReportHijackAttack(instant time.Time, flow TcpIpFlow)
 	ReportInjectionAttack(instant time.Time, flow TcpIpFlow, attemptPayload []byte, overlap []byte, start, end tcpassembly.Sequence, overlapStart, overlapEnd int)
-	Close()
 }
 
 type AttackJsonLogger struct {
@@ -60,10 +59,6 @@ func NewAttackJsonLogger(logDir string, flow TcpIpFlow) *AttackJsonLogger {
 		Flow:   flow,
 	}
 	return &a
-}
-
-func (a *AttackJsonLogger) Close() {
-	log.Print("AttackJsonLogger Close\n")
 }
 
 func (a *AttackJsonLogger) ReportHijackAttack(instant time.Time, flow TcpIpFlow) {

@@ -25,99 +25,47 @@ import (
 	"code.google.com/p/gopacket/layers"
 	"code.google.com/p/gopacket/pcapgo"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"time"
 )
 
-type ConnectionPacketLogger struct {
+type PcapLogger struct {
 	Dir    string
 	Flow   TcpIpFlow
-	Logger *PcapLogger
-}
-
-func NewConnectionPacketLogger(dir string, flow TcpIpFlow) *ConnectionPacketLogger {
-	return &ConnectionPacketLogger{
-		Logger: NewPcapLogger(dir, flow),
-		Flow:   flow,
-		Dir:    dir,
-	}
-}
-
-func (c *ConnectionPacketLogger) WritePacket(packet []byte, flow TcpIpFlow) {
-	c.Logger.WritePacket(packet)
-}
-
-func (c *ConnectionPacketLogger) Close() {
-	log.Print("ConnectionPacketLogger Close\n")
-	c.Logger.Close()
-}
-
-type PcapLogger struct {
-	dir        string
-	flow       TcpIpFlow
-	writer     *pcapgo.Writer
-	fileHandle *os.File
-	closeChan  chan bool
-	writeChan  chan []byte
+	writer *pcapgo.Writer
+	file   *os.File
 }
 
 func NewPcapLogger(dir string, flow TcpIpFlow) *PcapLogger {
 	var err error
 	p := PcapLogger{
-		dir:       dir,
-		flow:      flow,
-		closeChan: make(chan bool),
-		writeChan: make(chan []byte),
+		Flow: flow,
+		Dir:  dir,
 	}
-	p.fileHandle, err = os.OpenFile(filepath.Join(p.dir, fmt.Sprintf("%s.pcap", p.flow.String())), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	p.file, err = os.OpenFile(filepath.Join(p.Dir, fmt.Sprintf("%s.pcap", p.Flow.String())), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		panic(fmt.Sprintf("error opening file: %v", err))
 	}
-
-	p.writer = pcapgo.NewWriter(p.fileHandle)
-
+	p.writer = pcapgo.NewWriter(p.file)
 	err = p.writer.WriteFileHeader(65536, layers.LinkTypeEthernet) // XXX
 	if err != nil {
 		panic(err)
 	}
-	//p.StartWriter()
 	return &p
 }
 
-func (p *PcapLogger) WritePacket(packet []byte) {
+func (p *PcapLogger) WritePacket(rawPacket []byte, timestamp time.Time) {
 	err := p.writer.WritePacket(gopacket.CaptureInfo{
-		Timestamp:     time.Now(),
-		CaptureLength: len(packet),
-		Length:        len(packet), // XXX
-	}, packet)
+		Timestamp:     timestamp,
+		CaptureLength: len(rawPacket),
+		Length:        len(rawPacket),
+	}, rawPacket)
 	if err != nil {
 		panic(err)
 	}
 }
 
 func (p *PcapLogger) Close() {
-	//p.closeChan <- true
-	close(p.closeChan)
-	close(p.writeChan)
-}
-
-func (p *PcapLogger) StartWriter() {
-	go p.startWriter()
-}
-
-func (p *PcapLogger) startWriter() {
-	for {
-		select {
-		case <-p.closeChan:
-			log.Print("pcapLogger closeChan message received...\n")
-			p.fileHandle.Close()
-			return
-		case packetBytes := <-p.writeChan:
-			log.Print("writing pcap packet\n")
-			p.WritePacket(packetBytes)
-		}
-	}
-	log.Print("EXITING pcapLogger writer goroutine")
+	p.file.Close()
 }

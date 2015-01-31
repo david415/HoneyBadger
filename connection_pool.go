@@ -22,7 +22,9 @@ package HoneyBadger
 
 import (
 	"fmt"
+	"log"
 	"sync"
+	"time"
 )
 
 // ConnectionPool is used to track TCP connections.
@@ -43,10 +45,10 @@ func NewConnectionPool() *ConnectionPool {
 	}
 }
 
-func (c *ConnectionPool) Connections() []*Connection {
-	c.RLock()
-	defer c.RUnlock()
-
+// connectionsLocked returns a slice of Connection pointers.
+// connectionsLocked is meant to be used by some of the other
+// ConnectionPool methods once they've acquired a lock.
+func (c *ConnectionPool) connectionsLocked() []*Connection {
 	conns := make([]*Connection, 0, len(c.flowAMap))
 	count := 0
 	for _, conn := range c.flowAMap {
@@ -57,6 +59,46 @@ func (c *ConnectionPool) Connections() []*Connection {
 		return nil
 	} else {
 		return conns
+	}
+}
+
+// CloseOlderThan takes a Time argument and closes all the connections
+// that have not received packet since that specified time
+func (c *ConnectionPool) CloseOlderThan(t time.Time) int {
+	c.Lock()
+	defer c.Unlock()
+
+	log.Printf("CloseOlderThan %s", t)
+	closed := 0
+
+	conns := c.connectionsLocked()
+	if conns == nil {
+		return 0
+	}
+	for _, conn := range conns {
+		if conn.lastSeen.Equal(t) || conn.lastSeen.Before(t) {
+			conn.Close()
+			closed += 1
+		}
+	}
+	return closed
+}
+
+// CloseAllConnections closes all connections in the pool.
+// Note that honey badger is a passive observer of network events...
+// Closing a Connection means freeing up any resources that a
+// honey badger's Connection struct was using; namely goroutines and memory.
+func (c *ConnectionPool) CloseAllConnections() {
+	c.Lock()
+	defer c.Unlock()
+
+	log.Print("CloseAllConnections()\n")
+	conns := c.connectionsLocked()
+	if conns == nil {
+		return
+	}
+	for _, conn := range conns {
+		conn.Close()
 	}
 }
 
@@ -102,6 +144,7 @@ func (c *ConnectionPool) Put(key TcpIpFlow, conn *Connection) {
 	c.flowBMap[key.Reverse()] = conn
 }
 
+// Delete removes a connection from the pool
 func (c *ConnectionPool) Delete(key TcpIpFlow) {
 	c.Lock()
 	defer c.Unlock()

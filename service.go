@@ -62,30 +62,9 @@ func NewInquisitor(iface string, wireDuration time.Duration, filter string, snap
 	return &i
 }
 
-func (a *Inquisitor) CloseOlderThan(t time.Time) int {
-	log.Printf("CloseOlderThan %s", t)
-	closed := 0
-	conns := a.connPool.Connections()
-	for _, conn := range conns {
-		if conn.lastSeen.Equal(t) || conn.lastSeen.Before(t) {
-			conn.Close()
-			closed += 1
-		}
-	}
-	return closed
-}
-
-func (i *Inquisitor) CloseAllConnections() {
-	log.Print("CloseAllConnections()\n")
-	conns := i.connPool.Connections()
-	for _, conn := range conns {
-		conn.Close()
-	}
-}
-
 func (i *Inquisitor) Stop() {
-	i.stopChan <- true
 	i.handle.Close()
+	i.stopChan <- true
 }
 
 func (i *Inquisitor) Start() {
@@ -123,14 +102,14 @@ func (i *Inquisitor) receivePackets() {
 		select {
 		case <-i.stopChan:
 			close(i.stopChan)
-			i.CloseAllConnections()
+			i.connPool.CloseAllConnections()
 			return
 		case <-ticker:
 			log.Print("stopChan received a value\n")
 			if !lastTimestamp.IsZero() {
 				log.Printf("lastTimestamp is %s\n", lastTimestamp)
 				lastTimestamp = lastTimestamp.Add(timeout)
-				closed := i.CloseOlderThan(lastTimestamp)
+				closed := i.connPool.CloseOlderThan(lastTimestamp)
 				if closed != 0 {
 					log.Printf("timeout closed %d connections\n", closed)
 				}
@@ -176,11 +155,14 @@ func (i *Inquisitor) InquestWithTimestamp(rawPacket []byte, packetManifest Packe
 		}
 	} else {
 		conn = NewConnection(i.connPool)
-		conn.PacketLogger = NewConnectionPacketLogger(i.LogDir, flow)
+		conn.PcapLogger = NewPcapLogger(i.LogDir, flow)
 		conn.AttackLogger = NewAttackJsonLogger(i.LogDir, flow)
 		i.connPool.Put(flow, conn)
 	}
 
+	// PcapLoggerWrite must occur before receivePacket because the
+	// call to Connection's Close method closes the PcapLogger...
+	// RST and FIN packets can for instance cause a connection to be closed.
+	conn.PcapLoggerWrite(rawPacket, timestamp)
 	conn.receivePacket(packetManifest, flow, timestamp)
-	conn.PacketLoggerWrite(rawPacket, flow)
 }
