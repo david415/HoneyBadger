@@ -331,3 +331,34 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		t.Errorf("failed to close; current state == %d\n", conn.state)
 	}
 }
+
+func TestClosePanic(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("failed to panic")
+			t.Fail()
+		}
+	}()
+	conn := NewConnection(nil)
+	conn.Close()
+	conn.Close()
+}
+
+func TestRemoveFromPool(t *testing.T) {
+	connPool := NewConnectionPool()
+	conn := NewConnection(connPool)
+
+	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
+	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
+	flow := NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
+
+	conn.clientFlow = flow
+	connPool.Put(flow, conn)
+
+	conn.removeFromPool()
+
+	if len(connPool.connectionMap) != 0 {
+		t.Error("removeFromPool fail")
+		t.Fail()
+	}
+}
