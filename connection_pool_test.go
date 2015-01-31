@@ -3,8 +3,10 @@ package HoneyBadger
 import (
 	"code.google.com/p/gopacket"
 	"code.google.com/p/gopacket/layers"
+	//"log"
 	"net"
 	"testing"
+	"time"
 )
 
 func TestConnectionPool(t *testing.T) {
@@ -29,7 +31,7 @@ func TestConnectionPool(t *testing.T) {
 		t.Fail()
 	}
 
-	// more tests
+	// test CloseAllConnections
 	conn.clientFlow = flow
 	connPool.Put(flow, conn)
 
@@ -45,6 +47,60 @@ func TestConnectionPool(t *testing.T) {
 
 	if len(connPool.connectionMap) != 0 {
 		t.Errorf("failed to close all connections from pool: %d\n", len(connPool.connectionMap))
+		t.Fail()
+	}
+
+	// check nil case of connectionsLocked
+	connPool.Lock()
+	conns := connPool.connectionsLocked()
+	connPool.Unlock()
+	if len(conns) != 0 {
+		t.Error("connectionsLocked() should failed to return zero")
+		t.Fail()
+	}
+
+	// test zero case of CloseOlderThan
+	count := connPool.CloseOlderThan(time.Now())
+	if count != 0 {
+		t.Error("CloseOlderThan fail")
+		t.Fail()
+	}
+
+	// test close one case of CloseOlderThan
+	conn = NewConnection(connPool)
+	conn.clientFlow = flow
+	connPool.Put(flow, conn)
+	count = connPool.CloseOlderThan(time.Now())
+	if count != 1 {
+		t.Error("CloseOlderThan fail")
+		t.Fail()
+	}
+
+	timeDuration := time.Minute * 5
+	timestamp1 := time.Now()
+	timestamp2 := timestamp1.Add(timeDuration)
+
+	conn = NewConnection(connPool)
+	conn.clientFlow = flow
+	connPool.Put(flow, conn)
+	conn.state = TCP_DATA_TRANSFER
+	packetManifest := PacketManifest{}
+	conn.receivePacket(packetManifest, flow, timestamp1)
+	count = connPool.CloseOlderThan(time.Now())
+	if count != 1 {
+		t.Error("CloseOlderThan fail")
+		t.Fail()
+	}
+
+	conn = NewConnection(connPool)
+	conn.clientFlow = flow
+	connPool.Put(flow, conn)
+	conn.state = TCP_DATA_TRANSFER
+	packetManifest = PacketManifest{}
+	conn.receivePacket(packetManifest, flow, timestamp2)
+	count = connPool.CloseOlderThan(timestamp1)
+	if count != 0 {
+		t.Error("CloseOlderThan fail")
 		t.Fail()
 	}
 
