@@ -42,11 +42,16 @@ func TestConnectionPool(t *testing.T) {
 	conn.clientFlow = flow
 
 	connPool.Put(flow, conn)
-
-	connPool.CloseAllConnections()
-
-	if len(connPool.connectionMap) != 0 {
+	closed := connPool.CloseAllConnections()
+	if closed != 2 || len(connPool.connectionMap) != 0 {
 		t.Errorf("failed to close all connections from pool: %d\n", len(connPool.connectionMap))
+		t.Fail()
+	}
+
+	connPool = NewConnectionPool()
+	closed = connPool.CloseAllConnections()
+	if closed != 0 || len(connPool.connectionMap) != 0 {
+		t.Errorf("fail %d\n", closed)
 		t.Fail()
 	}
 
@@ -101,6 +106,22 @@ func TestConnectionPool(t *testing.T) {
 	count = connPool.CloseOlderThan(timestamp1)
 	if count != 0 {
 		t.Error("CloseOlderThan fail")
+		t.Fail()
+	}
+
+	if !connPool.Has(flow) {
+		t.Error("Has method fail")
+		t.Fail()
+	}
+
+	if !connPool.Has(flow.Reverse()) {
+		t.Error("Has method fail")
+		t.Fail()
+	}
+
+	closed = connPool.CloseAllConnections()
+	if connPool.Has(flow) {
+		t.Error("Has method fail")
 		t.Fail()
 	}
 

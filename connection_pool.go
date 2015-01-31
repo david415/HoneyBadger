@@ -76,6 +76,7 @@ func (c *ConnectionPool) CloseOlderThan(t time.Time) int {
 	for _, conn := range conns {
 		if conn.lastSeen.Equal(t) || conn.lastSeen.Before(t) {
 			conn.Close()
+			c.deleteWithoutLock(conn.clientFlow)
 			closed += 1
 		}
 	}
@@ -86,19 +87,23 @@ func (c *ConnectionPool) CloseOlderThan(t time.Time) int {
 // Note that honey badger is a passive observer of network events...
 // Closing a Connection means freeing up any resources that a
 // honey badger's Connection struct was using; namely goroutines and memory.
-func (c *ConnectionPool) CloseAllConnections() {
+func (c *ConnectionPool) CloseAllConnections() int {
 	c.Lock()
 	defer c.Unlock()
 
 	log.Print("CloseAllConnections()\n")
 	conns := c.connectionsLocked()
 	if conns == nil {
-		return
+		return 0
 	}
+
+	count := 0
 	for _, conn := range conns {
 		c.deleteWithoutLock(conn.clientFlow)
 		conn.Close()
+		count += 1
 	}
+	return count
 }
 
 // Has returns true if the given TcpIpFlow is a key in our
@@ -109,9 +114,6 @@ func (c *ConnectionPool) Has(flow TcpIpFlow) bool {
 
 	connectionHash := flow.ConnectionHash()
 	_, ok := c.connectionMap[connectionHash]
-	if !ok {
-		_, ok = c.connectionMap[connectionHash]
-	}
 	return ok
 }
 
@@ -127,12 +129,8 @@ func (c *ConnectionPool) Get(flow TcpIpFlow) (*Connection, error) {
 	if ok {
 		return val, nil
 	} else {
-		val, ok = c.connectionMap[connectionHash]
-		if !ok {
-			return nil, fmt.Errorf("failed to retreive flow\n")
-		}
+		return nil, fmt.Errorf("failed to retreive flow\n")
 	}
-	return val, nil
 }
 
 // Put sets the connectionMap's key/value.. where a given TcpBidirectionalFlow
