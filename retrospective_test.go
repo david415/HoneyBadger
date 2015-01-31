@@ -223,6 +223,64 @@ func TestGetRingSlice(t *testing.T) {
 	}
 }
 
+func TestGetRingSlicePanic1(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("failed to panic")
+			t.Fail()
+		}
+	}()
+	_ = getRingSlice(nil, nil, -1, -1)
+}
+
+func TestGetRingSlicePanic2(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("failed to panic")
+			t.Fail()
+		}
+	}()
+
+	head := ring.New(3)
+	head.Value = Reassembly{
+		Seq:   tcpassembly.Sequence(2),
+		Bytes: []byte{1, 2, 3, 4, 5},
+	}
+	_ = getRingSlice(head, nil, 6, 0)
+}
+
+func TestGetRingSlicePanic3(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("failed to panic")
+			t.Fail()
+		}
+	}()
+
+	tail := ring.New(3)
+	tail.Value = Reassembly{
+		Seq:   tcpassembly.Sequence(2),
+		Bytes: []byte{1, 2, 3, 4, 5},
+	}
+	_ = getRingSlice(nil, tail, 0, 6)
+}
+
+func TestGetRingSlicePanic4(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("failed to panic")
+			t.Fail()
+		}
+	}()
+
+	head := ring.New(3)
+	head.Value = Reassembly{
+		Seq:   tcpassembly.Sequence(2),
+		Bytes: []byte{1, 2, 3, 4, 5},
+	}
+	_ = getRingSlice(head, head, 0, 0)
+}
+
 func TestGetEndSequence(t *testing.T) {
 	var tail *ring.Ring = ring.New(10)
 	var end tcpassembly.Sequence
