@@ -49,8 +49,8 @@ func TestFlows(t *testing.T) {
 	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
 	tcpIpFlow := NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
-	ipFlow2, tcpFlow2 = tcpIpFlow.Flows()
-	if !ipFlow2.Equal(ipFlow) || !tcpFlow2.Equal(tcpFlow) {
+	ipFlow2, tcpFlow2 := tcpIpFlow.Flows()
+	if ipFlow2 != ipFlow || tcpFlow2 != tcpFlow {
 		t.Error("Flows method fail")
 		t.Fail()
 	}

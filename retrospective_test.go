@@ -834,3 +834,22 @@ func TestGetOverlapRings(t *testing.T) {
 	}
 	return
 }
+
+func TestGetHeadFromRing(t *testing.T) {
+	conn := NewConnection(nil)
+	for j := 5; j < 40; j += 5 {
+		conn.ClientStreamRing.Value = Reassembly{
+			Seq:   tcpassembly.Sequence(j),
+			Bytes: []byte{1, 2, 3, 4, 5},
+		}
+		conn.ClientStreamRing = conn.ClientStreamRing.Next()
+	}
+
+	// test a nil case of getHeadFromRing
+	segment := getHeadFromRing(conn.ClientStreamRing, 3, 4)
+	if segment != nil {
+		t.Error("getHeadFromRing fail")
+		t.Fail()
+	}
+
+}
