@@ -344,21 +344,150 @@ func TestClosePanic(t *testing.T) {
 	conn.Close()
 }
 
-func TestRemoveFromPool(t *testing.T) {
-	connPool := NewConnectionPool()
-	conn := NewConnection(connPool)
+func TestTCPHijack(t *testing.T) {
+	attackLogger := NewDummyAttackLogger()
+	conn := NewConnection(nil)
+	conn.AttackLogger = attackLogger
 
+	ip := layers.IPv4{
+		SrcIP:    net.IP{1, 2, 3, 4},
+		DstIP:    net.IP{2, 3, 4, 5},
+		Version:  4,
+		TTL:      64,
+		Protocol: layers.IPProtocolTCP,
+	}
+	tcp := layers.TCP{
+		Seq:     3,
+		SYN:     true,
+		ACK:     false,
+		SrcPort: 1,
+		DstPort: 2,
+	}
+	p := PacketManifest{
+		IP:      ip,
+		TCP:     tcp,
+		Payload: []byte{},
+	}
+	tcp.SetNetworkLayerForChecksum(&ip)
 	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
 	flow := NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
+	flowReversed := flow.Reverse()
 
 	conn.clientFlow = flow
-	connPool.Put(flow, conn)
-
-	conn.removeFromPool()
-
-	if len(connPool.connectionMap) != 0 {
-		t.Error("removeFromPool fail")
+	conn.serverFlow = flowReversed
+	conn.receivePacket(p, flow, time.Now())
+	if conn.state != TCP_CONNECTION_REQUEST {
+		t.Error("invalid state transition\n")
 		t.Fail()
 	}
+
+	// next state transition test
+	ip = layers.IPv4{
+		SrcIP:    net.IP{2, 3, 4, 5},
+		DstIP:    net.IP{1, 2, 3, 4},
+		Version:  4,
+		TTL:      64,
+		Protocol: layers.IPProtocolTCP,
+	}
+	tcp = layers.TCP{
+		Seq:     9,
+		SYN:     true,
+		ACK:     true,
+		Ack:     4,
+		SrcPort: 2,
+		DstPort: 1,
+	}
+	p = PacketManifest{
+		IP:      ip,
+		TCP:     tcp,
+		Payload: []byte{},
+	}
+	conn.receivePacket(p, flowReversed, time.Now())
+	if conn.state != TCP_CONNECTION_ESTABLISHED {
+		t.Errorf("invalid state transition: current state %d\n", conn.state)
+		t.Fail()
+	}
+
+	// test hijack in TCP_CONNECTION_ESTABLISHED state
+	ip = layers.IPv4{
+		SrcIP:    net.IP{2, 3, 4, 5},
+		DstIP:    net.IP{1, 2, 3, 4},
+		Version:  4,
+		TTL:      64,
+		Protocol: layers.IPProtocolTCP,
+	}
+	tcp = layers.TCP{
+		Seq:     6699,
+		SYN:     true,
+		ACK:     true,
+		Ack:     4,
+		SrcPort: 2,
+		DstPort: 1,
+	}
+	p = PacketManifest{
+		IP:      ip,
+		TCP:     tcp,
+		Payload: []byte{},
+	}
+	conn.receivePacket(p, flowReversed, time.Now())
+	if attackLogger.Count != 1 {
+		t.Error("hijack detection fail")
+		t.Fail()
+	}
+
+	// next state transition test
+	ip = layers.IPv4{
+		SrcIP:    net.IP{1, 2, 3, 4},
+		DstIP:    net.IP{2, 3, 4, 5},
+		Version:  4,
+		TTL:      64,
+		Protocol: layers.IPProtocolTCP,
+	}
+	tcp = layers.TCP{
+		Seq:     4,
+		SYN:     false,
+		ACK:     true,
+		Ack:     10,
+		SrcPort: 1,
+		DstPort: 2,
+	}
+	p = PacketManifest{
+		IP:      ip,
+		TCP:     tcp,
+		Payload: []byte{},
+	}
+	conn.receivePacket(p, flow, time.Now())
+	if conn.state != TCP_DATA_TRANSFER {
+		t.Error("invalid state transition\n")
+		t.Fail()
+	}
+
+	// test hijack in TCP_DATA_TRANSFER state
+	ip = layers.IPv4{
+		SrcIP:    net.IP{2, 3, 4, 5},
+		DstIP:    net.IP{1, 2, 3, 4},
+		Version:  4,
+		TTL:      64,
+		Protocol: layers.IPProtocolTCP,
+	}
+	tcp = layers.TCP{
+		Seq:     7711,
+		SYN:     true,
+		ACK:     true,
+		Ack:     4,
+		SrcPort: 2,
+		DstPort: 1,
+	}
+	p = PacketManifest{
+		IP:      ip,
+		TCP:     tcp,
+		Payload: []byte{},
+	}
+	conn.receivePacket(p, flowReversed, time.Now())
+	if attackLogger.Count != 2 {
+		t.Error("hijack detection fail")
+		t.Fail()
+	}
+
 }
