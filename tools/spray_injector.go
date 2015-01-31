@@ -106,13 +106,13 @@ func main() {
 		}
 
 		// after 3 packets from a given flow then inject packets into the stream
-		if trackedFlows[flow]%3 == 0 {
+		if trackedFlows[flow]%10 == 0 {
 			err = streamInjector.SetIPLayer(ip4)
 			if err != nil {
 				panic(err)
 			}
 			streamInjector.SetTCPLayer(tcp)
-			err = streamInjector.SpraySequenceRangePackets(tcp.Seq, 100)
+			err = streamInjector.SpraySequenceRangePackets(tcp.Seq, 20)
 			if err != nil {
 				panic(err)
 			}
