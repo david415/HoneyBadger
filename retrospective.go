@@ -63,9 +63,6 @@ func getHeadFromRing(ringPtr *ring.Ring, start, end tcpassembly.Sequence) *ring.
 			} else if diff > 0 {
 				head = current
 				break
-			} else {
-				head = nil
-				break
 			}
 		}
 		prev = current
