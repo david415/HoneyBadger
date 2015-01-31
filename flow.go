@@ -40,6 +40,15 @@ func SequenceFromPacket(packet []byte) (uint32, error) {
 	return tcp.Seq, nil
 }
 
+// ConnectionHash struct value will be used as the result of
+// gopacket's variant of Fowler-Noll-Vo hashing
+// which guarantees collisions of a flow's reverse:
+// A->B == B->A
+// https://code.google.com/p/gopacket/source/browse/flows.go#
+type ConnectionHash struct {
+	IpFlowHash, TcpFlowHash uint64
+}
+
 // TcpIpFlow is used for tracking unidirectional TCP flows
 type TcpIpFlow struct {
 	ipFlow  gopacket.Flow
@@ -60,6 +69,13 @@ func NewTcpIpFlowFromFlows(ipFlow gopacket.Flow, tcpFlow gopacket.Flow) TcpIpFlo
 	return TcpIpFlow{
 		ipFlow:  ipFlow,
 		tcpFlow: tcpFlow,
+	}
+}
+
+func (t *TcpIpFlow) ConnectionHash() ConnectionHash {
+	return ConnectionHash{
+		IpFlowHash:  t.ipFlow.FastHash(),
+		TcpFlowHash: t.tcpFlow.FastHash(),
 	}
 }
 

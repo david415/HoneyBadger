@@ -32,16 +32,14 @@ import (
 type ConnectionPool struct {
 	sync.RWMutex
 
-	flowAMap map[TcpIpFlow]*Connection
-	flowBMap map[TcpIpFlow]*Connection
-	size     int
+	connectionMap map[ConnectionHash]*Connection
+	size          int
 }
 
 // NewConnectionPool returns a new ConnectionPool struct
 func NewConnectionPool() *ConnectionPool {
 	return &ConnectionPool{
-		flowAMap: make(map[TcpIpFlow]*Connection),
-		flowBMap: make(map[TcpIpFlow]*Connection),
+		connectionMap: make(map[ConnectionHash]*Connection),
 	}
 }
 
@@ -49,9 +47,9 @@ func NewConnectionPool() *ConnectionPool {
 // connectionsLocked is meant to be used by some of the other
 // ConnectionPool methods once they've acquired a lock.
 func (c *ConnectionPool) connectionsLocked() []*Connection {
-	conns := make([]*Connection, 0, len(c.flowAMap))
+	conns := make([]*Connection, 0, len(c.connectionMap))
 	count := 0
-	for _, conn := range c.flowAMap {
+	for _, conn := range c.connectionMap {
 		conns = append(conns, conn)
 		count += 1
 	}
@@ -104,13 +102,14 @@ func (c *ConnectionPool) CloseAllConnections() {
 
 // Has returns true if the given TcpIpFlow is a key in our
 // either of flowAMap or flowBMap
-func (c *ConnectionPool) Has(key TcpIpFlow) bool {
+func (c *ConnectionPool) Has(flow TcpIpFlow) bool {
 	c.RLock()
 	defer c.RUnlock()
 
-	_, ok := c.flowAMap[key]
+	connectionHash := flow.ConnectionHash()
+	_, ok := c.connectionMap[connectionHash]
 	if !ok {
-		_, ok = c.flowBMap[key]
+		_, ok = c.connectionMap[connectionHash]
 	}
 	return ok
 }
@@ -118,15 +117,16 @@ func (c *ConnectionPool) Has(key TcpIpFlow) bool {
 // Get returns the Connection struct pointer corresponding
 // to the given TcpIpFlow key in one of the flow maps
 // flowAMap or flowBMap
-func (c *ConnectionPool) Get(key TcpIpFlow) (*Connection, error) {
+func (c *ConnectionPool) Get(flow TcpIpFlow) (*Connection, error) {
 	c.RLock()
 	defer c.RUnlock()
 
-	val, ok := c.flowAMap[key]
+	connectionHash := flow.ConnectionHash()
+	val, ok := c.connectionMap[connectionHash]
 	if ok {
 		return val, nil
 	} else {
-		val, ok = c.flowBMap[key]
+		val, ok = c.connectionMap[connectionHash]
 		if !ok {
 			return nil, fmt.Errorf("failed to retreive flow\n")
 		}
@@ -136,30 +136,24 @@ func (c *ConnectionPool) Get(key TcpIpFlow) (*Connection, error) {
 
 // Put sets the connectionMap's key/value.. where a given TcpBidirectionalFlow
 // is the key and a Connection struct pointer is the value.
-func (c *ConnectionPool) Put(key TcpIpFlow, conn *Connection) {
+func (c *ConnectionPool) Put(flow TcpIpFlow, conn *Connection) {
 	c.Lock()
 	defer c.Unlock()
 
-	c.flowAMap[key] = conn
-	c.flowBMap[key.Reverse()] = conn
+	connectionHash := flow.ConnectionHash()
+	c.connectionMap[connectionHash] = conn
 }
 
 // Delete removes a connection from the pool
-func (c *ConnectionPool) Delete(key TcpIpFlow) {
+func (c *ConnectionPool) Delete(flow TcpIpFlow) {
 	c.Lock()
 	defer c.Unlock()
 
-	_, ok := c.flowAMap[key]
+	connectionHash := flow.ConnectionHash()
+	_, ok := c.connectionMap[connectionHash]
 	if ok {
-		delete(c.flowAMap, key)
-		delete(c.flowBMap, key.Reverse())
+		delete(c.connectionMap, connectionHash)
 	} else {
-		_, ok = c.flowBMap[key]
-		if ok {
-			delete(c.flowBMap, key)
-			delete(c.flowAMap, key.Reverse())
-		} else {
-			panic(fmt.Sprintf("ConnectionPool flow key %s not found\n", key.String()))
-		}
+		panic("ConnectionPool.Delete: connectionHash not found\n")
 	}
 }
