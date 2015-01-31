@@ -125,4 +125,43 @@ func TestConnectionPool(t *testing.T) {
 		t.Fail()
 	}
 
+	conn = NewConnection(connPool)
+	conn2, err := connPool.Get(flow)
+	if err == nil {
+		t.Error("Get method fail")
+		t.Fail()
+	}
+
+	conn.clientFlow = flow
+	connPool.Put(flow, conn)
+	packetManifest = PacketManifest{}
+	conn.receivePacket(packetManifest, flow, timestamp2)
+	conn2, err = connPool.Get(flow)
+	if conn2 == nil && err != nil {
+		t.Error("Get method fail")
+		t.Fail()
+	}
+
+}
+
+func TestConnectionPoolDeletePanic(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("failed to panic")
+			t.Fail()
+		}
+	}()
+
+	connPool := NewConnectionPool()
+	conn := NewConnection(connPool)
+	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
+	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
+	flow := NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
+	conn.clientFlow = flow
+	connPool.Put(flow, conn)
+	conn.state = TCP_DATA_TRANSFER
+	packetManifest := PacketManifest{}
+	conn.receivePacket(packetManifest, flow, time.Now())
+	connPool.Delete(flow)
+	connPool.Delete(flow)
 }

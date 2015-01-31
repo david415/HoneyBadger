@@ -257,12 +257,18 @@ func TestGetRingSlicePanic3(t *testing.T) {
 		}
 	}()
 
+	head := ring.New(3)
+	head.Value = Reassembly{
+		Seq:   tcpassembly.Sequence(2),
+		Bytes: []byte{1, 2, 3, 4, 5},
+	}
+
 	tail := ring.New(3)
 	tail.Value = Reassembly{
 		Seq:   tcpassembly.Sequence(2),
 		Bytes: []byte{1, 2, 3, 4, 5},
 	}
-	_ = getRingSlice(nil, tail, 0, 6)
+	_ = getRingSlice(head, tail, 0, 6)
 }
 
 func TestGetRingSlicePanic4(t *testing.T) {
