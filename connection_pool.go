@@ -96,6 +96,7 @@ func (c *ConnectionPool) CloseAllConnections() {
 		return
 	}
 	for _, conn := range conns {
+		c.deleteWithoutLock(conn.clientFlow)
 		conn.Close()
 	}
 }
@@ -148,7 +149,10 @@ func (c *ConnectionPool) Put(flow TcpIpFlow, conn *Connection) {
 func (c *ConnectionPool) Delete(flow TcpIpFlow) {
 	c.Lock()
 	defer c.Unlock()
+	c.deleteWithoutLock(flow)
+}
 
+func (c *ConnectionPool) deleteWithoutLock(flow TcpIpFlow) {
 	connectionHash := flow.ConnectionHash()
 	_, ok := c.connectionMap[connectionHash]
 	if ok {

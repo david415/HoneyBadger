@@ -121,9 +121,13 @@ func (c *Connection) Close() {
 	}
 
 	if c.PcapLogger != nil {
+		log.Print("closing pcap logger\n")
 		c.PcapLogger.Close()
 	}
 
+}
+
+func (c *Connection) removeFromPool() {
 	if c.connPool != nil {
 		c.connPool.Delete(c.clientFlow)
 	}
@@ -312,6 +316,7 @@ func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
 		}
 		if p.TCP.RST {
 			log.Print("got RST!\n")
+			c.removeFromPool()
 			c.Close()
 			return
 		}
@@ -401,7 +406,7 @@ func (c *Connection) stateLastAck(p PacketManifest, flow TcpIpFlow, nextSeqPtr *
 				log.Print("LAST-ACK: out of order ACK packet received. seq %d != nextAck %d\n", p.TCP.Ack, *nextAckPtr)
 				return
 			}
-			// XXX
+			c.removeFromPool()
 			c.Close()
 		} else {
 			log.Print("LAST-ACK: protocol anamoly\n")
