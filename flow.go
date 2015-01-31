@@ -103,9 +103,7 @@ func NewTcpIpFlowFromPacket(packet []byte) (TcpIpFlow, error) {
 	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeIPv4, &ip, &tcp)
 	err := parser.DecodeLayers(packet, &decoded)
 	if err != nil {
-		return TcpIpFlow{
-			ipFlow: ip.NetworkFlow(),
-		}, err
+		return TcpIpFlow{}, err
 	}
 	return TcpIpFlow{
 		ipFlow:  ip.NetworkFlow(),

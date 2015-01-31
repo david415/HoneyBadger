@@ -33,12 +33,9 @@ func TestSequenceFromPacket(t *testing.T) {
 	gopacket.SerializeLayers(buf, opts, &ip, &tcp)
 	packetData := buf.Bytes()
 	seq, err := SequenceFromPacket(packetData)
-	if err == nil && seq == testSeq {
-		return
-	} else {
+	if err != nil && seq != testSeq {
 		t.Error("SequenceFromPacket failed")
 		t.Fail()
-		return
 	}
 
 	seq, err = SequenceFromPacket([]byte{1, 2, 3})
@@ -78,6 +75,41 @@ func TestFlowEqual(t *testing.T) {
 
 	if flow1.Equal(flow3) {
 		t.Error("TcpIpFlow.Equal fail")
+		t.Fail()
+	}
+}
+
+func TestNewTcpIpFlowFromPacket(t *testing.T) {
+	buf := gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{
+		FixLengths:       true,
+		ComputeChecksums: true,
+	}
+	ip := layers.IPv4{
+		SrcIP:    net.IP{1, 2, 3, 4},
+		DstIP:    net.IP{2, 3, 4, 5},
+		Version:  4,
+		TTL:      64,
+		Protocol: layers.IPProtocolTCP,
+	}
+	tcp := layers.TCP{
+		SYN:       true,
+		SrcPort:   1,
+		DstPort:   2,
+		Seq:       123,
+		BaseLayer: layers.BaseLayer{Payload: []byte{1, 2, 3}},
+	}
+	tcp.SetNetworkLayerForChecksum(&ip)
+	gopacket.SerializeLayers(buf, opts, &ip, &tcp)
+	packetData := buf.Bytes()
+	flow1, err := NewTcpIpFlowFromPacket(packetData)
+
+	ipFlow2, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
+	tcpFlow2, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
+	flow2 := NewTcpIpFlowFromFlows(ipFlow2, tcpFlow2)
+
+	if err != nil && !flow2.Equal(flow1) {
+		t.Error("NewTcpIpFlowFromPacket fail")
 		t.Fail()
 	}
 }
