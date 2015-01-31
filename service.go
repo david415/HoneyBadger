@@ -31,6 +31,9 @@ import (
 
 const timeout time.Duration = time.Minute * 5 // XXX timeout connections after 5 minutes
 
+// InquisitorOptions are user set parameters for specifying the
+// details of how to proceed with honey_bager's TCP connection monitoring.
+// More parameters should soon be added here!
 type InquisitorOptions struct {
 	Interface    string
 	Filename     string
@@ -40,6 +43,8 @@ type InquisitorOptions struct {
 	Snaplen      int
 }
 
+// Inquisitor sets up the connection pool and is an abstraction layer for dealing
+// with incoming packets weather they be from a pcap file or directly off the wire.
 type Inquisitor struct {
 	InquisitorOptions
 	stopChan chan bool
@@ -47,6 +52,7 @@ type Inquisitor struct {
 	handle   *pcap.Handle
 }
 
+// NewInquisitor creates a new Inquisitor struct
 func NewInquisitor(iface string, wireDuration time.Duration, filter string, snaplen int, logDir string) *Inquisitor {
 	i := Inquisitor{
 		InquisitorOptions: InquisitorOptions{
@@ -62,11 +68,13 @@ func NewInquisitor(iface string, wireDuration time.Duration, filter string, snap
 	return &i
 }
 
+// Stop... stops the TCP attack inquisition!
 func (i *Inquisitor) Stop() {
 	i.handle.Close()
 	i.stopChan <- true
 }
 
+// Start... starts the TCP attack inquisition!
 func (i *Inquisitor) Start() {
 	go i.receivePackets()
 }
@@ -144,6 +152,8 @@ func (i *Inquisitor) receivePackets() {
 	}
 }
 
+// InquestWithTimestamp is responsible for digesting packets that we receive from a packet source.
+// It uses the ConnectionPool to track connections.
 func (i *Inquisitor) InquestWithTimestamp(rawPacket []byte, packetManifest PacketManifest, flow TcpIpFlow, timestamp time.Time) {
 	var err error
 	var conn *Connection

@@ -27,6 +27,8 @@ import (
 	"log"
 )
 
+// getHeadFromRing returns a pointer to the oldest ring element that
+// contains the beginning of our sequence range (start - end)
 func getHeadFromRing(ringPtr *ring.Ring, start, end tcpassembly.Sequence) *ring.Ring {
 	var head, prev *ring.Ring
 	current := ringPtr.Prev()
@@ -72,6 +74,8 @@ func getHeadFromRing(ringPtr *ring.Ring, start, end tcpassembly.Sequence) *ring.
 	return head
 }
 
+// getHeadFromRing returns the oldest ring element that contains the beginning of
+// our sequence range (start - end)
 func getTailFromRing(head *ring.Ring, end tcpassembly.Sequence) *ring.Ring {
 	var current, prev, tail *ring.Ring
 	current = head
@@ -92,6 +96,8 @@ func getTailFromRing(head *ring.Ring, end tcpassembly.Sequence) *ring.Ring {
 	return tail
 }
 
+// getStartSequence receives a ring pointer and a starting sequence number
+// and returns the closest available starting sequence number that is available from the ring.
 func getStartSequence(head *ring.Ring, start tcpassembly.Sequence) tcpassembly.Sequence {
 	var startSeq tcpassembly.Sequence
 	diff := head.Value.(Reassembly).Seq.Difference(start)
@@ -103,6 +109,8 @@ func getStartSequence(head *ring.Ring, start tcpassembly.Sequence) tcpassembly.S
 	return startSeq
 }
 
+// getEndSequence receives a ring pointer and an ending sequence number
+// and returns the closest available ending sequence number that is available from the ring.
 func getEndSequence(tail *ring.Ring, end tcpassembly.Sequence) tcpassembly.Sequence {
 	var seqEnd tcpassembly.Sequence
 	diff := tail.Value.(Reassembly).Seq.Add(len(tail.Value.(Reassembly).Bytes) - 1).Difference(end)
@@ -116,7 +124,8 @@ func getEndSequence(tail *ring.Ring, end tcpassembly.Sequence) tcpassembly.Seque
 
 // getRingSlice returns a byte slice from the ring buffer given the head
 // and tail of the ring segment. sliceStart indicates the zero-indexed byte offset into
-// the head that we should copy from; sliceEnd indicates the number of bytes into tail.
+// the head that we should copy from; sliceEnd indicates the number of bytes from the tail
+// that we should skip.
 func getRingSlice(head, tail *ring.Ring, sliceStart, sliceEnd int) []byte {
 	var overlapBytes []byte
 	if sliceStart < 0 || sliceEnd < 0 {
@@ -143,25 +152,36 @@ func getRingSlice(head, tail *ring.Ring, sliceStart, sliceEnd int) []byte {
 	return overlapBytes
 }
 
+// getHeadRingOffset receives a given ring element and starting sequence number
+// and returns the offset into the ring element where the start sequence is found
 func getHeadRingOffset(head *ring.Ring, start tcpassembly.Sequence) int {
 	return head.Value.(Reassembly).Seq.Difference(start)
 }
 
+// getStartOverlapSequenceAndOffset takes a ring element and start sequence and
+// returns the closest sequence number available in the element... and the offset
+// from the beginning of that element
 func getStartOverlapSequenceAndOffset(head *ring.Ring, start tcpassembly.Sequence) (tcpassembly.Sequence, int) {
 	seqStart := getStartSequence(head, start)
 	offset := int(start.Difference(seqStart))
 	return seqStart, offset
 }
 
+// getRingSegmentLastSequence returns the last sequence number represented by
+// a given ring elements stream segment
 func getRingSegmentLastSequence(segment *ring.Ring) tcpassembly.Sequence {
 	return segment.Value.(Reassembly).Seq.Add(len(segment.Value.(Reassembly).Bytes) - 1)
 }
 
+// getTailRingOffset returns the number of bytes the from end of the
+// ring element's stream segment that the end sequence is found
 func getTailRingOffset(tail *ring.Ring, end tcpassembly.Sequence) int {
 	tailEndSequence := getRingSegmentLastSequence(tail)
 	return end.Difference(tailEndSequence)
 }
 
+// getEndOverlapSequenceAndOffset receives a ring element and end sequence.
+// It returns the last sequence number represented by that ring element and the offset from the end.
 func getEndOverlapSequenceAndOffset(tail *ring.Ring, end tcpassembly.Sequence) (tcpassembly.Sequence, int) {
 	seqEnd := getEndSequence(tail, end)
 	offset := int(seqEnd.Difference(end))

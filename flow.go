@@ -72,6 +72,11 @@ func NewTcpIpFlowFromFlows(ipFlow gopacket.Flow, tcpFlow gopacket.Flow) TcpIpFlo
 	}
 }
 
+// ConnectionHash returns a hash of the flow A->B such
+// that it is guaranteed to collide with flow B->A
+//
+// XXX Is it possible to make this function more efficient
+// by computing a single hash value instead of two?
 func (t *TcpIpFlow) ConnectionHash() ConnectionHash {
 	return ConnectionHash{
 		IpFlowHash:  t.ipFlow.FastHash(),
@@ -79,6 +84,7 @@ func (t *TcpIpFlow) ConnectionHash() ConnectionHash {
 	}
 }
 
+// String returns the string representation of a TcpIpFlow
 func (t *TcpIpFlow) String() string {
 	return fmt.Sprintf("%s:%s-%s:%s", t.ipFlow.Src().String(), t.tcpFlow.Src().String(), t.ipFlow.Dst().String(), t.tcpFlow.Dst().String())
 }

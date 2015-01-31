@@ -76,6 +76,7 @@ type Reassembly struct {
 	Bytes []byte
 }
 
+// String returns a string representation of Reassembly
 func (r *Reassembly) String() string {
 	return fmt.Sprintf("Reassembly: Seq %d Bytes len %d data %s\n", r.Seq, len(r.Bytes), string(r.Bytes))
 }
@@ -112,6 +113,8 @@ func NewConnection(connPool *ConnectionPool) *Connection {
 	}
 }
 
+// Close set's the tcp stated to closed
+// and closes the PcapLogger
 func (c *Connection) Close() {
 	if c.state == TCP_CLOSED {
 		panic("already closed")
@@ -127,6 +130,7 @@ func (c *Connection) Close() {
 
 }
 
+// removeFromPool removes the connection from the pool
 func (c *Connection) removeFromPool() {
 	if c.connPool != nil {
 		c.connPool.Delete(c.clientFlow)
@@ -385,20 +389,24 @@ func (c *Connection) stateFinWait2(p PacketManifest, flow TcpIpFlow, nextSeqPtr 
 	}
 }
 
+// stateCloseWait represents the TCP FSM's CLOSE-WAIT state
 func (c *Connection) stateCloseWait(p PacketManifest) {
 	flow := NewTcpIpFlowFromLayers(p.IP, p.TCP)
 	log.Printf("stateCloseWait: flow %s\n", flow.String())
 	log.Print("CLOSE-WAIT: invalid protocol state\n")
 }
 
+// stateTimeWait represents the TCP FSM's CLOSE-WAIT state
 func (c *Connection) stateTimeWait(p PacketManifest) {
 	log.Print("TIME-WAIT: invalid protocol state\n")
 }
 
+// stateClosing represents the TCP FSM's CLOSING state
 func (c *Connection) stateClosing(p PacketManifest) {
 	log.Print("CLOSING: invalid protocol state\n")
 }
 
+// stateLastAck represents the TCP FSM's LAST-ACK state
 func (c *Connection) stateLastAck(p PacketManifest, flow TcpIpFlow, nextSeqPtr *tcpassembly.Sequence, nextAckPtr *tcpassembly.Sequence, statePtr *uint8) {
 	if tcpassembly.Sequence(p.TCP.Seq).Difference(*nextSeqPtr) == 0 { //XXX
 		if p.TCP.ACK && (!p.TCP.FIN && !p.TCP.SYN) {
@@ -417,7 +425,7 @@ func (c *Connection) stateLastAck(p PacketManifest, flow TcpIpFlow, nextSeqPtr *
 	}
 }
 
-// stateClosing handles all the closing states until the closed state has been reached.
+// stateConnectionClosing handles all the closing states until the closed state has been reached.
 func (c *Connection) stateConnectionClosing(p PacketManifest, flow TcpIpFlow) {
 	var nextSeqPtr *tcpassembly.Sequence
 	var nextAckPtr *tcpassembly.Sequence
@@ -463,6 +471,7 @@ func (c *Connection) stateConnectionClosing(p PacketManifest, flow TcpIpFlow) {
 	}
 }
 
+// stateCloseWait represents the TCP FSM's CLOSE-WAIT state
 func (c *Connection) stateClosed(p PacketManifest, flow TcpIpFlow) {
 	log.Print("state closed: it is a protocol anomaly to receive packets on a closed connection.\n")
 }

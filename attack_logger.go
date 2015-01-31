@@ -31,6 +31,7 @@ import (
 	"time"
 )
 
+// AttackReport contains information about the TCP injection attack
 type AttackReport struct {
 	Type          string
 	Flow          string
@@ -43,16 +44,22 @@ type AttackReport struct {
 	OverlapEnd    int
 }
 
+// The AttackLogger interface is used to describe TCP injection attack loggers.
+// For the time being I have specified only two methods.. one for handshake hijack attacks
+// and the other for injection attacks. However if an attack logger's implementation requires
+// more methods then we should add those. Perhaps a Close() method will be required in the future for instance.
 type AttackLogger interface {
 	ReportHijackAttack(instant time.Time, flow TcpIpFlow)
 	ReportInjectionAttack(instant time.Time, flow TcpIpFlow, attemptPayload []byte, overlap []byte, start, end tcpassembly.Sequence, overlapStart, overlapEnd int)
 }
 
+// AttackJsonLogger is responsible for recording all attack reports as JSON objects in a file.
 type AttackJsonLogger struct {
 	LogDir string
 	Flow   TcpIpFlow
 }
 
+// NewAttackJsonLogger returns a pointer to a AttackJsonLogger struct
 func NewAttackJsonLogger(logDir string, flow TcpIpFlow) *AttackJsonLogger {
 	a := AttackJsonLogger{
 		LogDir: logDir,
@@ -61,6 +68,7 @@ func NewAttackJsonLogger(logDir string, flow TcpIpFlow) *AttackJsonLogger {
 	return &a
 }
 
+// ReportHijackAttack method is called to record a TCP handshake hijack attack
 func (a *AttackJsonLogger) ReportHijackAttack(instant time.Time, flow TcpIpFlow) {
 	timeText, err := instant.MarshalText()
 	if err != nil {
@@ -75,6 +83,8 @@ func (a *AttackJsonLogger) ReportHijackAttack(instant time.Time, flow TcpIpFlow)
 	a.Publish(report)
 }
 
+// ReportInjectionAttack takes the details of an injection attack and writes
+// an attack report to the attack log file
 func (a *AttackJsonLogger) ReportInjectionAttack(instant time.Time, flow TcpIpFlow, attemptPayload []byte, overlap []byte, start, end tcpassembly.Sequence, overlapStart, overlapEnd int) {
 
 	log.Print("ReportInjectionAttack\n")

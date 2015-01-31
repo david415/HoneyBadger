@@ -30,6 +30,7 @@ import (
 	"time"
 )
 
+// PcapLogger struct is used to log packets to a pcap file
 type PcapLogger struct {
 	Dir    string
 	Flow   TcpIpFlow
@@ -37,6 +38,8 @@ type PcapLogger struct {
 	file   *os.File
 }
 
+// NewPcapLogger returns a PcapLogger struct...
+// and in doing so writes a pcap header to the beginning of the file.
 func NewPcapLogger(dir string, flow TcpIpFlow) *PcapLogger {
 	var err error
 	p := PcapLogger{
@@ -55,6 +58,8 @@ func NewPcapLogger(dir string, flow TcpIpFlow) *PcapLogger {
 	return &p
 }
 
+// WritePacket receives a raw packet and a timestamp. It writes this
+// info to the pcap log file.
 func (p *PcapLogger) WritePacket(rawPacket []byte, timestamp time.Time) {
 	err := p.writer.WritePacket(gopacket.CaptureInfo{
 		Timestamp:     timestamp,
@@ -66,6 +71,7 @@ func (p *PcapLogger) WritePacket(rawPacket []byte, timestamp time.Time) {
 	}
 }
 
+// Close causes the file to be closed.
 func (p *PcapLogger) Close() {
 	p.file.Close()
 }
