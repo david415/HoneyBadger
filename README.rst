@@ -47,22 +47,6 @@ In Linux you can run these tools as an unprivileged user after you run setcap as
 
 
 
-note about the GNU AFFERO GENERAL PUBLIC LICENSE
-------------------------------------------------
-
-The HoneyBadger TCP attack detection is released under the GPL however
-the "integration tests" for the TCP attack detection are in fact working
-TCP exploit prototypes; therefore I have released these tools under the AGPL.
-There use in the wild could be harmful... however the author
-wishes to raise awareness... not help attackers.
-
-AGPL states that if you use this software you *must*
-distribute the source code along with the "publication".
-It is the author's interpretation of AGPL that if you use this software
-to perform TCP stream injections then you must notify users of
-this fact and provide the source code to them.
-
-
 =======
 contact
 =======
