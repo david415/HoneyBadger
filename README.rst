@@ -22,9 +22,9 @@ HoneyBadger
 project goals
 -------------
 
-* HoneyBadger will primarily be a comprehensive TCP stream analysis tool for detecting and recording TCP attacks. Perhaps it can assist in discovering 0-days and botnets.
+* HoneyBadger is primarily a comprehensive TCP stream analysis tool for detecting and recording TCP attacks. Perhaps it can assist in discovering 0-days and botnets.
 
-* HoneyBadger will include a variety of TCP stream injections attacks which will prove that the TCP attack detection is reliable.
+* HoneyBadger will include a variety of TCP stream injections attacks (it now includes 2) which prove that the TCP attack detection is reliable.
 
 
 details
@@ -43,20 +43,14 @@ usage note
 It is not a good idea to run network traffic analysis tools as root.
 In Linux you can run these tools as an unprivileged user after you run setcap as root like this::
 
-   # setcap cap_net_raw,cap_net_admin=eip handshakeHijackDetector
+   # setcap cap_net_raw,cap_net_admin=eip honey_badger
 
 
 
 =======
 contact
 =======
-* You would like to fund my research?
-* You are a malware/botnet expert and wish to collaborate?
-* You want to send me pull requests?
-* You like to offer me a code review?
 
-contact info
-------------
 * email dstainton415@gmail.com
 * gpg key ID 0x836501BE9F27A723
 * gpg fingerprint F473 51BD 87AB 7FCF 6F88  80C9 8365 01BE 9F27 A723
