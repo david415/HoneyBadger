@@ -70,8 +70,8 @@ func NewInquisitor(iface string, wireDuration time.Duration, filter string, snap
 
 // Stop... stops the TCP attack inquisition!
 func (i *Inquisitor) Stop() {
-	i.handle.Close()
 	i.stopChan <- true
+	i.handle.Close()
 }
 
 // Start... starts the TCP attack inquisition!

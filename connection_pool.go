@@ -151,15 +151,13 @@ func (c *ConnectionPool) Delete(flow TcpIpFlow) {
 }
 
 // deleteWithoutLock deletes the specified connection from the pool
-// or panic; obviously we'll want to remove that call to panic for
-// the error case... however at the moment we'd like honey_badger
-// to fail early and often until the code stabilizes!
+// or if key not found then print a log message
 func (c *ConnectionPool) deleteWithoutLock(flow TcpIpFlow) {
 	connectionHash := flow.ConnectionHash()
 	_, ok := c.connectionMap[connectionHash]
 	if ok {
 		delete(c.connectionMap, connectionHash)
 	} else {
-		panic("ConnectionPool.Delete: connectionHash not found\n")
+		log.Printf("ConnectionPool.Delete: connectionHash not found: %s\n", flow.String())
 	}
 }
