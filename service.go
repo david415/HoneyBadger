@@ -85,6 +85,7 @@ func (i *Inquisitor) receivePackets() {
 	var ip layers.IPv4
 	var tcp layers.TCP
 	var payload gopacket.Payload
+	var conn *Connection
 
 	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet, &eth, &ip, &tcp, &payload)
 	decoded := make([]gopacket.LayerType, 0, 4)
@@ -103,13 +104,14 @@ func (i *Inquisitor) receivePackets() {
 		log.Fatal(err)
 	}
 
+	closeConnectionChan := make(chan CloseRequest)
+
 	// XXX
 	ticker := time.Tick(timeout)
 	var lastTimestamp time.Time
 	for {
 		select {
 		case <-i.stopChan:
-			close(i.stopChan)
 			i.connPool.CloseAllConnections()
 			return
 		case <-ticker:
@@ -122,6 +124,9 @@ func (i *Inquisitor) receivePackets() {
 					log.Printf("timeout closed %d connections\n", closed)
 				}
 			}
+		case closeRequest := <-closeConnectionChan:
+			i.connPool.Delete(*closeRequest.Flow)
+			closeRequest.CloseReadyChan <- true
 		default:
 			rawPacket, captureInfo, err := i.handle.ReadPacketData()
 			if err == io.EOF {
@@ -132,47 +137,34 @@ func (i *Inquisitor) receivePackets() {
 			if err != nil {
 				continue
 			}
-
 			newPayload := new(gopacket.Payload)
 			payload = *newPayload
 			err = parser.DecodeLayers(rawPacket, &decoded)
 			if err != nil {
 				continue
 			}
-
 			flow := NewTcpIpFlowFromFlows(ip.NetworkFlow(), tcp.TransportFlow())
 			packetManifest := PacketManifest{
-				IP:      ip,
-				TCP:     tcp,
-				Payload: payload,
+				Timestamp: captureInfo.Timestamp,
+				Flow:      flow,
+				RawPacket: rawPacket,
+				IP:        ip,
+				TCP:       tcp,
+				Payload:   payload,
 			}
+			if i.connPool.Has(flow) {
+				conn, err = i.connPool.Get(flow)
+				if err != nil {
+					panic(err) // wtf
+				}
+			} else {
+				conn = NewConnection(closeConnectionChan)
+				conn.PcapLogger = NewPcapLogger(i.LogDir, flow)
+				conn.AttackLogger = NewAttackJsonLogger(i.LogDir, flow)
+				i.connPool.Put(flow, conn)
+			}
+			conn.receivePacket(&packetManifest)
 			lastTimestamp = captureInfo.Timestamp
-			i.InquestWithTimestamp(rawPacket, packetManifest, flow, captureInfo.Timestamp)
 		}
 	}
-}
-
-// InquestWithTimestamp is responsible for digesting packets that we receive from a packet source.
-// It uses the ConnectionPool to track connections.
-func (i *Inquisitor) InquestWithTimestamp(rawPacket []byte, packetManifest PacketManifest, flow TcpIpFlow, timestamp time.Time) {
-	var err error
-	var conn *Connection
-
-	if i.connPool.Has(flow) {
-		conn, err = i.connPool.Get(flow)
-		if err != nil {
-			panic(err) // wtf
-		}
-	} else {
-		conn = NewConnection(i.connPool)
-		conn.PcapLogger = NewPcapLogger(i.LogDir, flow)
-		conn.AttackLogger = NewAttackJsonLogger(i.LogDir, flow)
-		i.connPool.Put(flow, conn)
-	}
-
-	// PcapLoggerWrite must occur before receivePacket because the
-	// call to Connection's Close method closes the PcapLogger...
-	// RST and FIN packets can for instance cause a connection to be closed.
-	conn.PcapLoggerWrite(rawPacket, timestamp)
-	conn.receivePacket(packetManifest, flow, timestamp)
 }

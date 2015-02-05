@@ -62,9 +62,12 @@ const (
 
 // PacketManifest is used to send parsed packets via channels to other goroutines
 type PacketManifest struct {
-	IP      layers.IPv4
-	TCP     layers.TCP
-	Payload gopacket.Payload
+	Timestamp time.Time
+	Flow      TcpIpFlow
+	RawPacket []byte
+	IP        layers.IPv4
+	TCP       layers.TCP
+	Payload   gopacket.Payload
 }
 
 // Reassembly is inspired by gopacket.tcpassembly this struct can be used
@@ -81,59 +84,75 @@ func (r *Reassembly) String() string {
 	return fmt.Sprintf("Reassembly: Seq %d Bytes len %d data %s\n", r.Seq, len(r.Bytes), string(r.Bytes))
 }
 
+type CloseRequest struct {
+	Flow           *TcpIpFlow
+	CloseReadyChan chan bool
+}
+
 // Connection is used to track client and server flows for a given TCP connection.
 // We implement a basic TCP finite state machine and track state in order to detect
 // hanshake hijack and other TCP attacks such as segment veto and stream injection.
 type Connection struct {
-	connPool         *ConnectionPool
-	lastSeen         time.Time
-	state            uint8
-	clientState      uint8
-	serverState      uint8
-	clientFlow       TcpIpFlow
-	serverFlow       TcpIpFlow
-	closingFlow      TcpIpFlow
-	clientNextSeq    tcpassembly.Sequence
-	serverNextSeq    tcpassembly.Sequence
-	hijackNextAck    tcpassembly.Sequence
-	packetCount      uint64
+	closeRequestChan chan CloseRequest
+	stopChan         chan bool
+	receiveChan      chan *PacketManifest
+
+	packetCount uint64
+	lastSeen    time.Time
+
+	state       uint8
+	clientState uint8
+	serverState uint8
+
+	clientFlow  TcpIpFlow
+	serverFlow  TcpIpFlow
+	closingFlow TcpIpFlow
+
+	clientNextSeq tcpassembly.Sequence
+	serverNextSeq tcpassembly.Sequence
+	hijackNextAck tcpassembly.Sequence
+
 	ClientStreamRing *ring.Ring
 	ServerStreamRing *ring.Ring
-	PcapLogger       *PcapLogger
-	AttackLogger     AttackLogger
+
+	PcapLogger   *PcapLogger
+	AttackLogger AttackLogger
 }
 
 // NewConnection returns a new Connection struct
-func NewConnection(connPool *ConnectionPool) *Connection {
-	return &Connection{
-		connPool:         connPool,
-		state:            TCP_LISTEN,
+func NewConnection(closeRequestChan chan CloseRequest) *Connection {
+	conn := Connection{
+		closeRequestChan: closeRequestChan,
+		stopChan:         make(chan bool),
+		receiveChan:      make(chan *PacketManifest),
+
+		state: TCP_LISTEN,
+
 		ClientStreamRing: ring.New(MAX_CONN_PACKETS),
 		ServerStreamRing: ring.New(MAX_CONN_PACKETS),
 	}
+	go conn.startReceivingPackets()
+	return &conn
 }
 
 // Close set's the tcp stated to closed
 // and closes the PcapLogger
 func (c *Connection) Close() {
-	if c.state == TCP_CLOSED {
-		panic("already closed")
-	} else {
-		log.Printf("closing %s\n", c.clientFlow.String())
-		c.state = TCP_CLOSED
+	closeReadyChan := make(chan bool)
+	// remove Connection from ConnectionPool
+	c.closeRequestChan <- CloseRequest{
+		Flow:           &c.clientFlow,
+		CloseReadyChan: closeReadyChan,
 	}
+	<-closeReadyChan
+	c.Stop()
+}
 
+func (c *Connection) Stop() {
+	c.stopChan <- true
 	if c.PcapLogger != nil {
 		log.Print("closing pcap logger\n")
 		c.PcapLogger.Close()
-	}
-
-}
-
-// removeFromPool removes the connection from the pool
-func (c *Connection) removeFromPool() {
-	if c.connPool != nil {
-		c.connPool.Delete(c.clientFlow)
 	}
 }
 
@@ -224,10 +243,10 @@ func (c *Connection) detectInjection(p PacketManifest, flow TcpIpFlow) {
 // stateListen gets called by our TCP finite state machine runtime
 // and moves us into the TCP_CONNECTION_REQUEST state if we receive
 // a SYN packet.
-func (c *Connection) stateListen(p PacketManifest, flow TcpIpFlow) {
+func (c *Connection) stateListen(p PacketManifest) {
 	if p.TCP.SYN && !p.TCP.ACK {
 		c.state = TCP_CONNECTION_REQUEST
-		c.clientFlow = flow
+		c.clientFlow = p.Flow
 		c.serverFlow = c.clientFlow.Reverse()
 
 		// Note that TCP SYN and SYN/ACK packets may contain payload data if
@@ -244,8 +263,8 @@ func (c *Connection) stateListen(p PacketManifest, flow TcpIpFlow) {
 // stateConnectionRequest gets called by our TCP finite state machine runtime
 // and moves us into the TCP_CONNECTION_ESTABLISHED state if we receive
 // a SYN/ACK packet.
-func (c *Connection) stateConnectionRequest(p PacketManifest, flow TcpIpFlow) {
-	if !flow.Equal(c.serverFlow) {
+func (c *Connection) stateConnectionRequest(p PacketManifest) {
+	if !p.Flow.Equal(c.serverFlow) {
 		//handshake anomaly
 		return
 	}
@@ -264,9 +283,9 @@ func (c *Connection) stateConnectionRequest(p PacketManifest, flow TcpIpFlow) {
 // stateConnectionEstablished is called by our TCP FSM runtime and
 // changes our state to TCP_DATA_TRANSFER if we receive a valid final
 // handshake ACK packet.
-func (c *Connection) stateConnectionEstablished(p PacketManifest, flow TcpIpFlow) {
-	c.detectHijack(p, flow)
-	if !flow.Equal(c.clientFlow) {
+func (c *Connection) stateConnectionEstablished(p PacketManifest) {
+	c.detectHijack(p, p.Flow)
+	if !p.Flow.Equal(c.clientFlow) {
 		// handshake anomaly
 		return
 	}
@@ -288,13 +307,13 @@ func (c *Connection) stateConnectionEstablished(p PacketManifest, flow TcpIpFlow
 
 // stateDataTransfer is called by our TCP FSM and processes packets
 // once we are in the TCP_DATA_TRANSFER state
-func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
+func (c *Connection) stateDataTransfer(p PacketManifest) {
 	var nextSeqPtr *tcpassembly.Sequence
 	var closerState, remoteState *uint8
 	if c.packetCount < FIRST_FEW_PACKETS {
-		c.detectHijack(p, flow)
+		c.detectHijack(p, p.Flow)
 	}
-	if flow.Equal(c.clientFlow) {
+	if p.Flow.Equal(c.clientFlow) {
 		nextSeqPtr = &c.clientNextSeq
 		closerState = &c.clientState
 		remoteState = &c.serverState
@@ -307,12 +326,12 @@ func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
 	if diff > 0 {
 		// *nextSeqPtr comes after p.TCP.Seq
 		// stream overlap case
-		c.detectInjection(p, flow)
+		c.detectInjection(p, p.Flow)
 	} else if diff == 0 {
 		// contiguous!
 		if p.TCP.FIN {
 			*nextSeqPtr += 1
-			c.closingFlow = flow
+			c.closingFlow = p.Flow
 			c.state = TCP_CONNECTION_CLOSING
 			*closerState = TCP_FIN_WAIT1
 			*remoteState = TCP_CLOSE_WAIT
@@ -320,7 +339,6 @@ func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
 		}
 		if p.TCP.RST {
 			log.Print("got RST!\n")
-			c.removeFromPool()
 			c.Close()
 			return
 		}
@@ -329,7 +347,7 @@ func (c *Connection) stateDataTransfer(p PacketManifest, flow TcpIpFlow) {
 				Seq:   tcpassembly.Sequence(p.TCP.Seq),
 				Bytes: []byte(p.Payload),
 			}
-			if flow == c.clientFlow {
+			if p.Flow == c.clientFlow {
 				c.ServerStreamRing.Value = reassembly
 				c.ServerStreamRing = c.ServerStreamRing.Next()
 			} else {
@@ -414,7 +432,6 @@ func (c *Connection) stateLastAck(p PacketManifest, flow TcpIpFlow, nextSeqPtr *
 				log.Print("LAST-ACK: out of order ACK packet received. seq %d != nextAck %d\n", p.TCP.Ack, *nextAckPtr)
 				return
 			}
-			c.removeFromPool()
 			c.Close()
 		} else {
 			log.Print("LAST-ACK: protocol anamoly\n")
@@ -426,12 +443,12 @@ func (c *Connection) stateLastAck(p PacketManifest, flow TcpIpFlow, nextSeqPtr *
 }
 
 // stateConnectionClosing handles all the closing states until the closed state has been reached.
-func (c *Connection) stateConnectionClosing(p PacketManifest, flow TcpIpFlow) {
+func (c *Connection) stateConnectionClosing(p PacketManifest) {
 	var nextSeqPtr *tcpassembly.Sequence
 	var nextAckPtr *tcpassembly.Sequence
 	var statePtr, otherStatePtr *uint8
-	if flow.Equal(c.closingFlow) {
-		if c.clientFlow.Equal(flow) {
+	if p.Flow.Equal(c.closingFlow) {
+		if c.clientFlow.Equal(p.Flow) {
 			statePtr = &c.clientState
 			nextSeqPtr = &c.clientNextSeq
 			nextAckPtr = &c.serverNextSeq
@@ -444,10 +461,10 @@ func (c *Connection) stateConnectionClosing(p PacketManifest, flow TcpIpFlow) {
 		case TCP_CLOSE_WAIT:
 			c.stateCloseWait(p)
 		case TCP_LAST_ACK:
-			c.stateLastAck(p, flow, nextSeqPtr, nextAckPtr, statePtr)
+			c.stateLastAck(p, p.Flow, nextSeqPtr, nextAckPtr, statePtr)
 		}
 	} else {
-		if c.clientFlow.Equal(flow) {
+		if c.clientFlow.Equal(p.Flow) {
 			statePtr = &c.clientState
 			otherStatePtr = &c.serverState
 			nextSeqPtr = &c.clientNextSeq
@@ -460,9 +477,9 @@ func (c *Connection) stateConnectionClosing(p PacketManifest, flow TcpIpFlow) {
 		}
 		switch *statePtr {
 		case TCP_FIN_WAIT1:
-			c.stateFinWait1(p, flow, nextSeqPtr, nextAckPtr, statePtr, otherStatePtr)
+			c.stateFinWait1(p, p.Flow, nextSeqPtr, nextAckPtr, statePtr, otherStatePtr)
 		case TCP_FIN_WAIT2:
-			c.stateFinWait2(p, flow, nextSeqPtr, nextAckPtr, statePtr)
+			c.stateFinWait2(p, p.Flow, nextSeqPtr, nextAckPtr, statePtr)
 		case TCP_TIME_WAIT:
 			c.stateTimeWait(p)
 		case TCP_CLOSING:
@@ -472,31 +489,44 @@ func (c *Connection) stateConnectionClosing(p PacketManifest, flow TcpIpFlow) {
 }
 
 // stateCloseWait represents the TCP FSM's CLOSE-WAIT state
-func (c *Connection) stateClosed(p PacketManifest, flow TcpIpFlow) {
+func (c *Connection) stateClosed(p PacketManifest) {
 	log.Print("state closed: it is a protocol anomaly to receive packets on a closed connection.\n")
 }
 
-// receivePacket implements a TCP finite state machine
+func (c *Connection) receivePacket(p *PacketManifest) {
+	c.receiveChan <- p
+}
+
+// startReceivingPackets implements a TCP finite state machine
 // which is loosely based off of the simplified FSM in this paper:
 // http://ants.iis.sinica.edu.tw/3bkmj9ltewxtsrrvnoknfdxrm3zfwrr/17/p520460.pdf
 // The goal is to detect all manner of content injection.
-func (c *Connection) receivePacket(p PacketManifest, flow TcpIpFlow, timestamp time.Time) {
-	if c.lastSeen.Before(timestamp) {
-		c.lastSeen = timestamp
-	}
-	c.packetCount += 1
-	switch c.state {
-	case TCP_LISTEN:
-		c.stateListen(p, flow)
-	case TCP_CONNECTION_REQUEST:
-		c.stateConnectionRequest(p, flow)
-	case TCP_CONNECTION_ESTABLISHED:
-		c.stateConnectionEstablished(p, flow)
-	case TCP_DATA_TRANSFER:
-		c.stateDataTransfer(p, flow)
-	case TCP_CONNECTION_CLOSING:
-		c.stateConnectionClosing(p, flow)
-	case TCP_CLOSED:
-		c.stateClosed(p, flow)
+func (c *Connection) startReceivingPackets() {
+	for {
+		select {
+		case <-c.stopChan:
+			return
+		case p := <-c.receiveChan:
+			if c.lastSeen.Before(p.Timestamp) {
+				c.lastSeen = p.Timestamp
+			}
+			c.PcapLoggerWrite(p.RawPacket, p.Timestamp)
+			c.packetCount += 1
+
+			switch c.state {
+			case TCP_LISTEN:
+				c.stateListen(*p)
+			case TCP_CONNECTION_REQUEST:
+				c.stateConnectionRequest(*p)
+			case TCP_CONNECTION_ESTABLISHED:
+				c.stateConnectionEstablished(*p)
+			case TCP_DATA_TRANSFER:
+				c.stateDataTransfer(*p)
+			case TCP_CONNECTION_CLOSING:
+				c.stateConnectionClosing(*p)
+			case TCP_CLOSED:
+				c.stateClosed(*p)
+			}
+		}
 	}
 }
