@@ -158,7 +158,9 @@ func (c *Connection) Stop() {
 
 // PcapLoggerWrite writes the specified raw packet to the raw packet log.
 func (c *Connection) PcapLoggerWrite(packetBytes []byte, timestamp time.Time) {
-	c.PcapLogger.WritePacket(packetBytes, timestamp)
+	if c.PcapLogger != nil {
+		c.PcapLogger.WritePacket(packetBytes, timestamp)
+	}
 }
 
 // detectHijack checks for duplicate SYN/ACK indicating handshake hijake

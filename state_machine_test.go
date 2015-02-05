@@ -9,7 +9,8 @@ import (
 )
 
 func TestStateDataTransfer(t *testing.T) {
-	conn := NewConnection(nil)
+	closeConnectionChan := make(chan CloseRequest)
+	conn := NewConnection(closeConnectionChan)
 	conn.AttackLogger = NewDummyAttackLogger()
 
 	conn.state = TCP_DATA_TRANSFER
@@ -27,18 +28,20 @@ func TestStateDataTransfer(t *testing.T) {
 		SrcPort: 1,
 		DstPort: 2,
 	}
-	p := PacketManifest{
-		IP:      ip,
-		TCP:     tcp,
-		Payload: []byte{1, 2, 3, 4, 5, 6, 7},
-	}
 	flow := NewTcpIpFlowFromLayers(ip, tcp)
+	p := PacketManifest{
+		Timestamp: time.Now(),
+		Flow:      flow,
+		IP:        ip,
+		TCP:       tcp,
+		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
+	}
 	conn.serverFlow = flow
 	conn.clientFlow = flow.Reverse()
 	conn.clientNextSeq = 9666
 	conn.serverNextSeq = 3
 
-	conn.receivePacket(p, flow, time.Now())
+	conn.receivePacket(&p)
 	if conn.state != TCP_DATA_TRANSFER {
 		t.Error("invalid state transition\n")
 		t.Fail()
@@ -62,11 +65,15 @@ func TestStateDataTransfer(t *testing.T) {
 		DstPort: 2,
 	}
 	p = PacketManifest{
-		IP:      ip,
-		TCP:     tcp,
-		Payload: []byte{1, 2, 3, 4, 5, 6, 7},
+		Timestamp: time.Now(),
+		Flow:      flow,
+		IP:        ip,
+		TCP:       tcp,
+		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
-	conn.receivePacket(p, flow, time.Now())
+	conn.receivePacket(&p)
+	time.Sleep(100 * time.Millisecond)
+
 	if conn.state != TCP_DATA_TRANSFER {
 		t.Error("invalid state transition\n")
 		t.Fail()
@@ -91,11 +98,13 @@ func TestStateDataTransfer(t *testing.T) {
 		DstPort: 2,
 	}
 	p = PacketManifest{
-		IP:      ip,
-		TCP:     tcp,
-		Payload: []byte{1, 2, 3, 4, 5, 6, 7},
+		Timestamp: time.Now(),
+		Flow:      flow,
+		IP:        ip,
+		TCP:       tcp,
+		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
-	conn.receivePacket(p, flow, time.Now())
+	conn.receivePacket(&p)
 	if conn.state != TCP_DATA_TRANSFER {
 		t.Error("invalid state transition\n")
 		t.Fail()
@@ -130,20 +139,24 @@ func TestTCPConnect(t *testing.T) {
 		SrcPort: 1,
 		DstPort: 2,
 	}
-	p := PacketManifest{
-		IP:      ip,
-		TCP:     tcp,
-		Payload: []byte{},
-	}
-	tcp.SetNetworkLayerForChecksum(&ip)
+
 	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
 	flow := NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
+
+	p := PacketManifest{
+		Timestamp: time.Now(),
+		Flow:      flow,
+		IP:        ip,
+		TCP:       tcp,
+		Payload:   []byte{},
+	}
+	tcp.SetNetworkLayerForChecksum(&ip)
 	flowReversed := flow.Reverse()
 
 	conn.clientFlow = flow
 	conn.serverFlow = flowReversed
-	conn.receivePacket(p, flow, time.Now())
+	conn.receivePacket(&p)
 	if conn.state != TCP_CONNECTION_REQUEST {
 		t.Error("invalid state transition\n")
 		t.Fail()
@@ -166,11 +179,15 @@ func TestTCPConnect(t *testing.T) {
 		DstPort: 1,
 	}
 	p = PacketManifest{
-		IP:      ip,
-		TCP:     tcp,
-		Payload: []byte{},
+		Timestamp: time.Now(),
+		Flow:      flowReversed,
+		IP:        ip,
+		TCP:       tcp,
+		Payload:   []byte{},
 	}
-	conn.receivePacket(p, flowReversed, time.Now())
+	conn.receivePacket(&p)
+	time.Sleep(100 * time.Millisecond)
+
 	if conn.state != TCP_CONNECTION_ESTABLISHED {
 		t.Errorf("invalid state transition: current state %d\n", conn.state)
 		t.Fail()
@@ -193,11 +210,15 @@ func TestTCPConnect(t *testing.T) {
 		DstPort: 2,
 	}
 	p = PacketManifest{
-		IP:      ip,
-		TCP:     tcp,
-		Payload: []byte{},
+		Timestamp: time.Now(),
+		Flow:      flow,
+		IP:        ip,
+		TCP:       tcp,
+		Payload:   []byte{},
 	}
-	conn.receivePacket(p, flow, time.Now())
+	conn.receivePacket(&p)
+	time.Sleep(100 * time.Millisecond)
+
 	if conn.state != TCP_DATA_TRANSFER {
 		t.Error("invalid state transition\n")
 		t.Fail()
@@ -216,7 +237,10 @@ func TestServerThreeWayClose(t *testing.T) {
 func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 	var closerState, remoteState *uint8
 	attackLogger := NewDummyAttackLogger()
-	conn := NewConnection(nil)
+
+	closeConnectionChan := make(chan CloseRequest)
+	conn := NewConnection(closeConnectionChan)
+
 	conn.AttackLogger = attackLogger
 	conn.state = TCP_DATA_TRANSFER
 	conn.serverNextSeq = 4666
@@ -249,17 +273,22 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		SrcPort: 1,
 		DstPort: 2,
 	}
-	p := PacketManifest{
-		IP:      ip,
-		TCP:     tcp,
-		Payload: []byte{},
-	}
-	//flow := NewTcpIpFlowFromLayers(ip, tcp)
+
 	flow := NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
+	p := PacketManifest{
+		Timestamp: time.Now(),
+		Flow:      flow,
+		IP:        ip,
+		TCP:       tcp,
+		Payload:   []byte{},
+	}
+
 	conn.clientFlow = flow
 	conn.serverFlow = flow.Reverse()
 
-	conn.receivePacket(p, flow, time.Now())
+	conn.receivePacket(&p)
+	time.Sleep(100 * time.Millisecond)
+
 	if conn.state != TCP_CONNECTION_CLOSING {
 		t.Error("connection state must transition to TCP_CONNECTION_CLOSING\n")
 		t.Fail()
@@ -290,14 +319,20 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		SrcPort: 2,
 		DstPort: 1,
 	}
-	p = PacketManifest{
-		IP:      ip,
-		TCP:     tcp,
-		Payload: []byte{},
-	}
 
 	flow2 := flow.Reverse()
-	conn.receivePacket(p, flow2, time.Now())
+
+	p = PacketManifest{
+		Timestamp: time.Now(),
+		Flow:      flow2,
+		IP:        ip,
+		TCP:       tcp,
+		Payload:   []byte{},
+	}
+
+	conn.receivePacket(&p)
+	time.Sleep(100 * time.Millisecond)
+
 	if conn.state != TCP_CONNECTION_CLOSING {
 		t.Error("connection state must transition to TCP_CONNECTION_CLOSING\n")
 		t.Fail()
@@ -321,27 +356,21 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		DstPort: 2,
 	}
 	p = PacketManifest{
-		IP:      ip,
-		TCP:     tcp,
-		Payload: []byte{},
+		Timestamp: time.Now(),
+		Flow:      flow,
+		IP:        ip,
+		TCP:       tcp,
+		Payload:   []byte{},
 	}
 
-	conn.receivePacket(p, flow, time.Now())
-	if conn.state != TCP_CLOSED {
+	conn.receivePacket(&p)
+	time.Sleep(100 * time.Millisecond)
+
+	closeRequest := <-closeConnectionChan
+	closeFlow := closeRequest.Flow
+	if *closeFlow != flow {
 		t.Errorf("failed to close; current state == %d\n", conn.state)
 	}
-}
-
-func TestClosePanic(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("failed to panic")
-			t.Fail()
-		}
-	}()
-	conn := NewConnection(nil)
-	conn.Close()
-	conn.Close()
 }
 
 func TestTCPHijack(t *testing.T) {
@@ -363,20 +392,27 @@ func TestTCPHijack(t *testing.T) {
 		SrcPort: 1,
 		DstPort: 2,
 	}
-	p := PacketManifest{
-		IP:      ip,
-		TCP:     tcp,
-		Payload: []byte{},
-	}
-	tcp.SetNetworkLayerForChecksum(&ip)
+
 	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
 	flow := NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
+
+	p := PacketManifest{
+		Timestamp: time.Now(),
+		Flow:      flow,
+		IP:        ip,
+		TCP:       tcp,
+		Payload:   []byte{},
+	}
+	tcp.SetNetworkLayerForChecksum(&ip)
 	flowReversed := flow.Reverse()
 
 	conn.clientFlow = flow
 	conn.serverFlow = flowReversed
-	conn.receivePacket(p, flow, time.Now())
+
+	conn.receivePacket(&p)
+	time.Sleep(100 * time.Millisecond)
+
 	if conn.state != TCP_CONNECTION_REQUEST {
 		t.Error("invalid state transition\n")
 		t.Fail()
@@ -399,11 +435,15 @@ func TestTCPHijack(t *testing.T) {
 		DstPort: 1,
 	}
 	p = PacketManifest{
-		IP:      ip,
-		TCP:     tcp,
-		Payload: []byte{},
+		Timestamp: time.Now(),
+		Flow:      flowReversed,
+		IP:        ip,
+		TCP:       tcp,
+		Payload:   []byte{},
 	}
-	conn.receivePacket(p, flowReversed, time.Now())
+	conn.receivePacket(&p)
+	time.Sleep(100 * time.Millisecond)
+
 	if conn.state != TCP_CONNECTION_ESTABLISHED {
 		t.Errorf("invalid state transition: current state %d\n", conn.state)
 		t.Fail()
@@ -426,11 +466,15 @@ func TestTCPHijack(t *testing.T) {
 		DstPort: 1,
 	}
 	p = PacketManifest{
-		IP:      ip,
-		TCP:     tcp,
-		Payload: []byte{},
+		Timestamp: time.Now(),
+		Flow:      flowReversed,
+		IP:        ip,
+		TCP:       tcp,
+		Payload:   []byte{},
 	}
-	conn.receivePacket(p, flowReversed, time.Now())
+	conn.receivePacket(&p)
+	time.Sleep(100 * time.Millisecond)
+
 	if attackLogger.Count != 1 {
 		t.Error("hijack detection fail")
 		t.Fail()
@@ -453,11 +497,15 @@ func TestTCPHijack(t *testing.T) {
 		DstPort: 2,
 	}
 	p = PacketManifest{
-		IP:      ip,
-		TCP:     tcp,
-		Payload: []byte{},
+		Timestamp: time.Now(),
+		Flow:      flow,
+		IP:        ip,
+		TCP:       tcp,
+		Payload:   []byte{},
 	}
-	conn.receivePacket(p, flow, time.Now())
+	conn.receivePacket(&p)
+	time.Sleep(100 * time.Millisecond)
+
 	if conn.state != TCP_DATA_TRANSFER {
 		t.Error("invalid state transition\n")
 		t.Fail()
@@ -480,11 +528,15 @@ func TestTCPHijack(t *testing.T) {
 		DstPort: 1,
 	}
 	p = PacketManifest{
-		IP:      ip,
-		TCP:     tcp,
-		Payload: []byte{},
+		Timestamp: time.Now(),
+		Flow:      flowReversed,
+		IP:        ip,
+		TCP:       tcp,
+		Payload:   []byte{},
 	}
-	conn.receivePacket(p, flowReversed, time.Now())
+	conn.receivePacket(&p)
+	time.Sleep(100 * time.Millisecond)
+
 	if attackLogger.Count != 2 {
 		t.Error("hijack detection fail")
 		t.Fail()

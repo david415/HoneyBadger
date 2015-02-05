@@ -3,7 +3,6 @@ package HoneyBadger
 import (
 	"code.google.com/p/gopacket"
 	"code.google.com/p/gopacket/layers"
-	//"log"
 	"net"
 	"testing"
 	"time"
@@ -11,8 +10,9 @@ import (
 
 func TestConnectionPool(t *testing.T) {
 
+	closeConnectionChan := make(chan CloseRequest)
 	connPool := NewConnectionPool()
-	conn := NewConnection(connPool)
+	conn := NewConnection(closeConnectionChan)
 
 	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
@@ -38,7 +38,7 @@ func TestConnectionPool(t *testing.T) {
 	ipFlow, _ = gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 9, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 9, 4, 5)))
 	tcpFlow, _ = gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
 	flow = NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
-	conn = NewConnection(connPool)
+	conn = NewConnection(closeConnectionChan)
 	conn.clientFlow = flow
 
 	connPool.Put(flow, conn)
@@ -55,10 +55,8 @@ func TestConnectionPool(t *testing.T) {
 		t.Fail()
 	}
 
-	// check nil case of connectionsLocked
-	connPool.Lock()
-	conns := connPool.connectionsLocked()
-	connPool.Unlock()
+	// check nil case of Connections method
+	conns := connPool.Connections()
 	if len(conns) != 0 {
 		t.Error("connectionsLocked() should failed to return zero")
 		t.Fail()
@@ -72,7 +70,7 @@ func TestConnectionPool(t *testing.T) {
 	}
 
 	// test close one case of CloseOlderThan
-	conn = NewConnection(connPool)
+	conn = NewConnection(closeConnectionChan)
 	conn.clientFlow = flow
 	connPool.Put(flow, conn)
 	count = connPool.CloseOlderThan(time.Now())
@@ -85,24 +83,30 @@ func TestConnectionPool(t *testing.T) {
 	timestamp1 := time.Now()
 	timestamp2 := timestamp1.Add(timeDuration)
 
-	conn = NewConnection(connPool)
+	conn = NewConnection(closeConnectionChan)
 	conn.clientFlow = flow
 	connPool.Put(flow, conn)
 	conn.state = TCP_DATA_TRANSFER
-	packetManifest := PacketManifest{}
-	conn.receivePacket(packetManifest, flow, timestamp1)
+	packetManifest := PacketManifest{
+		Timestamp: timestamp1,
+		Flow:      flow,
+	}
+	conn.receivePacket(&packetManifest)
 	count = connPool.CloseOlderThan(time.Now())
 	if count != 1 {
 		t.Error("CloseOlderThan fail")
 		t.Fail()
 	}
 
-	conn = NewConnection(connPool)
+	conn = NewConnection(closeConnectionChan)
 	conn.clientFlow = flow
 	connPool.Put(flow, conn)
 	conn.state = TCP_DATA_TRANSFER
-	packetManifest = PacketManifest{}
-	conn.receivePacket(packetManifest, flow, timestamp2)
+	packetManifest = PacketManifest{
+		Timestamp: timestamp2,
+		Flow:      flow,
+	}
+	conn.receivePacket(&packetManifest)
 	count = connPool.CloseOlderThan(timestamp1)
 	if count != 0 {
 		t.Error("CloseOlderThan fail")
@@ -125,7 +129,7 @@ func TestConnectionPool(t *testing.T) {
 		t.Fail()
 	}
 
-	conn = NewConnection(connPool)
+	conn = NewConnection(closeConnectionChan)
 	conn2, err := connPool.Get(flow)
 	if err == nil {
 		t.Error("Get method fail")
@@ -134,31 +138,15 @@ func TestConnectionPool(t *testing.T) {
 
 	conn.clientFlow = flow
 	connPool.Put(flow, conn)
-	packetManifest = PacketManifest{}
-	conn.receivePacket(packetManifest, flow, timestamp2)
+	packetManifest = PacketManifest{
+		Timestamp: timestamp2,
+		Flow:      flow,
+	}
+	conn.receivePacket(&packetManifest)
 	conn2, err = connPool.Get(flow)
 	if conn2 == nil && err != nil {
 		t.Error("Get method fail")
 		t.Fail()
 	}
 
-}
-
-func TestRemoveFromPool(t *testing.T) {
-	connPool := NewConnectionPool()
-	conn := NewConnection(connPool)
-
-	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
-	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
-	flow := NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
-
-	conn.clientFlow = flow
-	connPool.Put(flow, conn)
-
-	conn.removeFromPool()
-
-	if len(connPool.connectionMap) != 0 {
-		t.Error("removeFromPool fail")
-		t.Fail()
-	}
 }
