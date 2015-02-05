@@ -47,7 +47,6 @@ const (
 	TCP_CONNECTION_ESTABLISHED = 2
 	TCP_DATA_TRANSFER          = 3
 	TCP_CONNECTION_CLOSING     = 4
-	TCP_CLOSED                 = 5
 
 	// initiating TCP closing finite state machine
 	TCP_FIN_WAIT1 = 0
@@ -490,11 +489,6 @@ func (c *Connection) stateConnectionClosing(p PacketManifest) {
 	}
 }
 
-// stateCloseWait represents the TCP FSM's CLOSE-WAIT state
-func (c *Connection) stateClosed(p PacketManifest) {
-	log.Print("state closed: it is a protocol anomaly to receive packets on a closed connection.\n")
-}
-
 func (c *Connection) receivePacket(p *PacketManifest) {
 	c.receiveChan <- p
 }
@@ -526,8 +520,6 @@ func (c *Connection) startReceivingPackets() {
 				c.stateDataTransfer(*p)
 			case TCP_CONNECTION_CLOSING:
 				c.stateConnectionClosing(*p)
-			case TCP_CLOSED:
-				c.stateClosed(*p)
 			}
 		}
 	}
