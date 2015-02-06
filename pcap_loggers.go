@@ -30,12 +30,19 @@ import (
 	"time"
 )
 
+type TimedPacket struct {
+	RawPacket []byte
+	Timestamp time.Time
+}
+
 // PcapLogger struct is used to log packets to a pcap file
 type PcapLogger struct {
-	Dir    string
-	Flow   TcpIpFlow
-	writer *pcapgo.Writer
-	file   *os.File
+	packetChan chan TimedPacket
+	stopChan   chan bool
+	Dir        string
+	Flow       TcpIpFlow
+	writer     *pcapgo.Writer
+	file       *os.File
 }
 
 // NewPcapLogger returns a PcapLogger struct...
@@ -43,8 +50,9 @@ type PcapLogger struct {
 func NewPcapLogger(dir string, flow TcpIpFlow) *PcapLogger {
 	var err error
 	p := PcapLogger{
-		Flow: flow,
-		Dir:  dir,
+		packetChan: make(chan TimedPacket),
+		Flow:       flow,
+		Dir:        dir,
 	}
 	p.file, err = os.OpenFile(filepath.Join(p.Dir, fmt.Sprintf("%s.pcap", p.Flow.String())), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
@@ -58,9 +66,37 @@ func NewPcapLogger(dir string, flow TcpIpFlow) *PcapLogger {
 	return &p
 }
 
+func (p *PcapLogger) Start() {
+	go p.logPackets()
+}
+
+// Close causes the file to be closed.
+func (p *PcapLogger) Stop() {
+	p.stopChan <- true
+	p.file.Close()
+}
+
+func (p *PcapLogger) logPackets() {
+	for {
+		select {
+		case <-p.stopChan:
+			return
+		case timedPacket := <-p.packetChan:
+			p.WritePacketToFile(timedPacket.RawPacket, timedPacket.Timestamp)
+		}
+	}
+}
+
+func (p *PcapLogger) WritePacket(rawPacket []byte, timestamp time.Time) {
+	p.packetChan <- TimedPacket{
+		RawPacket: rawPacket,
+		Timestamp: timestamp,
+	}
+}
+
 // WritePacket receives a raw packet and a timestamp. It writes this
 // info to the pcap log file.
-func (p *PcapLogger) WritePacket(rawPacket []byte, timestamp time.Time) {
+func (p *PcapLogger) WritePacketToFile(rawPacket []byte, timestamp time.Time) {
 	err := p.writer.WritePacket(gopacket.CaptureInfo{
 		Timestamp:     timestamp,
 		CaptureLength: len(rawPacket),
@@ -69,9 +105,4 @@ func (p *PcapLogger) WritePacket(rawPacket []byte, timestamp time.Time) {
 	if err != nil {
 		panic(err)
 	}
-}
-
-// Close causes the file to be closed.
-func (p *PcapLogger) Close() {
-	p.file.Close()
 }

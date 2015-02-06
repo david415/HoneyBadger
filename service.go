@@ -159,9 +159,13 @@ func (i *Inquisitor) receivePackets() {
 				}
 			} else {
 				conn = NewConnection(closeConnectionChan)
+
 				conn.PcapLogger = NewPcapLogger(i.LogDir, flow)
+				conn.PcapLogger.Start()
+
 				conn.AttackLogger = NewAttackJsonLogger(i.LogDir)
 				conn.AttackLogger.Start()
+
 				i.connPool.Put(flow, conn)
 			}
 			conn.receivePacket(&packetManifest)

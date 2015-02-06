@@ -154,7 +154,7 @@ func (c *Connection) Stop() {
 	}
 	if c.PcapLogger != nil {
 		log.Print("closing pcap logger\n")
-		c.PcapLogger.Close()
+		c.PcapLogger.Stop()
 	}
 }
 
