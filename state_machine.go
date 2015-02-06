@@ -114,7 +114,7 @@ type Connection struct {
 	ClientStreamRing *ring.Ring
 	ServerStreamRing *ring.Ring
 
-	PcapLogger   *PcapLogger
+	PacketLogger PacketLogger
 	AttackLogger AttackLogger
 }
 
@@ -134,8 +134,10 @@ func NewConnection(closeRequestChan chan CloseRequest) *Connection {
 	return &conn
 }
 
-// Close set's the tcp stated to closed
-// and closes the PcapLogger
+// Close frees up all resources used by the connection
+// We send a close request to the Inquisitor;
+// once we receive response on the closeReadyChan
+// we call our Stop method.
 func (c *Connection) Close() {
 	closeReadyChan := make(chan bool)
 	// remove Connection from ConnectionPool
@@ -147,21 +149,13 @@ func (c *Connection) Close() {
 	c.Stop()
 }
 
+// Stop is used to stop the packet receiving goroutine and
+// the packet logger.
 func (c *Connection) Stop() {
 	c.stopChan <- true
-	if c.AttackLogger != nil {
-		c.AttackLogger.Stop()
-	}
-	if c.PcapLogger != nil {
+	if c.PacketLogger != nil {
 		log.Print("closing pcap logger\n")
-		c.PcapLogger.Stop()
-	}
-}
-
-// PcapLoggerWrite writes the specified raw packet to the raw packet log.
-func (c *Connection) PcapLoggerWrite(packetBytes []byte, timestamp time.Time) {
-	if c.PcapLogger != nil {
-		c.PcapLogger.WritePacket(packetBytes, timestamp)
+		c.PacketLogger.Stop()
 	}
 }
 
@@ -509,9 +503,10 @@ func (c *Connection) startReceivingPackets() {
 			if c.lastSeen.Before(p.Timestamp) {
 				c.lastSeen = p.Timestamp
 			}
-			c.PcapLoggerWrite(p.RawPacket, p.Timestamp)
+			if c.PacketLogger != nil {
+				c.PacketLogger.WritePacket(p.RawPacket, p.Timestamp)
+			}
 			c.packetCount += 1
-
 			switch c.state {
 			case TCP_LISTEN:
 				c.stateListen(*p)

@@ -47,9 +47,10 @@ type InquisitorOptions struct {
 // with incoming packets weather they be from a pcap file or directly off the wire.
 type Inquisitor struct {
 	InquisitorOptions
-	stopChan chan bool
-	connPool *ConnectionPool
-	handle   *pcap.Handle
+	stopChan     chan bool
+	connPool     *ConnectionPool
+	handle       *pcap.Handle
+	AttackLogger AttackLogger
 }
 
 // NewInquisitor creates a new Inquisitor struct
@@ -62,8 +63,9 @@ func NewInquisitor(iface string, wireDuration time.Duration, filter string, snap
 			Snaplen:      snaplen,
 			LogDir:       logDir,
 		},
-		connPool: NewConnectionPool(),
-		stopChan: make(chan bool),
+		connPool:     NewConnectionPool(),
+		stopChan:     make(chan bool),
+		AttackLogger: NewAttackJsonLogger(logDir),
 	}
 	return &i
 }
@@ -71,11 +73,13 @@ func NewInquisitor(iface string, wireDuration time.Duration, filter string, snap
 // Stop... stops the TCP attack inquisition!
 func (i *Inquisitor) Stop() {
 	i.stopChan <- true
+	i.AttackLogger.Stop()
 	i.handle.Close()
 }
 
 // Start... starts the TCP attack inquisition!
 func (i *Inquisitor) Start() {
+	i.AttackLogger.Start()
 	go i.receivePackets()
 }
 
@@ -159,13 +163,9 @@ func (i *Inquisitor) receivePackets() {
 				}
 			} else {
 				conn = NewConnection(closeConnectionChan)
-
-				conn.PcapLogger = NewPcapLogger(i.LogDir, flow)
-				conn.PcapLogger.Start()
-
-				conn.AttackLogger = NewAttackJsonLogger(i.LogDir)
-				conn.AttackLogger.Start()
-
+				conn.AttackLogger = i.AttackLogger
+				conn.PacketLogger = NewPcapLogger(i.LogDir, flow)
+				conn.PacketLogger.Start()
 				i.connPool.Put(flow, conn)
 			}
 			conn.receivePacket(&packetManifest)
