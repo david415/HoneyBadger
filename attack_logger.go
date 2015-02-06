@@ -31,6 +31,16 @@ import (
 	"time"
 )
 
+type UnserializedAttackReport struct {
+	Type                     string
+	Time                     time.Time
+	Flow                     TcpIpFlow
+	AttemptPayload           []byte
+	OverlapPayload           []byte
+	Start, End               tcpassembly.Sequence
+	OverlapStart, OverlapEnd int
+}
+
 // AttackReport contains information about the TCP injection attack
 type AttackReport struct {
 	Type          string
@@ -51,59 +61,91 @@ type AttackReport struct {
 type AttackLogger interface {
 	ReportHijackAttack(instant time.Time, flow TcpIpFlow)
 	ReportInjectionAttack(instant time.Time, flow TcpIpFlow, attemptPayload []byte, overlap []byte, start, end tcpassembly.Sequence, overlapStart, overlapEnd int)
+	Start()
+	Stop()
 }
 
 // AttackJsonLogger is responsible for recording all attack reports as JSON objects in a file.
 type AttackJsonLogger struct {
-	LogDir string
-	Flow   TcpIpFlow
+	LogDir           string
+	stopChan         chan bool
+	attackReportChan chan UnserializedAttackReport
 }
 
 // NewAttackJsonLogger returns a pointer to a AttackJsonLogger struct
-func NewAttackJsonLogger(logDir string, flow TcpIpFlow) *AttackJsonLogger {
+func NewAttackJsonLogger(logDir string) *AttackJsonLogger {
 	a := AttackJsonLogger{
-		LogDir: logDir,
-		Flow:   flow,
+		LogDir:           logDir,
+		stopChan:         make(chan bool),
+		attackReportChan: make(chan UnserializedAttackReport),
 	}
 	return &a
 }
 
+func (a *AttackJsonLogger) Start() {
+	go a.receiveReports()
+}
+
+func (a *AttackJsonLogger) Stop() {
+	a.stopChan <- true
+}
+
+func (a *AttackJsonLogger) receiveReports() {
+	for {
+		select {
+		case <-a.stopChan:
+			return
+		case unserializedReport := <-a.attackReportChan:
+			a.SerializeAndWrite(unserializedReport)
+		}
+	}
+}
+
 // ReportHijackAttack method is called to record a TCP handshake hijack attack
 func (a *AttackJsonLogger) ReportHijackAttack(instant time.Time, flow TcpIpFlow) {
-	timeText, err := instant.MarshalText()
-	if err != nil {
-		panic(err)
-	}
-
-	report := &AttackReport{
+	unserializedAttackReport := UnserializedAttackReport{
 		Type: "hijack",
-		Flow: flow.String(),
-		Time: string(timeText),
+		Time: instant,
+		Flow: flow,
 	}
-	a.Publish(report)
+	a.attackReportChan <- unserializedAttackReport
 }
 
 // ReportInjectionAttack takes the details of an injection attack and writes
 // an attack report to the attack log file
 func (a *AttackJsonLogger) ReportInjectionAttack(instant time.Time, flow TcpIpFlow, attemptPayload []byte, overlap []byte, start, end tcpassembly.Sequence, overlapStart, overlapEnd int) {
+	unserializedAttackReport := UnserializedAttackReport{
+		Time:           instant,
+		Flow:           flow,
+		AttemptPayload: attemptPayload,
+		OverlapPayload: overlap,
+		Start:          start,
+		End:            end,
+		OverlapStart:   overlapStart,
+		OverlapEnd:     overlapEnd,
+	}
+	a.attackReportChan <- unserializedAttackReport
+}
+
+func (a *AttackJsonLogger) SerializeAndWrite(unserializedAttackReport UnserializedAttackReport) {
 
 	log.Print("ReportInjectionAttack\n")
 
-	timeText, err := instant.MarshalText()
+	timeText, err := unserializedAttackReport.Time.MarshalText()
 	if err != nil {
 		panic(err)
 	}
 
 	report := &AttackReport{
-		Type:          "injection",
-		Flow:          flow.String(),
+		Type:          unserializedAttackReport.Type,
+		Flow:          unserializedAttackReport.Flow.String(),
 		Time:          string(timeText),
-		Payload:       base64.StdEncoding.EncodeToString(attemptPayload),
-		Overlap:       base64.StdEncoding.EncodeToString(overlap),
-		StartSequence: uint32(start),
-		EndSequence:   uint32(end),
-		OverlapStart:  overlapStart,
-		OverlapEnd:    overlapEnd,
+		Payload:       base64.StdEncoding.EncodeToString(unserializedAttackReport.AttemptPayload),
+		Overlap:       base64.StdEncoding.EncodeToString(unserializedAttackReport.OverlapPayload),
+		StartSequence: uint32(unserializedAttackReport.Start),
+		EndSequence:   uint32(unserializedAttackReport.End),
+		OverlapStart:  unserializedAttackReport.OverlapStart,
+		OverlapEnd:    unserializedAttackReport.OverlapEnd,
 	}
 	a.Publish(report)
 }
