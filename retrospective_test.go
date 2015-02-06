@@ -34,7 +34,10 @@ func NewDummyAttackLogger() *DummyAttackLogger {
 	return &a
 }
 
-func (d *DummyAttackLogger) Close() {
+func (d *DummyAttackLogger) Start() {
+}
+
+func (d *DummyAttackLogger) Stop() {
 }
 
 func (d *DummyAttackLogger) ReportHijackAttack(instant time.Time, flow TcpIpFlow) {

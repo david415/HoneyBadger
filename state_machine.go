@@ -149,7 +149,9 @@ func (c *Connection) Close() {
 
 func (c *Connection) Stop() {
 	c.stopChan <- true
-	c.AttackLogger.Stop()
+	if c.AttackLogger != nil {
+		c.AttackLogger.Stop()
+	}
 	if c.PcapLogger != nil {
 		log.Print("closing pcap logger\n")
 		c.PcapLogger.Close()
