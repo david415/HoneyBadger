@@ -139,24 +139,29 @@ func NewConnection(closeRequestChan chan CloseRequest) *Connection {
 // once we receive response on the closeReadyChan
 // we call our Stop method.
 func (c *Connection) Close() {
+	log.Printf("close detected for %s\n", c.clientFlow.String())
 	closeReadyChan := make(chan bool)
 	// remove Connection from ConnectionPool
 	c.closeRequestChan <- CloseRequest{
 		Flow:           &c.clientFlow,
 		CloseReadyChan: closeReadyChan,
 	}
+	log.Print("close request sent\n")
 	<-closeReadyChan
+	log.Print("close request completed.\n")
 	c.Stop()
 }
 
 // Stop is used to stop the packet receiving goroutine and
 // the packet logger.
 func (c *Connection) Stop() {
+	log.Print("Connection.Stop() called.\n")
 	c.stopChan <- true
 	if c.PacketLogger != nil {
-		log.Print("closing pcap logger\n")
+		log.Print("stoping pcap logger\n")
 		c.PacketLogger.Stop()
 	}
+	log.Printf("stopped tracking %s\n", c.clientFlow.String())
 }
 
 // detectHijack checks for duplicate SYN/ACK indicating handshake hijake

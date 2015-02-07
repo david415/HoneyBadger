@@ -119,7 +119,6 @@ func (i *Inquisitor) receivePackets() {
 			i.connPool.CloseAllConnections()
 			return
 		case <-ticker:
-			log.Print("stopChan received a value\n")
 			if !lastTimestamp.IsZero() {
 				log.Printf("lastTimestamp is %s\n", lastTimestamp)
 				lastTimestamp = lastTimestamp.Add(timeout)
