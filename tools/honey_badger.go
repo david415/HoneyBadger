@@ -36,6 +36,7 @@ func main() {
 		filter      = flag.String("f", "tcp", "BPF filter for pcap")
 		logDir      = flag.String("l", "honeyBadger-logs", "log directory")
 		wireTimeout = flag.String("w", "10s", "timeout for reading packets off the wire")
+		packetLog   = flag.Bool("packet_log", false, "if set to true then log all packets for each tracked TCP connection")
 	)
 	flag.Parse()
 
@@ -44,7 +45,7 @@ func main() {
 		log.Fatal("invalid wire timeout duration: ", *wireTimeout)
 	}
 
-	service := HoneyBadger.NewInquisitor(*iface, wireDuration, *filter, *snaplen, *logDir)
+	service := HoneyBadger.NewInquisitor(*iface, wireDuration, *filter, *snaplen, *logDir, *packetLog)
 	log.Println("HoneyBadger: comprehensive TCP injection attack detection.")
 	service.Start()
 

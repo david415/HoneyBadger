@@ -41,6 +41,7 @@ type InquisitorOptions struct {
 	Filter       string
 	LogDir       string
 	Snaplen      int
+	PacketLog    bool
 }
 
 // Inquisitor sets up the connection pool and is an abstraction layer for dealing
@@ -54,7 +55,7 @@ type Inquisitor struct {
 }
 
 // NewInquisitor creates a new Inquisitor struct
-func NewInquisitor(iface string, wireDuration time.Duration, filter string, snaplen int, logDir string) *Inquisitor {
+func NewInquisitor(iface string, wireDuration time.Duration, filter string, snaplen int, logDir string, packetLog bool) *Inquisitor {
 	i := Inquisitor{
 		InquisitorOptions: InquisitorOptions{
 			Interface:    iface,
@@ -62,6 +63,7 @@ func NewInquisitor(iface string, wireDuration time.Duration, filter string, snap
 			Filter:       filter,
 			Snaplen:      snaplen,
 			LogDir:       logDir,
+			PacketLog:    packetLog,
 		},
 		connPool:     NewConnectionPool(),
 		stopChan:     make(chan bool),
@@ -163,8 +165,10 @@ func (i *Inquisitor) receivePackets() {
 			} else {
 				conn = NewConnection(closeConnectionChan)
 				conn.AttackLogger = i.AttackLogger
-				conn.PacketLogger = NewPcapLogger(i.LogDir, flow)
-				conn.PacketLogger.Start()
+				if i.PacketLog {
+					conn.PacketLogger = NewPcapLogger(i.LogDir, flow)
+					conn.PacketLogger.Start()
+				}
 				i.connPool.Put(flow, conn)
 			}
 			conn.receivePacket(&packetManifest)
