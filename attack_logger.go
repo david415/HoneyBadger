@@ -103,6 +103,7 @@ func (a *AttackJsonLogger) receiveReports() {
 
 // ReportHijackAttack method is called to record a TCP handshake hijack attack
 func (a *AttackJsonLogger) ReportHijackAttack(instant time.Time, flow TcpIpFlow) {
+	log.Print("ReportHijackAttack\n")
 	unserializedAttackReport := UnserializedAttackReport{
 		Type: "hijack",
 		Time: instant,
@@ -114,6 +115,7 @@ func (a *AttackJsonLogger) ReportHijackAttack(instant time.Time, flow TcpIpFlow)
 // ReportInjectionAttack takes the details of an injection attack and writes
 // an attack report to the attack log file
 func (a *AttackJsonLogger) ReportInjectionAttack(instant time.Time, flow TcpIpFlow, attemptPayload []byte, overlap []byte, start, end tcpassembly.Sequence, overlapStart, overlapEnd int) {
+	log.Print("ReportInjectionAttack\n")
 	unserializedAttackReport := UnserializedAttackReport{
 		Time:           instant,
 		Flow:           flow,
@@ -128,9 +130,6 @@ func (a *AttackJsonLogger) ReportInjectionAttack(instant time.Time, flow TcpIpFl
 }
 
 func (a *AttackJsonLogger) SerializeAndWrite(unserializedAttackReport UnserializedAttackReport) {
-
-	log.Print("ReportInjectionAttack\n")
-
 	timeText, err := unserializedAttackReport.Time.MarshalText()
 	if err != nil {
 		panic(err)
