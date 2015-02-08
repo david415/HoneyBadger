@@ -236,7 +236,7 @@ func (c *Connection) detectInjection(p PacketManifest, flow TcpIpFlow) {
 	end := start.Add(len(p.Payload) - 1)
 	overlapBytes, startOffset, endOffset := c.getOverlapBytes(head, tail, start, end)
 	if !bytes.Equal(overlapBytes, p.Payload[startOffset:endOffset]) {
-		c.AttackLogger.ReportInjectionAttack(time.Now(), flow, p.Payload, overlapBytes, start, end, startOffset, endOffset)
+		c.AttackLogger.ReportInjectionAttack("injection", time.Now(), flow, p.Payload, overlapBytes, start, end, startOffset, endOffset)
 	} else {
 		log.Print("not an attack attempt; a normal TCP retransmission.\n")
 	}
