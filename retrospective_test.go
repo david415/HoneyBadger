@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"code.google.com/p/gopacket"
 	"code.google.com/p/gopacket/layers"
-	"code.google.com/p/gopacket/tcpassembly"
 	"container/ring"
 	"fmt"
 	"net"
@@ -44,7 +43,7 @@ func (d *DummyAttackLogger) ReportHijackAttack(instant time.Time, flow TcpIpFlow
 	d.Count += 1
 }
 
-func (d *DummyAttackLogger) ReportInjectionAttack(instant time.Time, flow TcpIpFlow, attemptPayload []byte, overlap []byte, start, end tcpassembly.Sequence, overlapStart, overlapEnd int) {
+func (d *DummyAttackLogger) ReportInjectionAttack(instant time.Time, flow TcpIpFlow, attemptPayload []byte, overlap []byte, start, end Sequence, overlapStart, overlapEnd int) {
 	d.Count += 1
 }
 
@@ -55,7 +54,7 @@ func TestInjectionDetector(t *testing.T) {
 
 	conn := NewConnection(nil)
 	conn.ClientStreamRing.Value = Reassembly{
-		Seq:   tcpassembly.Sequence(5),
+		Seq:   Sequence(5),
 		Bytes: []byte{1, 2, 3, 4, 5},
 	}
 	conn.ClientStreamRing = conn.ClientStreamRing.Next()
@@ -129,7 +128,7 @@ func TestGetRingSlice(t *testing.T) {
 	conn := NewConnection(nil)
 	for j := 5; j < 40; j += 5 {
 		conn.ClientStreamRing.Value = Reassembly{
-			Seq:   tcpassembly.Sequence(j),
+			Seq:   Sequence(j),
 			Bytes: []byte{1, 2, 3, 4, 5},
 		}
 		conn.ClientStreamRing = conn.ClientStreamRing.Next()
@@ -246,7 +245,7 @@ func TestGetRingSlicePanic2(t *testing.T) {
 
 	head := ring.New(3)
 	head.Value = Reassembly{
-		Seq:   tcpassembly.Sequence(2),
+		Seq:   Sequence(2),
 		Bytes: []byte{1, 2, 3, 4, 5},
 	}
 	_ = getRingSlice(head, nil, 6, 0)
@@ -262,13 +261,13 @@ func TestGetRingSlicePanic3(t *testing.T) {
 
 	head := ring.New(3)
 	head.Value = Reassembly{
-		Seq:   tcpassembly.Sequence(2),
+		Seq:   Sequence(2),
 		Bytes: []byte{1, 2, 3, 4, 5},
 	}
 
 	tail := ring.New(3)
 	tail.Value = Reassembly{
-		Seq:   tcpassembly.Sequence(2),
+		Seq:   Sequence(2),
 		Bytes: []byte{1, 2, 3, 4, 5},
 	}
 	_ = getRingSlice(head, tail, 0, 6)
@@ -284,7 +283,7 @@ func TestGetRingSlicePanic4(t *testing.T) {
 
 	head := ring.New(3)
 	head.Value = Reassembly{
-		Seq:   tcpassembly.Sequence(2),
+		Seq:   Sequence(2),
 		Bytes: []byte{1, 2, 3, 4, 5},
 	}
 	_ = getRingSlice(head, head, 0, 0)
@@ -292,7 +291,7 @@ func TestGetRingSlicePanic4(t *testing.T) {
 
 func TestGetEndSequence(t *testing.T) {
 	var tail *ring.Ring = ring.New(10)
-	var end tcpassembly.Sequence
+	var end Sequence
 
 	end = 9
 	tail.Value = Reassembly{
@@ -318,7 +317,7 @@ func TestGetEndSequence(t *testing.T) {
 }
 
 func TestGetStartSequence(t *testing.T) {
-	var start tcpassembly.Sequence = 4
+	var start Sequence = 4
 	var head *ring.Ring = ring.New(10)
 	head.Value = Reassembly{
 		Seq:   3,
@@ -393,7 +392,7 @@ func TestGetTailRingOffset(t *testing.T) {
 }
 
 func TestGetStartOverlapSequenceAndOffset(t *testing.T) {
-	var start tcpassembly.Sequence = 3
+	var start Sequence = 3
 	head := ring.New(3)
 	head.Value = Reassembly{
 		Seq:   3,
@@ -444,7 +443,7 @@ func TestGetStartOverlapSequenceAndOffset(t *testing.T) {
 }
 
 func TestGetEndOverlapSequenceAndOffset(t *testing.T) {
-	var end tcpassembly.Sequence = 3
+	var end Sequence = 3
 	tail := ring.New(3)
 	tail.Value = Reassembly{
 		Seq:   3,
@@ -606,14 +605,14 @@ func TestGetOverlapBytes(t *testing.T) {
 	conn := NewConnection(nil)
 	for j := 5; j < 40; j += 5 {
 		conn.ClientStreamRing.Value = Reassembly{
-			Seq:   tcpassembly.Sequence(j),
+			Seq:   Sequence(j),
 			Bytes: []byte{byte(j + 1), byte(j + 2), byte(j + 3), byte(j + 4), byte(j + 5)},
 		}
 		conn.ClientStreamRing = conn.ClientStreamRing.Next()
 	}
 	for i := 0; i < len(overlapBytesTests); i++ {
 		var startSeq uint32 = overlapBytesTests[i].in.Seq
-		start := tcpassembly.Sequence(startSeq)
+		start := Sequence(startSeq)
 		end := start.Add(len(overlapBytesTests[i].in.Payload) - 1)
 		p := PacketManifest{
 			IP: layers.IPv4{
@@ -838,7 +837,7 @@ func TestGetOverlapRings(t *testing.T) {
 	conn := NewConnection(nil)
 	for j := 5; j < 40; j += 5 {
 		conn.ClientStreamRing.Value = Reassembly{
-			Seq:   tcpassembly.Sequence(j),
+			Seq:   Sequence(j),
 			Bytes: []byte{1, 2, 3, 4, 5},
 		}
 		conn.ClientStreamRing = conn.ClientStreamRing.Next()

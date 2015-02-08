@@ -21,7 +21,6 @@ package HoneyBadger
 import (
 	"code.google.com/p/gopacket"
 	"code.google.com/p/gopacket/layers"
-	"code.google.com/p/gopacket/tcpassembly"
 	"golang.org/x/net/ipv4"
 	"net"
 )
@@ -72,7 +71,7 @@ func (i *TCPStreamInjector) SetTCPLayer(tcpLayer layers.TCP) {
 func (i *TCPStreamInjector) SpraySequenceRangePackets(start uint32, count int) error {
 	var err error
 
-	currentSeq := tcpassembly.Sequence(start)
+	currentSeq := Sequence(start)
 	stopSeq := currentSeq.Add(count)
 
 	for ; currentSeq.Difference(stopSeq) != 0; currentSeq = currentSeq.Add(1) {

@@ -24,7 +24,6 @@ import (
 	"bytes"
 	"code.google.com/p/gopacket"
 	"code.google.com/p/gopacket/layers"
-	"code.google.com/p/gopacket/tcpassembly"
 	"container/ring"
 	"fmt"
 	"log"
@@ -74,7 +73,7 @@ type PacketManifest struct {
 type Reassembly struct {
 	Start bool
 	End   bool
-	Seq   tcpassembly.Sequence
+	Seq   Sequence
 	Bytes []byte
 }
 
@@ -107,9 +106,9 @@ type Connection struct {
 	serverFlow  TcpIpFlow
 	closingFlow TcpIpFlow
 
-	clientNextSeq tcpassembly.Sequence
-	serverNextSeq tcpassembly.Sequence
-	hijackNextAck tcpassembly.Sequence
+	clientNextSeq Sequence
+	serverNextSeq Sequence
+	hijackNextAck Sequence
 
 	ClientStreamRing *ring.Ring
 	ServerStreamRing *ring.Ring
@@ -172,7 +171,7 @@ func (c *Connection) detectHijack(p PacketManifest, flow TcpIpFlow) {
 		return
 	}
 	if p.TCP.ACK && p.TCP.SYN {
-		if tcpassembly.Sequence(p.TCP.Ack).Difference(c.hijackNextAck) == 0 {
+		if Sequence(p.TCP.Ack).Difference(c.hijackNextAck) == 0 {
 			c.AttackLogger.ReportHijackAttack(time.Now(), flow)
 		}
 	}
@@ -182,7 +181,7 @@ func (c *Connection) detectHijack(p PacketManifest, flow TcpIpFlow) {
 // overlapping ring segments... that overlap with the given packet (PacketManifest).
 func (c *Connection) getOverlapRings(p PacketManifest, flow TcpIpFlow) (*ring.Ring, *ring.Ring) {
 	var ringPtr, head, tail *ring.Ring
-	start := tcpassembly.Sequence(p.TCP.Seq)
+	start := Sequence(p.TCP.Seq)
 	end := start.Add(len(p.Payload) - 1)
 	if flow.Equal(c.clientFlow) {
 		ringPtr = c.ServerStreamRing
@@ -201,7 +200,7 @@ func (c *Connection) getOverlapRings(p PacketManifest, flow TcpIpFlow) (*ring.Ri
 // that overlaps with the stream segment specified by the start and end Sequence boundaries.
 // The other return values are the slice offsets of the original packet payload that can be used to derive
 // the new overlapping portion of the stream segment.
-func (c *Connection) getOverlapBytes(head, tail *ring.Ring, start, end tcpassembly.Sequence) ([]byte, int, int) {
+func (c *Connection) getOverlapBytes(head, tail *ring.Ring, start, end Sequence) ([]byte, int, int) {
 	var overlapStartSlice, overlapEndSlice int
 	var overlapBytes []byte
 	if head == nil || tail == nil {
@@ -233,7 +232,7 @@ func (c *Connection) detectInjection(p PacketManifest, flow TcpIpFlow) {
 	if head == nil || tail == nil {
 		log.Printf("ring buffer not adequately filled. retrospective analysis impossible\n", flow.String())
 	}
-	start := tcpassembly.Sequence(p.TCP.Seq)
+	start := Sequence(p.TCP.Seq)
 	end := start.Add(len(p.Payload) - 1)
 	overlapBytes, startOffset, endOffset := c.getOverlapBytes(head, tail, start, end)
 	if !bytes.Equal(overlapBytes, p.Payload[startOffset:endOffset]) {
@@ -256,7 +255,7 @@ func (c *Connection) stateListen(p PacketManifest) {
 		// a TCP extension is used...
 		// If so then the sequence number needs to track this payload.
 		// For more information see: https://tools.ietf.org/id/draft-agl-tcpm-sadata-00.html
-		c.clientNextSeq = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1) // XXX
+		c.clientNextSeq = Sequence(p.TCP.Seq).Add(len(p.Payload) + 1) // XXX
 		c.hijackNextAck = c.clientNextSeq
 	} else {
 		//unknown TCP state
@@ -275,12 +274,12 @@ func (c *Connection) stateConnectionRequest(p PacketManifest) {
 		//handshake anomaly
 		return
 	}
-	if c.clientNextSeq.Difference(tcpassembly.Sequence(p.TCP.Ack)) != 0 {
+	if c.clientNextSeq.Difference(Sequence(p.TCP.Ack)) != 0 {
 		//handshake anomaly
 		return
 	}
 	c.state = TCP_CONNECTION_ESTABLISHED
-	c.serverNextSeq = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1) // XXX see above comment about TCP extentions
+	c.serverNextSeq = Sequence(p.TCP.Seq).Add(len(p.Payload) + 1) // XXX see above comment about TCP extentions
 }
 
 // stateConnectionEstablished is called by our TCP FSM runtime and
@@ -296,11 +295,11 @@ func (c *Connection) stateConnectionEstablished(p PacketManifest) {
 		// handshake anomaly
 		return
 	}
-	if tcpassembly.Sequence(p.TCP.Seq).Difference(c.clientNextSeq) != 0 {
+	if Sequence(p.TCP.Seq).Difference(c.clientNextSeq) != 0 {
 		// handshake anomaly
 		return
 	}
-	if tcpassembly.Sequence(p.TCP.Ack).Difference(c.serverNextSeq) != 0 {
+	if Sequence(p.TCP.Ack).Difference(c.serverNextSeq) != 0 {
 		// handshake anomaly
 		return
 	}
@@ -311,7 +310,7 @@ func (c *Connection) stateConnectionEstablished(p PacketManifest) {
 // stateDataTransfer is called by our TCP FSM and processes packets
 // once we are in the TCP_DATA_TRANSFER state
 func (c *Connection) stateDataTransfer(p PacketManifest) {
-	var nextSeqPtr *tcpassembly.Sequence
+	var nextSeqPtr *Sequence
 	var closerState, remoteState *uint8
 	if c.packetCount < FIRST_FEW_PACKETS {
 		c.detectHijack(p, p.Flow)
@@ -325,7 +324,7 @@ func (c *Connection) stateDataTransfer(p PacketManifest) {
 		closerState = &c.serverState
 		remoteState = &c.clientState
 	}
-	diff := tcpassembly.Sequence(p.TCP.Seq).Difference(*nextSeqPtr)
+	diff := Sequence(p.TCP.Seq).Difference(*nextSeqPtr)
 	if diff > 0 {
 		// *nextSeqPtr comes after p.TCP.Seq
 		// stream overlap case
@@ -347,7 +346,7 @@ func (c *Connection) stateDataTransfer(p PacketManifest) {
 		}
 		if len(p.Payload) > 0 {
 			reassembly := Reassembly{
-				Seq:   tcpassembly.Sequence(p.TCP.Seq),
+				Seq:   Sequence(p.TCP.Seq),
 				Bytes: []byte(p.Payload),
 			}
 			if p.Flow == c.clientFlow {
@@ -357,7 +356,7 @@ func (c *Connection) stateDataTransfer(p PacketManifest) {
 				c.ClientStreamRing.Value = reassembly
 				c.ClientStreamRing = c.ClientStreamRing.Next()
 			}
-			*nextSeqPtr = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload)) // XXX
+			*nextSeqPtr = Sequence(p.TCP.Seq).Add(len(p.Payload)) // XXX
 		}
 	} else if diff < 0 {
 		// p.TCP.Seq comes after *nextSeqPtr
@@ -367,20 +366,20 @@ func (c *Connection) stateDataTransfer(p PacketManifest) {
 }
 
 // stateFinWait1 handles packets for the FIN-WAIT-1 state
-func (c *Connection) stateFinWait1(p PacketManifest, flow TcpIpFlow, nextSeqPtr *tcpassembly.Sequence, nextAckPtr *tcpassembly.Sequence, statePtr, otherStatePtr *uint8) {
-	if tcpassembly.Sequence(p.TCP.Seq).Difference(*nextSeqPtr) != 0 {
+func (c *Connection) stateFinWait1(p PacketManifest, flow TcpIpFlow, nextSeqPtr *Sequence, nextAckPtr *Sequence, statePtr, otherStatePtr *uint8) {
+	if Sequence(p.TCP.Seq).Difference(*nextSeqPtr) != 0 {
 		log.Printf("FIN-WAIT-1: out of order packet received. sequence %d != nextSeq %d\n", p.TCP.Seq, *nextSeqPtr)
 		return
 	}
 	if p.TCP.ACK {
-		if tcpassembly.Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 { //XXX
+		if Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 { //XXX
 			log.Printf("FIN-WAIT-1: unexpected ACK: got %d expected %d\n", p.TCP.Ack, *nextAckPtr)
 			return
 		}
 		if p.TCP.FIN {
 			*statePtr = TCP_CLOSING
 			*otherStatePtr = TCP_LAST_ACK
-			*nextSeqPtr = tcpassembly.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
+			*nextSeqPtr = Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
 		} else {
 			*statePtr = TCP_FIN_WAIT2
 		}
@@ -390,10 +389,10 @@ func (c *Connection) stateFinWait1(p PacketManifest, flow TcpIpFlow, nextSeqPtr 
 }
 
 // stateFinWait1 handles packets for the FIN-WAIT-2 state
-func (c *Connection) stateFinWait2(p PacketManifest, flow TcpIpFlow, nextSeqPtr *tcpassembly.Sequence, nextAckPtr *tcpassembly.Sequence, statePtr *uint8) {
-	if tcpassembly.Sequence(p.TCP.Seq).Difference(*nextSeqPtr) == 0 {
+func (c *Connection) stateFinWait2(p PacketManifest, flow TcpIpFlow, nextSeqPtr *Sequence, nextAckPtr *Sequence, statePtr *uint8) {
+	if Sequence(p.TCP.Seq).Difference(*nextSeqPtr) == 0 {
 		if p.TCP.ACK && p.TCP.FIN {
-			if tcpassembly.Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 {
+			if Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 {
 				log.Print("FIN-WAIT-1: out of order ACK packet received.\n")
 				return
 			}
@@ -428,10 +427,10 @@ func (c *Connection) stateClosing(p PacketManifest) {
 }
 
 // stateLastAck represents the TCP FSM's LAST-ACK state
-func (c *Connection) stateLastAck(p PacketManifest, flow TcpIpFlow, nextSeqPtr *tcpassembly.Sequence, nextAckPtr *tcpassembly.Sequence, statePtr *uint8) {
-	if tcpassembly.Sequence(p.TCP.Seq).Difference(*nextSeqPtr) == 0 { //XXX
+func (c *Connection) stateLastAck(p PacketManifest, flow TcpIpFlow, nextSeqPtr *Sequence, nextAckPtr *Sequence, statePtr *uint8) {
+	if Sequence(p.TCP.Seq).Difference(*nextSeqPtr) == 0 { //XXX
 		if p.TCP.ACK && (!p.TCP.FIN && !p.TCP.SYN) {
-			if tcpassembly.Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 {
+			if Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 {
 				log.Print("LAST-ACK: out of order ACK packet received. seq %d != nextAck %d\n", p.TCP.Ack, *nextAckPtr)
 				return
 			}
@@ -447,8 +446,8 @@ func (c *Connection) stateLastAck(p PacketManifest, flow TcpIpFlow, nextSeqPtr *
 
 // stateConnectionClosing handles all the closing states until the closed state has been reached.
 func (c *Connection) stateConnectionClosing(p PacketManifest) {
-	var nextSeqPtr *tcpassembly.Sequence
-	var nextAckPtr *tcpassembly.Sequence
+	var nextSeqPtr *Sequence
+	var nextAckPtr *Sequence
 	var statePtr, otherStatePtr *uint8
 	if p.Flow.Equal(c.closingFlow) {
 		if c.clientFlow.Equal(p.Flow) {

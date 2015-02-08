@@ -21,7 +21,6 @@
 package HoneyBadger
 
 import (
-	"code.google.com/p/gopacket/tcpassembly"
 	"container/ring"
 	"fmt"
 	"log"
@@ -29,7 +28,7 @@ import (
 
 // getHeadFromRing returns a pointer to the oldest ring element that
 // contains the beginning of our sequence range (start - end)
-func getHeadFromRing(ringPtr *ring.Ring, start, end tcpassembly.Sequence) *ring.Ring {
+func getHeadFromRing(ringPtr *ring.Ring, start, end Sequence) *ring.Ring {
 	var head, prev *ring.Ring
 	current := ringPtr.Prev()
 	_, ok := current.Value.(Reassembly)
@@ -76,7 +75,7 @@ func getHeadFromRing(ringPtr *ring.Ring, start, end tcpassembly.Sequence) *ring.
 
 // getHeadFromRing returns the oldest ring element that contains the beginning of
 // our sequence range (start - end)
-func getTailFromRing(head *ring.Ring, end tcpassembly.Sequence) *ring.Ring {
+func getTailFromRing(head *ring.Ring, end Sequence) *ring.Ring {
 	var current, prev, tail *ring.Ring
 	current = head
 	for {
@@ -98,8 +97,8 @@ func getTailFromRing(head *ring.Ring, end tcpassembly.Sequence) *ring.Ring {
 
 // getStartSequence receives a ring pointer and a starting sequence number
 // and returns the closest available starting sequence number that is available from the ring.
-func getStartSequence(head *ring.Ring, start tcpassembly.Sequence) tcpassembly.Sequence {
-	var startSeq tcpassembly.Sequence
+func getStartSequence(head *ring.Ring, start Sequence) Sequence {
+	var startSeq Sequence
 	diff := head.Value.(Reassembly).Seq.Difference(start)
 	if diff >= 0 {
 		startSeq = start
@@ -111,8 +110,8 @@ func getStartSequence(head *ring.Ring, start tcpassembly.Sequence) tcpassembly.S
 
 // getEndSequence receives a ring pointer and an ending sequence number
 // and returns the closest available ending sequence number that is available from the ring.
-func getEndSequence(tail *ring.Ring, end tcpassembly.Sequence) tcpassembly.Sequence {
-	var seqEnd tcpassembly.Sequence
+func getEndSequence(tail *ring.Ring, end Sequence) Sequence {
+	var seqEnd Sequence
 	diff := tail.Value.(Reassembly).Seq.Add(len(tail.Value.(Reassembly).Bytes) - 1).Difference(end)
 	if diff <= 0 {
 		seqEnd = end
@@ -154,14 +153,14 @@ func getRingSlice(head, tail *ring.Ring, sliceStart, sliceEnd int) []byte {
 
 // getHeadRingOffset receives a given ring element and starting sequence number
 // and returns the offset into the ring element where the start sequence is found
-func getHeadRingOffset(head *ring.Ring, start tcpassembly.Sequence) int {
+func getHeadRingOffset(head *ring.Ring, start Sequence) int {
 	return head.Value.(Reassembly).Seq.Difference(start)
 }
 
 // getStartOverlapSequenceAndOffset takes a ring element and start sequence and
 // returns the closest sequence number available in the element... and the offset
 // from the beginning of that element
-func getStartOverlapSequenceAndOffset(head *ring.Ring, start tcpassembly.Sequence) (tcpassembly.Sequence, int) {
+func getStartOverlapSequenceAndOffset(head *ring.Ring, start Sequence) (Sequence, int) {
 	seqStart := getStartSequence(head, start)
 	offset := int(start.Difference(seqStart))
 	return seqStart, offset
@@ -169,20 +168,20 @@ func getStartOverlapSequenceAndOffset(head *ring.Ring, start tcpassembly.Sequenc
 
 // getRingSegmentLastSequence returns the last sequence number represented by
 // a given ring elements stream segment
-func getRingSegmentLastSequence(segment *ring.Ring) tcpassembly.Sequence {
+func getRingSegmentLastSequence(segment *ring.Ring) Sequence {
 	return segment.Value.(Reassembly).Seq.Add(len(segment.Value.(Reassembly).Bytes) - 1)
 }
 
 // getTailRingOffset returns the number of bytes the from end of the
 // ring element's stream segment that the end sequence is found
-func getTailRingOffset(tail *ring.Ring, end tcpassembly.Sequence) int {
+func getTailRingOffset(tail *ring.Ring, end Sequence) int {
 	tailEndSequence := getRingSegmentLastSequence(tail)
 	return end.Difference(tailEndSequence)
 }
 
 // getEndOverlapSequenceAndOffset receives a ring element and end sequence.
 // It returns the last sequence number represented by that ring element and the offset from the end.
-func getEndOverlapSequenceAndOffset(tail *ring.Ring, end tcpassembly.Sequence) (tcpassembly.Sequence, int) {
+func getEndOverlapSequenceAndOffset(tail *ring.Ring, end Sequence) (Sequence, int) {
 	seqEnd := getEndSequence(tail, end)
 	offset := int(seqEnd.Difference(end))
 	return seqEnd, offset

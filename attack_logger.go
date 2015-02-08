@@ -21,7 +21,6 @@
 package HoneyBadger
 
 import (
-	"code.google.com/p/gopacket/tcpassembly"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -37,7 +36,7 @@ type UnserializedAttackReport struct {
 	Flow                     TcpIpFlow
 	AttemptPayload           []byte
 	OverlapPayload           []byte
-	Start, End               tcpassembly.Sequence
+	Start, End               Sequence
 	OverlapStart, OverlapEnd int
 }
 
@@ -60,7 +59,7 @@ type AttackReport struct {
 // more methods then we should add those. Perhaps a Close() method will be required in the future for instance.
 type AttackLogger interface {
 	ReportHijackAttack(instant time.Time, flow TcpIpFlow)
-	ReportInjectionAttack(instant time.Time, flow TcpIpFlow, attemptPayload []byte, overlap []byte, start, end tcpassembly.Sequence, overlapStart, overlapEnd int)
+	ReportInjectionAttack(instant time.Time, flow TcpIpFlow, attemptPayload []byte, overlap []byte, start, end Sequence, overlapStart, overlapEnd int)
 	Start()
 	Stop()
 }
@@ -114,7 +113,7 @@ func (a *AttackJsonLogger) ReportHijackAttack(instant time.Time, flow TcpIpFlow)
 
 // ReportInjectionAttack takes the details of an injection attack and writes
 // an attack report to the attack log file
-func (a *AttackJsonLogger) ReportInjectionAttack(instant time.Time, flow TcpIpFlow, attemptPayload []byte, overlap []byte, start, end tcpassembly.Sequence, overlapStart, overlapEnd int) {
+func (a *AttackJsonLogger) ReportInjectionAttack(instant time.Time, flow TcpIpFlow, attemptPayload []byte, overlap []byte, start, end Sequence, overlapStart, overlapEnd int) {
 	log.Print("ReportInjectionAttack\n")
 	unserializedAttackReport := UnserializedAttackReport{
 		Time:           instant,
