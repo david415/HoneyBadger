@@ -68,15 +68,6 @@ type PacketManifest struct {
 	Payload   gopacket.Payload
 }
 
-// Reassembly is inspired by gopacket.tcpassembly this struct can be used
-// to represent ordered segments of a TCP stream.
-type Reassembly struct {
-	Start bool
-	End   bool
-	Seq   Sequence
-	Bytes []byte
-}
-
 // String returns a string representation of Reassembly
 func (r *Reassembly) String() string {
 	return fmt.Sprintf("Reassembly: Seq %d Bytes len %d data %s\n", r.Seq, len(r.Bytes), string(r.Bytes))
