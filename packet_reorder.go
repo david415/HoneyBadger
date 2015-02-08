@@ -168,6 +168,8 @@ func byteSpan(expected, received Sequence, bytes []byte) (toSend []byte, next Se
 type OrderedCoalesceOptions struct {
 	Flow       TcpIpFlow
 	StreamRing *ring.Ring
+	pageCache  *pageCache
+	nextSeq    *Sequence
 
 	// MaxBufferedPagesTotal is an upper limit on the total number of pages to
 	// buffer while waiting for out-of-order packets.  Once this limit is
@@ -185,18 +187,21 @@ type OrderedCoalesce struct {
 	OrderedCoalesceOptions
 
 	AttackLogger AttackLogger
-	pageCache    *pageCache
 	pageCount    int
 	first, last  *page
-	nextSeq      Sequence
 	ret          []Reassembly
 }
 
-func NewOrderedCoalesce() *OrderedCoalesce {
-	return &OrderedCoalesce{} //XXX
+func NewOrderedCoalesce(flow TcpIpFlow, streamRing *ring.Ring, maxBufferedPagesTotal, maxBufferedPagesPerConnection int) *OrderedCoalesce {
+	return &OrderedCoalesce{
+		Flow:                          flow,
+		StreamRing:                    streamRing,
+		MaxBufferedPagesTotal:         maxBufferedPagesTotal,
+		MaxBufferedPagesPerConnection: maxBufferedPagesPerConnection,
+	}
 }
 
-func (o *OrderedCoalesce) insert(packetManifest PacketManifest, nextSeq Sequence) {
+func (o *OrderedCoalesce) insert(packetManifest PacketManifest) {
 	if o.first != nil && o.first.Seq == o.nextSeq {
 		panic("wtf")
 	}
@@ -273,8 +278,8 @@ func (o *OrderedCoalesce) pushBetween(prev, next, first, last *page) {
 	}
 }
 
-// addNext pops the first page off and adds it to the
-// return array.
+// addNext pops the first page off our doubly-linked-list and
+// adds it to the return array.
 func (o *OrderedCoalesce) addNext() {
 	diff := o.nextSeq.Difference(o.first.Seq)
 	if o.nextSeq == invalidSequence {

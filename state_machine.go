@@ -41,7 +41,7 @@ const (
 	FIRST_FEW_PACKETS = 12
 
 	// TCP states
-	TCP_LISTEN                 = 0
+	TCP_UNKNOWN                = 0
 	TCP_CONNECTION_REQUEST     = 1
 	TCP_CONNECTION_ESTABLISHED = 2
 	TCP_DATA_TRANSFER          = 3
@@ -78,10 +78,17 @@ type CloseRequest struct {
 	CloseReadyChan chan bool
 }
 
+type ConnectionOptions struct {
+	MaxBufferedPagesTotal         int
+	MaxBufferedPagesPerConnection int
+}
+
 // Connection is used to track client and server flows for a given TCP connection.
 // We implement a basic TCP finite state machine and track state in order to detect
 // hanshake hijack and other TCP attacks such as segment veto and stream injection.
 type Connection struct {
+	ConnectionOptions
+
 	closeRequestChan chan CloseRequest
 	stopChan         chan bool
 	receiveChan      chan *PacketManifest
@@ -93,6 +100,8 @@ type Connection struct {
 	clientState uint8
 	serverState uint8
 
+	connectFlowKnown bool
+
 	clientFlow  TcpIpFlow
 	serverFlow  TcpIpFlow
 	closingFlow TcpIpFlow
@@ -103,6 +112,9 @@ type Connection struct {
 
 	ClientStreamRing *ring.Ring
 	ServerStreamRing *ring.Ring
+
+	ClientCoalesce *OrderedCoalesce
+	ServerCoalesce *OrderedCoalesce
 
 	PacketLogger PacketLogger
 	AttackLogger AttackLogger
@@ -233,14 +245,15 @@ func (c *Connection) detectInjection(p PacketManifest, flow TcpIpFlow) {
 	}
 }
 
-// stateListen gets called by our TCP finite state machine runtime
+// stateUnknown gets called by our TCP finite state machine runtime
 // and moves us into the TCP_CONNECTION_REQUEST state if we receive
-// a SYN packet.
-func (c *Connection) stateListen(p PacketManifest) {
+// a SYN packet... otherwise TCP_DATA_TRANSFER state.
+func (c *Connection) stateUnknown(p PacketManifest) {
 	if p.TCP.SYN && !p.TCP.ACK {
 		c.state = TCP_CONNECTION_REQUEST
+		c.connectFlowKnown = true
 		c.clientFlow = p.Flow
-		c.serverFlow = c.clientFlow.Reverse()
+		c.serverFlow = p.Flow.Reverse()
 
 		// Note that TCP SYN and SYN/ACK packets may contain payload data if
 		// a TCP extension is used...
@@ -248,9 +261,17 @@ func (c *Connection) stateListen(p PacketManifest) {
 		// For more information see: https://tools.ietf.org/id/draft-agl-tcpm-sadata-00.html
 		c.clientNextSeq = Sequence(p.TCP.Seq).Add(len(p.Payload) + 1) // XXX
 		c.hijackNextAck = c.clientNextSeq
+
 	} else {
-		//unknown TCP state
+		c.state = TCP_DATA_TRANSFER
+		c.connectFlowKnown = false
+		c.clientFlow = p.Flow
+		c.clientFlow = p.Flow.Reverse()
+
+		c.clientNextSeq = Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
 	}
+	c.ClientCoalesce = NewOrderedCoalesce(c.clientFlow, c.ClientStreamRing, c.MaxBufferedPagesTotal, c.MaxBufferedPagesPerConnection)
+	c.ServerCoalesce = NewOrderedCoalesce(c.serverFlow, c.ServerStreamRing, c.MaxBufferedPagesTotal, c.MaxBufferedPagesPerConnection)
 }
 
 // stateConnectionRequest gets called by our TCP finite state machine runtime
@@ -351,8 +372,14 @@ func (c *Connection) stateDataTransfer(p PacketManifest) {
 		}
 	} else if diff < 0 {
 		// p.TCP.Seq comes after *nextSeqPtr
-		// futute-out-of-order packet case
-		// ...
+		// future-out-of-order packet case
+		if len(p.Payload) > 0 {
+			if p.Flow == c.clientFlow {
+				c.ClientCoalesce.insert(p)
+			} else {
+				c.ServerCoalesce.insert(p)
+			}
+		}
 	}
 }
 
@@ -503,8 +530,8 @@ func (c *Connection) startReceivingPackets() {
 			}
 			c.packetCount += 1
 			switch c.state {
-			case TCP_LISTEN:
-				c.stateListen(*p)
+			case TCP_UNKNOWN:
+				c.stateUnknown(*p)
 			case TCP_CONNECTION_REQUEST:
 				c.stateConnectionRequest(*p)
 			case TCP_CONNECTION_ESTABLISHED:
