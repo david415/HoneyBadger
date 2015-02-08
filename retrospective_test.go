@@ -43,7 +43,7 @@ func (d *DummyAttackLogger) ReportHijackAttack(instant time.Time, flow TcpIpFlow
 	d.Count += 1
 }
 
-func (d *DummyAttackLogger) ReportInjectionAttack(instant time.Time, flow TcpIpFlow, attemptPayload []byte, overlap []byte, start, end Sequence, overlapStart, overlapEnd int) {
+func (d *DummyAttackLogger) ReportInjectionAttack(attackType string, instant time.Time, flow TcpIpFlow, attemptPayload []byte, overlap []byte, start, end Sequence, overlapStart, overlapEnd int) {
 	d.Count += 1
 }
 
