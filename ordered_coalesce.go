@@ -1,14 +1,15 @@
 /*
  *    packet_reorder.go - tcp packet reordering
  *
- *    perhaps i must include google's license because this code is copy-pasted and refactored
+ *    I include google's license because this code is copy-pasted and refactored
  *    from the original, Google's gopacket.tcpassembly...
+ *    Thanks to Graeme Connel for writing tcpassembly!
  */
 
 // Copyright 2012 Google, Inc. All rights reserved.
 //
 // Use of this source code is governed by a BSD-style license
-// that can be found in the LICENSE file in the root of the source
+// that can be found in the LICENSE_BSD file in the root of the source
 // tree.
 
 package HoneyBadger
@@ -73,7 +74,7 @@ type Stream interface {
 // page is used to store TCP data we're not ready for yet (out-of-order
 // packets).  Unused pages are stored in and returned from a pageCache, which
 // avoids memory allocation.  Used pages are stored in a doubly-linked list in
-// a connection.
+// an OrderedCoalesce.
 type page struct {
 	Reassembly
 	index      int
@@ -177,10 +178,10 @@ type OrderedCoalesceOptions struct {
 	// gets a packet for.  If <= 0, this is ignored.
 	MaxBufferedPagesTotal int
 	// MaxBufferedPagesPerConnection is an upper limit on the number of pages
-	// buffered for a single connection.  Should this limit be reached for a
-	// particular connection, the smallest sequence number will be flushed, along
+	// buffered for a single flow.  Should this limit be reached for a
+	// particular flow, the smallest sequence number will be flushed, along
 	// with any contiguous data.  If <= 0, this is ignored.
-	MaxBufferedPagesPerConnection int
+	MaxBufferedPagesPerFlow int
 }
 
 type OrderedCoalesce struct {
@@ -192,24 +193,27 @@ type OrderedCoalesce struct {
 	ret          []Reassembly
 }
 
-func NewOrderedCoalesce(flow TcpIpFlow, streamRing *ring.Ring, maxBufferedPagesTotal, maxBufferedPagesPerConnection int) *OrderedCoalesce {
+func NewOrderedCoalesce(flow TcpIpFlow, pageCache *pageCache, streamRing *ring.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int) *OrderedCoalesce {
 	return &OrderedCoalesce{
-		Flow:                          flow,
-		StreamRing:                    streamRing,
-		MaxBufferedPagesTotal:         maxBufferedPagesTotal,
-		MaxBufferedPagesPerConnection: maxBufferedPagesPerConnection,
+		OrderedCoalesceOptions: OrderedCoalesceOptions{
+			Flow:                    flow,
+			pageCache:               pageCache,
+			StreamRing:              streamRing,
+			MaxBufferedPagesTotal:   maxBufferedPagesTotal,
+			MaxBufferedPagesPerFlow: maxBufferedPagesPerFlow,
+		},
 	}
 }
 
 func (o *OrderedCoalesce) insert(packetManifest PacketManifest) {
-	if o.first != nil && o.first.Seq == o.nextSeq {
+	if o.first != nil && o.first.Seq == *o.nextSeq {
 		panic("wtf")
 	}
 	p, p2 := o.pagesFromTcp(packetManifest)
 	prev, current := o.traverse(Sequence(packetManifest.TCP.Seq))
 	o.pushBetween(prev, current, p, p2)
 	o.pageCount++
-	if (o.MaxBufferedPagesPerConnection > 0 && o.pageCount >= o.MaxBufferedPagesPerConnection) ||
+	if (o.MaxBufferedPagesPerFlow > 0 && o.pageCount >= o.MaxBufferedPagesPerFlow) ||
 		(o.MaxBufferedPagesTotal > 0 && o.pageCache.used >= o.MaxBufferedPagesTotal) {
 		log.Printf("%v hit max buffer size: %+v, %v, %v", packetManifest.Flow.String(), o.OrderedCoalesceOptions, o.pageCount, o.pageCache.used)
 		o.addNext()
@@ -282,7 +286,7 @@ func (o *OrderedCoalesce) pushBetween(prev, next, first, last *page) {
 // adds it to the return array.
 func (o *OrderedCoalesce) addNext() {
 	diff := o.nextSeq.Difference(o.first.Seq)
-	if o.nextSeq == invalidSequence {
+	if *o.nextSeq == Sequence(invalidSequence) {
 		o.first.Skip = -1
 	} else if diff > 0 {
 		o.first.Skip = int(diff)
@@ -306,7 +310,7 @@ func (o *OrderedCoalesce) addNext() {
 			log.Print("not an attack attempt; a normal TCP unordered stream segment coalesce\n")
 		}
 	}
-	o.first.Bytes, o.nextSeq = byteSpan(o.nextSeq, o.first.Seq, o.first.Bytes) // XXX injection happens here
+	o.first.Bytes, *o.nextSeq = byteSpan(*o.nextSeq, o.first.Seq, o.first.Bytes) // XXX injection happens here
 	log.Printf("%s   adding from r (%v, %v)", o.Flow.String(), o.first.Seq, o.nextSeq)
 	o.ret = append(o.ret, o.first.Reassembly)
 	o.pageCache.replace(o.first)
