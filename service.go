@@ -51,6 +51,7 @@ type Inquisitor struct {
 	stopChan     chan bool
 	connPool     *ConnectionPool
 	handle       *pcap.Handle
+	pager        *Pager
 	AttackLogger AttackLogger
 }
 
@@ -67,6 +68,7 @@ func NewInquisitor(iface string, wireDuration time.Duration, filter string, snap
 		},
 		connPool:     NewConnectionPool(),
 		stopChan:     make(chan bool),
+		pager:        NewPager(),
 		AttackLogger: NewAttackJsonLogger(logDir),
 	}
 	return &i
@@ -163,7 +165,7 @@ func (i *Inquisitor) receivePackets() {
 					panic(err) // wtf
 				}
 			} else {
-				conn = NewConnection(closeConnectionChan)
+				conn = NewConnection(closeConnectionChan, i.pager)
 				conn.AttackLogger = i.AttackLogger
 				if i.PacketLog {
 					conn.PacketLogger = NewPcapLogger(i.LogDir, flow)

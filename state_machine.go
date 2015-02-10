@@ -85,7 +85,7 @@ type ConnectionOptions struct {
 
 // Connection is used to track client and server flows for a given TCP connection.
 // We implement a basic TCP finite state machine and track state in order to detect
-// hanshake hijack and other TCP attacks such as segment veto and stream injection.
+// hanshake hijack and other TCP attacks such as segment veto and sloppy injection.
 type Connection struct {
 	ConnectionOptions
 
@@ -93,14 +93,14 @@ type Connection struct {
 	stopChan         chan bool
 	receiveChan      chan *PacketManifest
 
-	packetCount uint64
-	lastSeen    time.Time
+	pager            *Pager
+	packetCount      uint64
+	lastSeen         time.Time
+	connectFlowKnown bool
 
 	state       uint8
 	clientState uint8
 	serverState uint8
-
-	connectFlowKnown bool
 
 	clientFlow  TcpIpFlow
 	serverFlow  TcpIpFlow
@@ -121,14 +121,13 @@ type Connection struct {
 }
 
 // NewConnection returns a new Connection struct
-func NewConnection(closeRequestChan chan CloseRequest) *Connection {
+func NewConnection(closeRequestChan chan CloseRequest, pager *Pager) *Connection {
 	conn := Connection{
+		pager:            pager,
 		closeRequestChan: closeRequestChan,
 		stopChan:         make(chan bool),
 		receiveChan:      make(chan *PacketManifest),
-
-		state: TCP_LISTEN,
-
+		state:            TCP_UNKNOWN,
 		ClientStreamRing: ring.New(MAX_CONN_PACKETS),
 		ServerStreamRing: ring.New(MAX_CONN_PACKETS),
 	}
@@ -269,9 +268,10 @@ func (c *Connection) stateUnknown(p PacketManifest) {
 		c.clientFlow = p.Flow.Reverse()
 
 		c.clientNextSeq = Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
+
+		c.ClientCoalesce = NewOrderedCoalesce(c.clientFlow, c.pager, c.ClientStreamRing, c.MaxBufferedPagesTotal, c.MaxBufferedPagesPerConnection)
+		c.ServerCoalesce = NewOrderedCoalesce(c.serverFlow, c.pager, c.ServerStreamRing, c.MaxBufferedPagesTotal, c.MaxBufferedPagesPerConnection)
 	}
-	c.ClientCoalesce = NewOrderedCoalesce(c.clientFlow, c.ClientStreamRing, c.MaxBufferedPagesTotal, c.MaxBufferedPagesPerConnection)
-	c.ServerCoalesce = NewOrderedCoalesce(c.serverFlow, c.ServerStreamRing, c.MaxBufferedPagesTotal, c.MaxBufferedPagesPerConnection)
 }
 
 // stateConnectionRequest gets called by our TCP finite state machine runtime

@@ -10,7 +10,7 @@ import (
 
 func TestStateDataTransfer(t *testing.T) {
 	closeConnectionChan := make(chan CloseRequest)
-	conn := NewConnection(closeConnectionChan)
+	conn := NewConnection(closeConnectionChan, nil)
 	conn.AttackLogger = NewDummyAttackLogger()
 
 	conn.state = TCP_DATA_TRANSFER
@@ -124,7 +124,7 @@ func TestStateDataTransfer(t *testing.T) {
 }
 
 func TestTCPConnect(t *testing.T) {
-	conn := NewConnection(nil)
+	conn := NewConnection(nil, nil)
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},
 		DstIP:    net.IP{2, 3, 4, 5},
@@ -239,7 +239,7 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 	attackLogger := NewDummyAttackLogger()
 
 	closeConnectionChan := make(chan CloseRequest)
-	conn := NewConnection(closeConnectionChan)
+	conn := NewConnection(closeConnectionChan, nil)
 
 	conn.AttackLogger = attackLogger
 	conn.state = TCP_DATA_TRANSFER
@@ -375,7 +375,7 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 
 func TestTCPHijack(t *testing.T) {
 	attackLogger := NewDummyAttackLogger()
-	conn := NewConnection(nil)
+	conn := NewConnection(nil, nil)
 	conn.AttackLogger = attackLogger
 
 	ip := layers.IPv4{

@@ -12,7 +12,7 @@ func TestConnectionPool(t *testing.T) {
 
 	closeConnectionChan := make(chan CloseRequest)
 	connPool := NewConnectionPool()
-	conn := NewConnection(closeConnectionChan)
+	conn := NewConnection(closeConnectionChan, nil)
 
 	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
@@ -38,7 +38,7 @@ func TestConnectionPool(t *testing.T) {
 	ipFlow, _ = gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 9, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 9, 4, 5)))
 	tcpFlow, _ = gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
 	flow = NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
-	conn = NewConnection(closeConnectionChan)
+	conn = NewConnection(closeConnectionChan, nil)
 	conn.clientFlow = flow
 
 	connPool.Put(flow, conn)
@@ -70,7 +70,7 @@ func TestConnectionPool(t *testing.T) {
 	}
 
 	// test close one case of CloseOlderThan
-	conn = NewConnection(closeConnectionChan)
+	conn = NewConnection(closeConnectionChan, nil)
 	conn.clientFlow = flow
 	connPool.Put(flow, conn)
 	count = connPool.CloseOlderThan(time.Now())
@@ -83,7 +83,7 @@ func TestConnectionPool(t *testing.T) {
 	timestamp1 := time.Now()
 	timestamp2 := timestamp1.Add(timeDuration)
 
-	conn = NewConnection(closeConnectionChan)
+	conn = NewConnection(closeConnectionChan, nil)
 	conn.clientFlow = flow
 	connPool.Put(flow, conn)
 	conn.state = TCP_DATA_TRANSFER
@@ -98,7 +98,7 @@ func TestConnectionPool(t *testing.T) {
 		t.Fail()
 	}
 
-	conn = NewConnection(closeConnectionChan)
+	conn = NewConnection(closeConnectionChan, nil)
 	conn.clientFlow = flow
 	connPool.Put(flow, conn)
 	conn.state = TCP_DATA_TRANSFER
@@ -129,7 +129,7 @@ func TestConnectionPool(t *testing.T) {
 		t.Fail()
 	}
 
-	conn = NewConnection(closeConnectionChan)
+	conn = NewConnection(closeConnectionChan, nil)
 	conn2, err := connPool.Get(flow)
 	if err == nil {
 		t.Error("Get method fail")

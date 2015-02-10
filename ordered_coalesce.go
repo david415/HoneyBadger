@@ -169,7 +169,6 @@ func byteSpan(expected, received Sequence, bytes []byte) (toSend []byte, next Se
 type OrderedCoalesceOptions struct {
 	Flow       TcpIpFlow
 	StreamRing *ring.Ring
-	pageCache  *pageCache
 	nextSeq    *Sequence
 
 	// MaxBufferedPagesTotal is an upper limit on the total number of pages to
@@ -189,15 +188,16 @@ type OrderedCoalesce struct {
 
 	AttackLogger AttackLogger
 	pageCount    int
+	pager        *Pager
 	first, last  *page
 	ret          []Reassembly
 }
 
-func NewOrderedCoalesce(flow TcpIpFlow, pageCache *pageCache, streamRing *ring.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int) *OrderedCoalesce {
+func NewOrderedCoalesce(flow TcpIpFlow, pager *Pager, streamRing *ring.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int) *OrderedCoalesce {
 	return &OrderedCoalesce{
+		pager: pager,
 		OrderedCoalesceOptions: OrderedCoalesceOptions{
 			Flow:                    flow,
-			pageCache:               pageCache,
 			StreamRing:              streamRing,
 			MaxBufferedPagesTotal:   maxBufferedPagesTotal,
 			MaxBufferedPagesPerFlow: maxBufferedPagesPerFlow,
@@ -214,8 +214,8 @@ func (o *OrderedCoalesce) insert(packetManifest PacketManifest) {
 	o.pushBetween(prev, current, p, p2)
 	o.pageCount++
 	if (o.MaxBufferedPagesPerFlow > 0 && o.pageCount >= o.MaxBufferedPagesPerFlow) ||
-		(o.MaxBufferedPagesTotal > 0 && o.pageCache.used >= o.MaxBufferedPagesTotal) {
-		log.Printf("%v hit max buffer size: %+v, %v, %v", packetManifest.Flow.String(), o.OrderedCoalesceOptions, o.pageCount, o.pageCache.used)
+		(o.MaxBufferedPagesTotal > 0 && o.pager.Used() >= o.MaxBufferedPagesTotal) {
+		log.Printf("%v hit max buffer size: %+v, %v, %v", packetManifest.Flow.String(), o.OrderedCoalesceOptions, o.pageCount, o.pager.Used())
 		o.addNext()
 	}
 }
@@ -226,7 +226,7 @@ func (o *OrderedCoalesce) insert(packetManifest PacketManifest) {
 //
 // It returns the first and last page in its doubly-linked list of new pages.
 func (o *OrderedCoalesce) pagesFromTcp(p PacketManifest) (*page, *page) {
-	first := o.pageCache.next(p.Timestamp)
+	first := o.pager.Next(p.Timestamp)
 	current := first
 	seq, bytes := Sequence(p.TCP.Seq), p.Payload
 	for {
@@ -239,7 +239,7 @@ func (o *OrderedCoalesce) pagesFromTcp(p PacketManifest) (*page, *page) {
 			break
 		}
 		seq = seq.Add(length)
-		current.next = o.pageCache.next(p.Timestamp)
+		current.next = o.pager.Next(p.Timestamp)
 		current.next.prev = current
 		current = current.next
 	}
@@ -313,7 +313,7 @@ func (o *OrderedCoalesce) addNext() {
 	o.first.Bytes, *o.nextSeq = byteSpan(*o.nextSeq, o.first.Seq, o.first.Bytes) // XXX injection happens here
 	log.Printf("%s   adding from r (%v, %v)", o.Flow.String(), o.first.Seq, o.nextSeq)
 	o.ret = append(o.ret, o.first.Reassembly)
-	o.pageCache.replace(o.first)
+	o.pager.Replace(o.first)
 	if o.first == o.last {
 		o.first = nil
 		o.last = nil

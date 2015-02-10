@@ -80,6 +80,10 @@ func (p *Pager) Replace(pagePtr *page) {
 	p.replacePageChan <- pagePtr
 }
 
+func (p *Pager) Used() int {
+	return p.pageCache.used
+}
+
 // receivePageRequests is the event loop of Pager.
 // It is meant to run in it's own goroutine.
 func (p *Pager) receivePageRequests() {
