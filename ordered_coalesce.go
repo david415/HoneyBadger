@@ -205,6 +205,14 @@ func NewOrderedCoalesce(flow TcpIpFlow, pager *Pager, streamRing *ring.Ring, max
 	}
 }
 
+func (o *OrderedCoalesce) Start() {
+	o.pager.Start()
+}
+
+func (o *OrderedCoalesce) Stop() {
+	o.pager.Stop()
+}
+
 func (o *OrderedCoalesce) insert(packetManifest PacketManifest) {
 	if o.first != nil && o.first.Seq == *o.nextSeq {
 		panic("wtf")
