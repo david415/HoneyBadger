@@ -39,7 +39,7 @@ func (d *DummyAttackLogger) Start() {
 func (d *DummyAttackLogger) Stop() {
 }
 
-func (d *DummyAttackLogger) ReportHijackAttack(instant time.Time, flow TcpIpFlow) {
+func (d *DummyAttackLogger) ReportHijackAttack(instant time.Time, flow TcpIpFlow, Seq, Ack uint32) {
 	d.Count += 1
 }
 

@@ -179,7 +179,7 @@ func (c *Connection) detectHijack(p PacketManifest, flow TcpIpFlow) {
 	}
 	if p.TCP.ACK && p.TCP.SYN {
 		if Sequence(p.TCP.Ack).Difference(c.hijackNextAck) == 0 {
-			c.AttackLogger.ReportHijackAttack(time.Now(), flow)
+			c.AttackLogger.ReportHijackAttack(time.Now(), flow, p.TCP.Seq, p.TCP.Ack)
 		}
 	}
 }
