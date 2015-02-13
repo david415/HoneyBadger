@@ -131,6 +131,10 @@ func NewConnection(closeRequestChan chan CloseRequest, pager *Pager) *Connection
 		ClientStreamRing: ring.New(MAX_CONN_PACKETS),
 		ServerStreamRing: ring.New(MAX_CONN_PACKETS),
 	}
+
+	conn.ClientCoalesce = NewOrderedCoalesce(conn.clientFlow, conn.pager, conn.ClientStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection)
+	conn.ServerCoalesce = NewOrderedCoalesce(conn.serverFlow, conn.pager, conn.ServerStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection)
+
 	go conn.startReceivingPackets()
 	return &conn
 }
@@ -141,6 +145,7 @@ func NewConnection(closeRequestChan chan CloseRequest, pager *Pager) *Connection
 // we call our Stop method.
 func (c *Connection) Close() {
 	log.Printf("close detected for %s\n", c.clientFlow.String())
+
 	closeReadyChan := make(chan bool)
 	// remove Connection from ConnectionPool
 	c.closeRequestChan <- CloseRequest{
@@ -269,8 +274,6 @@ func (c *Connection) stateUnknown(p PacketManifest) {
 
 		c.clientNextSeq = Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
 
-		c.ClientCoalesce = NewOrderedCoalesce(c.clientFlow, c.pager, c.ClientStreamRing, c.MaxBufferedPagesTotal, c.MaxBufferedPagesPerConnection)
-		c.ServerCoalesce = NewOrderedCoalesce(c.serverFlow, c.pager, c.ServerStreamRing, c.MaxBufferedPagesTotal, c.MaxBufferedPagesPerConnection)
 	}
 }
 

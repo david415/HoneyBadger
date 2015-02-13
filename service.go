@@ -71,6 +71,7 @@ func NewInquisitor(iface string, wireDuration time.Duration, filter string, snap
 		pager:        NewPager(),
 		AttackLogger: NewAttackJsonLogger(logDir),
 	}
+	i.pager.Start()
 	return &i
 }
 
@@ -79,6 +80,7 @@ func (i *Inquisitor) Stop() {
 	i.stopChan <- true
 	i.AttackLogger.Stop()
 	i.handle.Close()
+	i.pager.Stop()
 }
 
 // Start... starts the TCP attack inquisition!
