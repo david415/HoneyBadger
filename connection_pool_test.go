@@ -3,6 +3,7 @@ package HoneyBadger
 import (
 	"code.google.com/p/gopacket"
 	"code.google.com/p/gopacket/layers"
+	"log"
 	"net"
 	"testing"
 	"time"
@@ -12,7 +13,7 @@ func TestConnectionPool(t *testing.T) {
 
 	closeConnectionChan := make(chan CloseRequest)
 	connPool := NewConnectionPool()
-	conn := NewConnection(closeConnectionChan, nil)
+	conn := NewConnection(closeConnectionChan, nil, 0, 0)
 
 	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
@@ -38,7 +39,7 @@ func TestConnectionPool(t *testing.T) {
 	ipFlow, _ = gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 9, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 9, 4, 5)))
 	tcpFlow, _ = gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
 	flow = NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
-	conn = NewConnection(closeConnectionChan, nil)
+	conn = NewConnection(closeConnectionChan, nil, 0, 0)
 	conn.clientFlow = flow
 
 	connPool.Put(flow, conn)
@@ -65,54 +66,86 @@ func TestConnectionPool(t *testing.T) {
 	// test zero case of CloseOlderThan
 	count := connPool.CloseOlderThan(time.Now())
 	if count != 0 {
-		t.Error("CloseOlderThan fail")
+		t.Error("1st CloseOlderThan fail")
 		t.Fail()
 	}
 
+	log.Print("before 2nd CloseOlderThan\n")
 	// test close one case of CloseOlderThan
-	conn = NewConnection(closeConnectionChan, nil)
+	conn = NewConnection(closeConnectionChan, nil, 0, 0)
 	conn.clientFlow = flow
 	connPool.Put(flow, conn)
 	count = connPool.CloseOlderThan(time.Now())
 	if count != 1 {
-		t.Error("CloseOlderThan fail")
+		t.Error("2nd CloseOlderThan fail")
 		t.Fail()
 	}
+
+	log.Print("after 2nd CloseOlderThan\n")
 
 	timeDuration := time.Minute * 5
 	timestamp1 := time.Now()
 	timestamp2 := timestamp1.Add(timeDuration)
 
-	conn = NewConnection(closeConnectionChan, nil)
+	conn = NewConnection(closeConnectionChan, nil, 0, 0)
 	conn.clientFlow = flow
+	conn.serverFlow = flow.Reverse()
+	conn.clientNextSeq = 3
 	connPool.Put(flow, conn)
 	conn.state = TCP_DATA_TRANSFER
+
+	ip := layers.IPv4{
+		SrcIP:    net.IP{1, 2, 3, 4},
+		DstIP:    net.IP{2, 3, 4, 5},
+		Version:  4,
+		TTL:      64,
+		Protocol: layers.IPProtocolTCP,
+	}
+	tcp := layers.TCP{
+		Seq:     3,
+		SYN:     false,
+		SrcPort: 1,
+		DstPort: 2,
+	}
 	packetManifest := PacketManifest{
 		Timestamp: timestamp1,
 		Flow:      flow,
+		IP:        ip,
+		TCP:       tcp,
+		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
+	log.Printf("before receivePacket flow %s\n", flow.String())
 	conn.receivePacket(&packetManifest)
+	log.Print("before 3rd CloseOlderThan\n")
+
 	count = connPool.CloseOlderThan(time.Now())
 	if count != 1 {
 		t.Error("CloseOlderThan fail")
 		t.Fail()
 	}
+	log.Print("after 3rd CloseOlderThan\n")
 
-	conn = NewConnection(closeConnectionChan, nil)
+	conn = NewConnection(closeConnectionChan, nil, 0, 0)
 	conn.clientFlow = flow
+	conn.serverFlow = flow.Reverse()
+	conn.clientNextSeq = 3
 	connPool.Put(flow, conn)
 	conn.state = TCP_DATA_TRANSFER
 	packetManifest = PacketManifest{
 		Timestamp: timestamp2,
 		Flow:      flow,
+		IP:        ip,
+		TCP:       tcp,
+		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
 	conn.receivePacket(&packetManifest)
+	log.Print("before last CloseOlderThan\n")
 	count = connPool.CloseOlderThan(timestamp1)
 	if count != 0 {
 		t.Error("CloseOlderThan fail")
 		t.Fail()
 	}
-
+	log.Print("after last CloseOlderThan\n")
 	if !connPool.Has(flow) {
 		t.Error("Has method fail")
 		t.Fail()
@@ -122,14 +155,16 @@ func TestConnectionPool(t *testing.T) {
 		t.Error("Has method fail")
 		t.Fail()
 	}
-
+	log.Print("before CloseAllConnections\n")
 	closed = connPool.CloseAllConnections()
+	log.Print("after CloseAllConnections\n")
 	if connPool.Has(flow) {
 		t.Error("Has method fail")
 		t.Fail()
 	}
 
-	conn = NewConnection(closeConnectionChan, nil)
+	log.Print("before NewConn\n")
+	conn = NewConnection(closeConnectionChan, nil, 0, 0)
 	conn2, err := connPool.Get(flow)
 	if err == nil {
 		t.Error("Get method fail")
@@ -137,10 +172,17 @@ func TestConnectionPool(t *testing.T) {
 	}
 
 	conn.clientFlow = flow
+	conn.serverFlow = flow.Reverse()
+	conn.clientNextSeq = 3
+	conn.state = TCP_DATA_TRANSFER
+
 	connPool.Put(flow, conn)
 	packetManifest = PacketManifest{
 		Timestamp: timestamp2,
 		Flow:      flow,
+		IP:        ip,
+		TCP:       tcp,
+		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
 	conn.receivePacket(&packetManifest)
 	conn2, err = connPool.Get(flow)

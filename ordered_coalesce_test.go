@@ -20,7 +20,8 @@ func TestOrderedCoalesce(t *testing.T) {
 	flow := NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 
 	var nextSeq Sequence = Sequence(1)
-	coalesce := NewOrderedCoalesce(flow, &nextSeq, pager, streamRing, maxBufferedPagesTotal, maxBufferedPagesPerFlow)
+	ret := []Reassembly{}
+	coalesce := NewOrderedCoalesce(ret, &flow, pager, streamRing, maxBufferedPagesTotal, maxBufferedPagesPerFlow)
 
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},
@@ -44,7 +45,7 @@ func TestOrderedCoalesce(t *testing.T) {
 	}
 
 	coalesce.Start()
-	coalesce.insert(p)
+	coalesce.insert(p, nextSeq)
 
 	if coalesce.pager.Used() != 1 {
 		t.Errorf("coalesce.pager.Used() not equal to 1\n")

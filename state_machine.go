@@ -164,8 +164,10 @@ func (c *Connection) Close() {
 	<-closeReadyChan
 	log.Print("close request completed.\n")
 
-	c.ClientStream.ReassemblyComplete()
-	c.ServerStream.ReassemblyComplete()
+	if c.ClientStream != nil {
+		c.ClientStream.ReassemblyComplete()
+		c.ServerStream.ReassemblyComplete()
+	}
 
 	c.Stop()
 }
@@ -580,18 +582,20 @@ func (c *Connection) startReceivingPackets() {
 				c.stateConnectionClosing(*p)
 			}
 
-			if p.Flow.Equal(c.serverFlow) {
-				if len(c.ClientReassembly) > 0 {
-					c.serverNextSeq = c.sendToStream(c.ClientReassembly, c.serverNextSeq, c.clientNextSeq, &c.ClientStream, &c.ServerStream, c.ClientCoalesce, c.ServerCoalesce)
+			if c.ClientStream != nil {
+				if p.Flow.Equal(c.serverFlow) {
+					if len(c.ClientReassembly) > 0 {
+						c.serverNextSeq = c.sendToStream(c.ClientReassembly, c.serverNextSeq, c.clientNextSeq, &c.ClientStream, &c.ServerStream, c.ClientCoalesce, c.ServerCoalesce)
+					}
+				} else {
+					if len(c.ServerReassembly) > 0 {
+						c.clientNextSeq = c.sendToStream(c.ServerReassembly, c.clientNextSeq, c.serverNextSeq, &c.ServerStream, &c.ClientStream, c.ServerCoalesce, c.ClientCoalesce)
+					}
 				}
-			} else {
-				if len(c.ServerReassembly) > 0 {
-					c.clientNextSeq = c.sendToStream(c.ServerReassembly, c.clientNextSeq, c.serverNextSeq, &c.ServerStream, &c.ClientStream, c.ServerCoalesce, c.ClientCoalesce)
-				}
-			}
 
-			c.ClientReassembly = make([]Reassembly, 0)
-			c.ServerReassembly = make([]Reassembly, 0)
+				c.ClientReassembly = make([]Reassembly, 0)
+				c.ServerReassembly = make([]Reassembly, 0)
+			}
 		}
 	}
 }

@@ -25,7 +25,7 @@ func (d DummyStreamLogger) ReassemblyComplete() {
 
 func TestStateDataTransfer(t *testing.T) {
 	closeConnectionChan := make(chan CloseRequest)
-	conn := NewConnection(closeConnectionChan, nil)
+	conn := NewConnection(closeConnectionChan, nil, 0, 0)
 	conn.AttackLogger = NewDummyAttackLogger()
 	conn.ClientStream = NewDummyStreamLogger()
 	conn.ServerStream = NewDummyStreamLogger()
@@ -141,7 +141,7 @@ func TestStateDataTransfer(t *testing.T) {
 }
 
 func TestTCPConnect(t *testing.T) {
-	conn := NewConnection(nil, nil)
+	conn := NewConnection(nil, nil, 0, 0)
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},
 		DstIP:    net.IP{2, 3, 4, 5},
@@ -256,7 +256,7 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 	attackLogger := NewDummyAttackLogger()
 
 	closeConnectionChan := make(chan CloseRequest)
-	conn := NewConnection(closeConnectionChan, nil)
+	conn := NewConnection(closeConnectionChan, nil, 0, 0)
 
 	conn.AttackLogger = attackLogger
 	conn.ClientStream = NewDummyStreamLogger()
@@ -395,7 +395,7 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 
 func TestTCPHijack(t *testing.T) {
 	attackLogger := NewDummyAttackLogger()
-	conn := NewConnection(nil, nil)
+	conn := NewConnection(nil, nil, 0, 0)
 	conn.AttackLogger = attackLogger
 
 	ip := layers.IPv4{
