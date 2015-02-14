@@ -19,7 +19,8 @@ func TestOrderedCoalesce(t *testing.T) {
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
 	flow := NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 
-	coalesce := NewOrderedCoalesce(flow, pager, streamRing, maxBufferedPagesTotal, maxBufferedPagesPerFlow)
+	var nextSeq Sequence = Sequence(1)
+	coalesce := NewOrderedCoalesce(flow, &nextSeq, pager, streamRing, maxBufferedPagesTotal, maxBufferedPagesPerFlow)
 
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},
