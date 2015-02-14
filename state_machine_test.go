@@ -8,10 +8,27 @@ import (
 	"time"
 )
 
+type DummyStreamLogger struct {
+}
+
+func NewDummyStreamLogger() DummyStreamLogger {
+	return DummyStreamLogger{}
+}
+
+func (d DummyStreamLogger) Reassembled(r []Reassembly) {
+
+}
+
+func (d DummyStreamLogger) ReassemblyComplete() {
+
+}
+
 func TestStateDataTransfer(t *testing.T) {
 	closeConnectionChan := make(chan CloseRequest)
 	conn := NewConnection(closeConnectionChan, nil)
 	conn.AttackLogger = NewDummyAttackLogger()
+	conn.ClientStream = NewDummyStreamLogger()
+	conn.ServerStream = NewDummyStreamLogger()
 
 	conn.state = TCP_DATA_TRANSFER
 	clientRingCount := 0
@@ -242,6 +259,9 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 	conn := NewConnection(closeConnectionChan, nil)
 
 	conn.AttackLogger = attackLogger
+	conn.ClientStream = NewDummyStreamLogger()
+	conn.ServerStream = NewDummyStreamLogger()
+
 	conn.state = TCP_DATA_TRANSFER
 	conn.serverNextSeq = 4666
 	conn.clientNextSeq = 9666

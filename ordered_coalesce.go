@@ -182,20 +182,19 @@ type OrderedCoalesceOptions struct {
 type OrderedCoalesce struct {
 	OrderedCoalesceOptions
 
-	Flow         TcpIpFlow
+	Flow         *TcpIpFlow
 	StreamRing   *ring.Ring
 	AttackLogger AttackLogger
 	pageCount    int
 	pager        *Pager
-	nextSeq      *Sequence
 	first, last  *page
 	ret          []Reassembly
 }
 
-func NewOrderedCoalesce(flow TcpIpFlow, nextSeq *Sequence, pager *Pager, streamRing *ring.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int) *OrderedCoalesce {
+func NewOrderedCoalesce(ret []Reassembly, flow *TcpIpFlow, pager *Pager, streamRing *ring.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int) *OrderedCoalesce {
 	return &OrderedCoalesce{
+		ret:        ret,
 		Flow:       flow,
-		nextSeq:    nextSeq,
 		pager:      pager,
 		StreamRing: streamRing,
 
@@ -214,14 +213,11 @@ func (o *OrderedCoalesce) Stop() {
 	o.pager.Stop()
 }
 
-func (o *OrderedCoalesce) insert(packetManifest PacketManifest) {
-	if o.nextSeq == nil {
-		panic("wtf nil pointer!")
-	}
-
-	if o.first != nil && o.first.Seq == *o.nextSeq {
+func (o *OrderedCoalesce) insert(packetManifest PacketManifest, nextSeq Sequence) Sequence {
+	if o.first != nil && o.first.Seq == nextSeq {
 		panic("wtf")
 	}
+
 	p, p2 := o.pagesFromTcp(packetManifest)
 	prev, current := o.traverse(Sequence(packetManifest.TCP.Seq))
 	o.pushBetween(prev, current, p, p2)
@@ -229,8 +225,11 @@ func (o *OrderedCoalesce) insert(packetManifest PacketManifest) {
 	if (o.MaxBufferedPagesPerFlow > 0 && o.pageCount >= o.MaxBufferedPagesPerFlow) ||
 		(o.MaxBufferedPagesTotal > 0 && o.pager.Used() >= o.MaxBufferedPagesTotal) {
 		log.Printf("%v hit max buffer size: %+v, %v, %v", packetManifest.Flow.String(), o.OrderedCoalesceOptions, o.pageCount, o.pager.Used())
-		o.addNext()
+		nextSeq = o.addNext(nextSeq)
+		nextSeq = o.addContiguous(nextSeq)
+		//log.Printf("insert -> addNext; first.Seq %d nextSeq %d\n", o.first.Seq, nextSeq)
 	}
+	return nextSeq
 }
 
 // pagesFromTcp creates a page (or set of pages) from a TCP packet.  Note that
@@ -261,7 +260,7 @@ func (o *OrderedCoalesce) pagesFromTcp(p PacketManifest) (*page, *page) {
 }
 
 // traverse traverses our doubly-linked list of pages for the correct
-// position to put the given sequence numbeo.  Note that it traverses backwards,
+// position to put the given sequence number.  Note that it traverses backwards,
 // starting at the highest sequence number and going down, since we assume the
 // common case is that TCP packets for a stream will appear in-order, with
 // minimal loss or packet reordering.
@@ -297,9 +296,9 @@ func (o *OrderedCoalesce) pushBetween(prev, next, first, last *page) {
 
 // addNext pops the first page off our doubly-linked-list and
 // adds it to the return array.
-func (o *OrderedCoalesce) addNext() {
-	diff := o.nextSeq.Difference(o.first.Seq)
-	if *o.nextSeq == Sequence(invalidSequence) {
+func (o *OrderedCoalesce) addNext(nextSeq Sequence) Sequence {
+	diff := nextSeq.Difference(o.first.Seq)
+	if nextSeq == Sequence(invalidSequence) {
 		o.first.Skip = -1
 	} else if diff > 0 {
 		o.first.Skip = int(diff)
@@ -310,21 +309,21 @@ func (o *OrderedCoalesce) addNext() {
 		current, ok := o.StreamRing.Prev().Value.(Reassembly)
 		if !ok {
 			log.Print("out-of-order coalesce overlap analysis not possible; ring empty.\n")
-			return // XXX
+			return nextSeq // XXX
 		}
 		orderedOverlap := current.Bytes[len(current.Bytes)+diff+1:]
 		unorderedOverlap := o.first.Bytes[:(-diff)+1] // XXX
 		if !bytes.Equal(orderedOverlap, unorderedOverlap) {
 			// XXX is this info useful for reporting coalesce injection attacks?
-			start := o.nextSeq.Add(diff).Add(1)
+			start := nextSeq.Add(diff).Add(1)
 			end := o.first.Seq.Add(-diff)
-			o.AttackLogger.ReportInjectionAttack("coalesce injection", time.Now(), o.Flow, unorderedOverlap, orderedOverlap, start, end, 0, 0)
+			o.AttackLogger.ReportInjectionAttack("coalesce injection", time.Now(), *o.Flow, unorderedOverlap, orderedOverlap, start, end, 0, 0)
 		} else {
 			log.Print("not an attack attempt; a normal TCP unordered stream segment coalesce\n")
 		}
 	}
-	o.first.Bytes, *o.nextSeq = byteSpan(*o.nextSeq, o.first.Seq, o.first.Bytes) // XXX injection happens here
-	log.Printf("%s   adding from r (%v, %v)", o.Flow.String(), o.first.Seq, o.nextSeq)
+	o.first.Bytes, nextSeq = byteSpan(nextSeq, o.first.Seq, o.first.Bytes) // XXX injection happens here
+	log.Printf("%s   adding from r (%v, %v)", o.Flow.String(), o.first.Seq, nextSeq)
 	o.ret = append(o.ret, o.first.Reassembly)
 	o.pager.Replace(o.first)
 	if o.first == o.last {
@@ -335,11 +334,13 @@ func (o *OrderedCoalesce) addNext() {
 		o.first.prev = nil
 	}
 	o.pageCount--
+	return nextSeq
 }
 
 // addContiguous adds contiguous byte-sets to a connection.
-func (o *OrderedCoalesce) addContiguous() {
-	for o.first != nil && o.nextSeq.Difference(o.first.Seq) <= 0 {
-		o.addNext()
+func (o *OrderedCoalesce) addContiguous(nextSeq Sequence) Sequence {
+	for o.first != nil && nextSeq.Difference(o.first.Seq) <= 0 {
+		nextSeq = o.addNext(nextSeq)
 	}
+	return nextSeq
 }

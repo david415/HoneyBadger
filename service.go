@@ -35,13 +35,16 @@ const timeout time.Duration = time.Minute * 5 // XXX timeout connections after 5
 // details of how to proceed with honey_bager's TCP connection monitoring.
 // More parameters should soon be added here!
 type InquisitorOptions struct {
-	Interface    string
-	Filename     string
-	WireDuration time.Duration
-	Filter       string
-	LogDir       string
-	Snaplen      int
-	PacketLog    bool
+	Interface             string
+	Filename              string
+	WireDuration          time.Duration
+	BufferedPerConnection int
+	BufferedTotal         int
+	Filter                string
+	LogDir                string
+	Snaplen               int
+	PacketLog             bool
+	StreamLog             bool
 }
 
 // Inquisitor sets up the connection pool and is an abstraction layer for dealing
@@ -56,15 +59,18 @@ type Inquisitor struct {
 }
 
 // NewInquisitor creates a new Inquisitor struct
-func NewInquisitor(iface string, wireDuration time.Duration, filter string, snaplen int, logDir string, packetLog bool) *Inquisitor {
+func NewInquisitor(iface string, wireDuration time.Duration, filter string, snaplen int, logDir string, packetLog, streamLog bool, bufferedPerConnection, bufferedTotal int) *Inquisitor {
 	i := Inquisitor{
 		InquisitorOptions: InquisitorOptions{
-			Interface:    iface,
-			WireDuration: wireDuration,
-			Filter:       filter,
-			Snaplen:      snaplen,
-			LogDir:       logDir,
-			PacketLog:    packetLog,
+			Interface:             iface,
+			WireDuration:          wireDuration,
+			BufferedPerConnection: bufferedPerConnection,
+			BufferedTotal:         bufferedTotal,
+			Filter:                filter,
+			Snaplen:               snaplen,
+			LogDir:                logDir,
+			PacketLog:             packetLog,
+			StreamLog:             streamLog,
 		},
 		connPool:     NewConnectionPool(),
 		stopChan:     make(chan bool),
@@ -167,11 +173,21 @@ func (i *Inquisitor) receivePackets() {
 					panic(err) // wtf
 				}
 			} else {
-				conn = NewConnection(closeConnectionChan, i.pager)
+				// XXX TODO: start the loggers in the connection goroutine instead of this one?
+				conn = NewConnection(closeConnectionChan, i.pager, i.InquisitorOptions.BufferedPerConnection, i.InquisitorOptions.BufferedTotal)
 				conn.AttackLogger = i.AttackLogger
 				if i.PacketLog {
 					conn.PacketLogger = NewPcapLogger(i.LogDir, flow)
 					conn.PacketLogger.Start()
+				}
+				if i.StreamLog {
+					clientStream := NewStreamLogger(i.LogDir, flow)
+					clientStream.Start()
+					conn.ClientStream = clientStream
+
+					serverStream := NewStreamLogger(i.LogDir, flow.Reverse())
+					serverStream.Start()
+					conn.ServerStream = serverStream
 				}
 				i.connPool.Put(flow, conn)
 			}
