@@ -167,10 +167,6 @@ func byteSpan(expected, received Sequence, bytes []byte) (toSend []byte, next Se
 // OrderedCoalesceOptions controls the behavior of each assembler.  Modify the
 // options of each assembler you create to change their behavior.
 type OrderedCoalesceOptions struct {
-	Flow       TcpIpFlow
-	StreamRing *ring.Ring
-	nextSeq    *Sequence
-
 	// MaxBufferedPagesTotal is an upper limit on the total number of pages to
 	// buffer while waiting for out-of-order packets.  Once this limit is
 	// reached, the assembler will degrade to flushing every connection it
@@ -186,19 +182,24 @@ type OrderedCoalesceOptions struct {
 type OrderedCoalesce struct {
 	OrderedCoalesceOptions
 
+	Flow         TcpIpFlow
+	StreamRing   *ring.Ring
 	AttackLogger AttackLogger
 	pageCount    int
 	pager        *Pager
+	nextSeq      *Sequence
 	first, last  *page
 	ret          []Reassembly
 }
 
-func NewOrderedCoalesce(flow TcpIpFlow, pager *Pager, streamRing *ring.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int) *OrderedCoalesce {
+func NewOrderedCoalesce(flow TcpIpFlow, nextSeq *Sequence, pager *Pager, streamRing *ring.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int) *OrderedCoalesce {
 	return &OrderedCoalesce{
-		pager: pager,
+		Flow:       flow,
+		nextSeq:    nextSeq,
+		pager:      pager,
+		StreamRing: streamRing,
+
 		OrderedCoalesceOptions: OrderedCoalesceOptions{
-			Flow:                    flow,
-			StreamRing:              streamRing,
 			MaxBufferedPagesTotal:   maxBufferedPagesTotal,
 			MaxBufferedPagesPerFlow: maxBufferedPagesPerFlow,
 		},
@@ -214,6 +215,10 @@ func (o *OrderedCoalesce) Stop() {
 }
 
 func (o *OrderedCoalesce) insert(packetManifest PacketManifest) {
+	if o.nextSeq == nil {
+		panic("wtf nil pointer!")
+	}
+
 	if o.first != nil && o.first.Seq == *o.nextSeq {
 		panic("wtf")
 	}
@@ -330,4 +335,11 @@ func (o *OrderedCoalesce) addNext() {
 		o.first.prev = nil
 	}
 	o.pageCount--
+}
+
+// addContiguous adds contiguous byte-sets to a connection.
+func (o *OrderedCoalesce) addContiguous() {
+	for o.first != nil && o.nextSeq.Difference(o.first.Seq) <= 0 {
+		o.addNext()
+	}
 }

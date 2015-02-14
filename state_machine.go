@@ -128,12 +128,14 @@ func NewConnection(closeRequestChan chan CloseRequest, pager *Pager) *Connection
 		stopChan:         make(chan bool),
 		receiveChan:      make(chan *PacketManifest),
 		state:            TCP_UNKNOWN,
+		clientNextSeq:    invalidSequence,
+		serverNextSeq:    invalidSequence,
 		ClientStreamRing: ring.New(MAX_CONN_PACKETS),
 		ServerStreamRing: ring.New(MAX_CONN_PACKETS),
 	}
 
-	conn.ClientCoalesce = NewOrderedCoalesce(conn.clientFlow, conn.pager, conn.ClientStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection)
-	conn.ServerCoalesce = NewOrderedCoalesce(conn.serverFlow, conn.pager, conn.ServerStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection)
+	conn.ClientCoalesce = NewOrderedCoalesce(conn.clientFlow, &conn.clientNextSeq, conn.pager, conn.ClientStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection)
+	conn.ServerCoalesce = NewOrderedCoalesce(conn.serverFlow, &conn.serverNextSeq, conn.pager, conn.ServerStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection)
 
 	go conn.startReceivingPackets()
 	return &conn
@@ -237,7 +239,7 @@ func (c *Connection) getOverlapBytes(head, tail *ring.Ring, start, end Sequence)
 func (c *Connection) detectInjection(p PacketManifest, flow TcpIpFlow) {
 	head, tail := c.getOverlapRings(p, flow)
 	if head == nil || tail == nil {
-		log.Printf("ring buffer not adequately filled. retrospective analysis impossible\n", flow.String())
+		return
 	}
 	start := Sequence(p.TCP.Seq)
 	end := start.Add(len(p.Payload) - 1)
@@ -452,7 +454,7 @@ func (c *Connection) stateLastAck(p PacketManifest, flow TcpIpFlow, nextSeqPtr *
 	if Sequence(p.TCP.Seq).Difference(*nextSeqPtr) == 0 { //XXX
 		if p.TCP.ACK && (!p.TCP.FIN && !p.TCP.SYN) {
 			if Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 {
-				log.Print("LAST-ACK: out of order ACK packet received. seq %d != nextAck %d\n", p.TCP.Ack, *nextAckPtr)
+				log.Printf("LAST-ACK: out of order ACK packet received. seq %d != nextAck %d\n", p.TCP.Ack, *nextAckPtr)
 				return
 			}
 			c.Close()

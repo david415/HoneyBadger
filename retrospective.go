@@ -33,7 +33,6 @@ func getHeadFromRing(ringPtr *ring.Ring, start, end Sequence) *ring.Ring {
 	current := ringPtr.Prev()
 	_, ok := current.Value.(Reassembly)
 	if !ok { // do we NOT have any data in our ring buffer?
-		log.Print("ring buffer is still empty\n")
 		return nil
 	}
 	if start.Difference(current.Value.(Reassembly).Seq.Add(len(current.Value.(Reassembly).Bytes)-1)) < 0 {
