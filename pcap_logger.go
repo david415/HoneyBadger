@@ -1,5 +1,5 @@
 /*
- *    pcap_loggers.go - HoneyBadger core library for detecting TCP attacks
+ *    pcap_logger.go - HoneyBadger core library for detecting TCP attacks
  *    such as handshake-hijack, segment veto and sloppy injection.
  *
  *    Copyright (C) 2014  David Stainton

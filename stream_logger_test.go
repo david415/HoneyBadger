@@ -8,30 +8,6 @@ import (
 	"testing"
 )
 
-type TestSignalWriter struct {
-	lastWrite  []byte
-	signalChan chan bool
-	closeChan  chan bool
-}
-
-func NewTestSignalWriter() *TestSignalWriter {
-	return &TestSignalWriter{
-		signalChan: make(chan bool),
-		closeChan:  make(chan bool),
-	}
-}
-
-func (w *TestSignalWriter) Write(data []byte) (int, error) {
-	w.lastWrite = data
-	w.signalChan <- true
-	return len(data), nil
-}
-
-func (w *TestSignalWriter) Close() error {
-	w.closeChan <- true
-	return nil
-}
-
 func TestStreamLogger(t *testing.T) {
 	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))

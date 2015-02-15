@@ -9,27 +9,6 @@ import (
 	"time"
 )
 
-type TestPcapWriter struct {
-	lastWrite  []byte
-	signalChan chan bool
-}
-
-func NewTestPcapWriter() *TestPcapWriter {
-	return &TestPcapWriter{
-		signalChan: make(chan bool),
-	}
-}
-
-func (w *TestPcapWriter) Write(data []byte) (int, error) {
-	w.lastWrite = data
-	w.signalChan <- true
-	return len(data), nil
-}
-
-func (w *TestPcapWriter) Close() error {
-	return nil
-}
-
 func makeTestPacket() []byte {
 	var testSeq uint32 = 12345
 	buf := gopacket.NewSerializeBuffer()
@@ -67,7 +46,7 @@ func TestPcapLogger(t *testing.T) {
 	flow := NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 
 	pcapLogger := NewPcapLogger("fake-dir", flow)
-	testWriter := NewTestPcapWriter()
+	testWriter := NewTestSignalWriter()
 	pcapLogger.fileWriter = testWriter
 
 	go pcapLogger.Start()
@@ -92,4 +71,6 @@ func TestPcapLogger(t *testing.T) {
 		t.Errorf("pcap packet is wrong")
 		t.Fail()
 	}
+
+	go pcapLogger.Stop()
 }

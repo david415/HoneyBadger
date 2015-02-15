@@ -27,6 +27,14 @@ func TestConnectionPool(t *testing.T) {
 		t.Fail()
 	}
 
+	// delete that flow
+	connPool.Delete(flow)
+	if len(connPool.connectionMap) != 0 {
+		t.Error("failed to delete connection from pool")
+		t.Fail()
+	}
+
+	// now delete the non-existent flow
 	connPool.Delete(flow)
 	if len(connPool.connectionMap) != 0 {
 		t.Error("failed to delete connection from pool")
