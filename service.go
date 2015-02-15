@@ -80,6 +80,16 @@ func NewInquisitor(iface string, wireDuration time.Duration, filter string, snap
 	return &i
 }
 
+// Start... starts the TCP attack inquisition!
+func (i *Inquisitor) Start() {
+	if i.handle == nil {
+		i.setupHandle()
+	}
+	i.pager.Start()
+	i.AttackLogger.Start()
+	go i.receivePackets()
+}
+
 // Stop... stops the TCP attack inquisition!
 func (i *Inquisitor) Stop() {
 	i.stopChan <- true
@@ -88,24 +98,8 @@ func (i *Inquisitor) Stop() {
 	i.pager.Stop()
 }
 
-// Start... starts the TCP attack inquisition!
-func (i *Inquisitor) Start() {
-	i.pager.Start()
-	i.AttackLogger.Start()
-	go i.receivePackets()
-}
-
-func (i *Inquisitor) receivePackets() {
+func (i *Inquisitor) setupHandle() {
 	var err error
-	var eth layers.Ethernet
-	var ip layers.IPv4
-	var tcp layers.TCP
-	var payload gopacket.Payload
-	var conn *Connection
-
-	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet, &eth, &ip, &tcp, &payload)
-	decoded := make([]gopacket.LayerType, 0, 4)
-
 	if i.Filename != "" {
 		log.Printf("Reading from pcap dump %q", i.Filename)
 		i.handle, err = pcap.OpenOffline(i.Filename)
@@ -119,6 +113,17 @@ func (i *Inquisitor) receivePackets() {
 	if err = i.handle.SetBPFFilter(i.Filter); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func (i *Inquisitor) receivePackets() {
+	var eth layers.Ethernet
+	var ip layers.IPv4
+	var tcp layers.TCP
+	var payload gopacket.Payload
+	var conn *Connection
+
+	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet, &eth, &ip, &tcp, &payload)
+	decoded := make([]gopacket.LayerType, 0, 4)
 
 	closeConnectionChan := make(chan CloseRequest)
 
