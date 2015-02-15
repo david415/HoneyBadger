@@ -190,6 +190,7 @@ func (i *Inquisitor) receivePackets() {
 					conn.ServerStream = serverStream
 				}
 				i.connPool.Put(flow, conn)
+				conn.Start(true)
 			}
 			conn.receivePacket(&packetManifest)
 			lastTimestamp = captureInfo.Timestamp

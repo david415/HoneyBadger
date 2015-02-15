@@ -17,6 +17,7 @@ package HoneyBadger
 import (
 	"bytes"
 	"container/ring"
+	"fmt"
 	"log"
 	"time"
 )
@@ -45,6 +46,11 @@ type Reassembly struct {
 	End bool
 	// Seen is the timestamp this set of bytes was pulled off the wire.
 	Seen time.Time
+}
+
+// String returns a string representation of Reassembly
+func (r *Reassembly) String() string {
+	return fmt.Sprintf("Reassembly: Seq %d Bytes len %d data %s\n", r.Seq, len(r.Bytes), string(r.Bytes))
 }
 
 // Stream is implemented by the caller to handle incoming reassembled
@@ -305,10 +311,8 @@ func (o *OrderedCoalesce) addNext(nextSeq Sequence) Sequence {
 	}
 	// XXX stream segment overlap condition
 	if diff < 0 {
-		log.Print("out-of-order packet stream *overlap* detected\n")
 		current, ok := o.StreamRing.Prev().Value.(Reassembly)
 		if !ok {
-			log.Print("out-of-order coalesce overlap analysis not possible; ring empty.\n")
 			return nextSeq // XXX
 		}
 		orderedOverlap := current.Bytes[len(current.Bytes)+diff+1:]
