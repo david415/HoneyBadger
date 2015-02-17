@@ -29,8 +29,6 @@ import (
 	"time"
 )
 
-const timeout time.Duration = time.Minute * 5 // XXX timeout connections after 5 minutes
-
 type TimedRawPacket struct {
 	Timestamp time.Time
 	RawPacket []byte
@@ -50,6 +48,7 @@ type InquisitorOptions struct {
 	Snaplen               int
 	PacketLog             bool
 	StreamLog             bool
+	TcpIdleTimeout        time.Duration
 }
 
 // Inquisitor sets up the connection pool and is an abstraction layer for dealing
@@ -72,19 +71,9 @@ type Inquisitor struct {
 }
 
 // NewInquisitor creates a new Inquisitor struct
-func NewInquisitor(iface string, wireDuration time.Duration, filter string, snaplen int, logDir string, packetLog, streamLog bool, bufferedPerConnection, bufferedTotal int) *Inquisitor {
+func NewInquisitor(options *InquisitorOptions) *Inquisitor {
 	i := Inquisitor{
-		InquisitorOptions: InquisitorOptions{
-			Interface:             iface,
-			WireDuration:          wireDuration,
-			BufferedPerConnection: bufferedPerConnection,
-			BufferedTotal:         bufferedTotal,
-			Filter:                filter,
-			Snaplen:               snaplen,
-			LogDir:                logDir,
-			PacketLog:             packetLog,
-			StreamLog:             streamLog,
-		},
+		InquisitorOptions:   *options,
 		stopCaptureChan:     make(chan bool),
 		decodePacketChan:    make(chan TimedRawPacket),
 		stopDecodeChan:      make(chan bool),
@@ -94,7 +83,7 @@ func NewInquisitor(iface string, wireDuration time.Duration, filter string, snap
 
 		pager:        NewPager(),
 		connPool:     NewConnectionPool(),
-		AttackLogger: NewAttackJsonLogger(logDir),
+		AttackLogger: NewAttackJsonLogger(options.LogDir),
 	}
 	return &i
 }
@@ -221,7 +210,7 @@ func (i *Inquisitor) setupNewConnection(flow TcpIpFlow) *Connection {
 func (i *Inquisitor) dispatchPackets() {
 	var conn *Connection
 	var err error
-
+	timeout := i.InquisitorOptions.TcpIdleTimeout
 	ticker := time.Tick(timeout)
 	var lastTimestamp time.Time
 	for {
