@@ -49,6 +49,7 @@ type InquisitorOptions struct {
 	PacketLog             bool
 	StreamLog             bool
 	TcpIdleTimeout        time.Duration
+	MaxRingPackets        int
 }
 
 // Inquisitor sets up the connection pool and is an abstraction layer for dealing
@@ -182,7 +183,7 @@ func (i *Inquisitor) decodePackets() {
 }
 
 func (i *Inquisitor) setupNewConnection(flow TcpIpFlow) *Connection {
-	conn := NewConnection(i.closeConnectionChan, i.pager, i.InquisitorOptions.BufferedPerConnection, i.InquisitorOptions.BufferedTotal)
+	conn := NewConnection(i.closeConnectionChan, i.pager, i.InquisitorOptions.MaxRingPackets, i.InquisitorOptions.BufferedPerConnection, i.InquisitorOptions.BufferedTotal)
 	conn.AttackLogger = i.AttackLogger
 	if i.PacketLog {
 		conn.PacketLogger = NewPcapLogger(i.LogDir, flow)

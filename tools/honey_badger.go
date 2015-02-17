@@ -39,6 +39,7 @@ func main() {
 		packetLog             = flag.Bool("packet_log", true, "if set to true then log all packets for each tracked TCP connection")
 		streamLog             = flag.Bool("stream_log", true, "if set to true then log both reassembled TCP streams for each tracked TCP connection")
 		tcpTimeout            = flag.Duration("tcp_idle_timeout", time.Minute*5, "tcp idle timeout duration")
+		maxRingPackets        = flag.Int("max_ring_packets", 40, "Max packets per connection stream ring buffer")
 		bufferedPerConnection = flag.Int("connection_max_buffer", 0, `
 Max packets to buffer for a single connection before skipping over a gap in data
 and continuing to stream the connection after the buffer.  If zero or less, this
@@ -65,6 +66,7 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		PacketLog:             *packetLog,
 		StreamLog:             *streamLog,
 		TcpIdleTimeout:        *tcpTimeout,
+		MaxRingPackets:        *maxRingPackets,
 	}
 
 	service := HoneyBadger.NewInquisitor(&options)

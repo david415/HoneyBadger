@@ -30,10 +30,6 @@ import (
 )
 
 const (
-	// Size of the ring buffers which stores the latest
-	// reassembled streams
-	MAX_CONN_PACKETS = 40
-
 	// Stop looking for handshake hijack after several
 	// packets have traversed the connection after entering
 	// into TCP_DATA_TRANSFER state
@@ -73,12 +69,17 @@ type CloseRequest struct {
 	CloseReadyChan chan bool
 }
 
+type ConnectionOptions struct {
+	MaxBufferedPagesTotal         int
+	MaxBufferedPagesPerConnection int
+	MaxRingPackets                int
+}
+
 // Connection is used to track client and server flows for a given TCP connection.
 // We implement a basic TCP finite state machine and track state in order to detect
 // hanshake hijack and other TCP attacks such as segment veto and sloppy injection.
 type Connection struct {
-	MaxBufferedPagesTotal         int
-	MaxBufferedPagesPerConnection int
+	ConnectionOptions
 
 	closeRequestChanListening bool
 	closeRequestChan          chan CloseRequest
@@ -118,10 +119,13 @@ type Connection struct {
 }
 
 // NewConnection returns a new Connection struct
-func NewConnection(closeRequestChan chan CloseRequest, pager *Pager, bufferedPerConnection, bufferedTotal int) *Connection {
+func NewConnection(closeRequestChan chan CloseRequest, pager *Pager, maxRingPackets, bufferedPerConnection, bufferedTotal int) *Connection {
 	conn := Connection{
-		MaxBufferedPagesTotal:         bufferedTotal,
-		MaxBufferedPagesPerConnection: bufferedPerConnection,
+		ConnectionOptions: ConnectionOptions{
+			MaxRingPackets:                maxRingPackets,
+			MaxBufferedPagesTotal:         bufferedTotal,
+			MaxBufferedPagesPerConnection: bufferedPerConnection,
+		},
 		pager:            pager,
 		closeRequestChan: closeRequestChan,
 		stopChan:         make(chan bool),
@@ -129,8 +133,8 @@ func NewConnection(closeRequestChan chan CloseRequest, pager *Pager, bufferedPer
 		state:            TCP_UNKNOWN,
 		clientNextSeq:    invalidSequence,
 		serverNextSeq:    invalidSequence,
-		ClientStreamRing: ring.New(MAX_CONN_PACKETS),
-		ServerStreamRing: ring.New(MAX_CONN_PACKETS),
+		ClientStreamRing: ring.New(maxRingPackets),
+		ServerStreamRing: ring.New(maxRingPackets),
 		ClientReassembly: make([]Reassembly, 0),
 		ServerReassembly: make([]Reassembly, 0),
 	}
