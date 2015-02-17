@@ -85,10 +85,9 @@ type Connection struct {
 	stopChan                  chan bool
 	receiveChan               chan *PacketManifest
 
-	pager            *Pager
-	packetCount      uint64
-	lastSeen         time.Time
-	connectFlowKnown bool
+	pager       *Pager
+	packetCount uint64
+	lastSeen    time.Time
 
 	state       uint8
 	clientState uint8
@@ -274,7 +273,6 @@ func (c *Connection) detectInjection(p PacketManifest, flow TcpIpFlow) {
 func (c *Connection) stateUnknown(p PacketManifest) {
 	if p.TCP.SYN && !p.TCP.ACK {
 		c.state = TCP_CONNECTION_REQUEST
-		c.connectFlowKnown = true
 		c.clientFlow = p.Flow
 		c.serverFlow = p.Flow.Reverse()
 
@@ -288,7 +286,6 @@ func (c *Connection) stateUnknown(p PacketManifest) {
 	} else {
 		// else process a connection after handshake
 		c.state = TCP_DATA_TRANSFER
-		c.connectFlowKnown = false
 		c.clientFlow = p.Flow
 		c.serverFlow = p.Flow.Reverse()
 		c.packetCount = FIRST_FEW_PACKETS // skip handshake hijack detection
