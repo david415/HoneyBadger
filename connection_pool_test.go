@@ -13,7 +13,7 @@ func TestConnectionPool(t *testing.T) {
 
 	closeConnectionChan := make(chan CloseRequest)
 	connPool := NewConnectionPool()
-	conn := NewConnection(closeConnectionChan, nil, 0, 0)
+	conn := NewConnection(closeConnectionChan, nil, 40, 0, 0)
 	conn.Start(false)
 
 	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
@@ -48,7 +48,7 @@ func TestConnectionPool(t *testing.T) {
 	ipFlow, _ = gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 9, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 9, 4, 5)))
 	tcpFlow, _ = gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
 	flow = NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
-	conn = NewConnection(closeConnectionChan, nil, 0, 0)
+	conn = NewConnection(closeConnectionChan, nil, 40, 0, 0)
 	conn.Start(false)
 	conn.clientFlow = flow
 
@@ -82,7 +82,7 @@ func TestConnectionPool(t *testing.T) {
 
 	log.Print("before 2nd CloseOlderThan\n")
 	// test close one case of CloseOlderThan
-	conn = NewConnection(closeConnectionChan, nil, 0, 0)
+	conn = NewConnection(closeConnectionChan, nil, 40, 0, 0)
 	conn.Start(false)
 	conn.clientFlow = flow
 	connPool.Put(flow, conn)
@@ -98,7 +98,7 @@ func TestConnectionPool(t *testing.T) {
 	timestamp1 := time.Now()
 	timestamp2 := timestamp1.Add(timeDuration)
 
-	conn = NewConnection(closeConnectionChan, nil, 0, 0)
+	conn = NewConnection(closeConnectionChan, nil, 40, 0, 0)
 	conn.Start(false)
 	conn.clientFlow = flow
 	conn.serverFlow = flow.Reverse()
@@ -137,7 +137,7 @@ func TestConnectionPool(t *testing.T) {
 	}
 	log.Print("after 3rd CloseOlderThan\n")
 
-	conn = NewConnection(closeConnectionChan, nil, 0, 0)
+	conn = NewConnection(closeConnectionChan, nil, 40, 0, 0)
 	conn.Start(false)
 	conn.clientFlow = flow
 	conn.serverFlow = flow.Reverse()
@@ -177,7 +177,7 @@ func TestConnectionPool(t *testing.T) {
 	}
 
 	log.Print("before NewConn\n")
-	conn = NewConnection(closeConnectionChan, nil, 0, 0)
+	conn = NewConnection(closeConnectionChan, nil, 40, 0, 0)
 	conn.Start(false)
 	conn2, err := connPool.Get(flow)
 	if err == nil {

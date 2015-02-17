@@ -12,7 +12,7 @@ import (
 func TestOrderedCoalesce(t *testing.T) {
 	maxBufferedPagesTotal := 1024
 	maxBufferedPagesPerFlow := 1024
-	streamRing := ring.New(MAX_CONN_PACKETS)
+	streamRing := ring.New(40)
 	pager := NewPager()
 
 	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
