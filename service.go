@@ -198,6 +198,26 @@ func (i *Inquisitor) decodePackets() {
 	}
 }
 
+func (i *Inquisitor) setupNewConnection(flow TcpIpFlow) *Connection {
+	conn := NewConnection(i.closeConnectionChan, i.pager, i.InquisitorOptions.BufferedPerConnection, i.InquisitorOptions.BufferedTotal)
+	conn.AttackLogger = i.AttackLogger
+	if i.PacketLog {
+		conn.PacketLogger = NewPcapLogger(i.LogDir, flow)
+		conn.PacketLogger.Start()
+	}
+	if i.StreamLog {
+		clientStream := NewStreamLogger(i.LogDir, flow)
+		clientStream.Start()
+		conn.ClientStream = clientStream
+		serverStream := NewStreamLogger(i.LogDir, flow.Reverse())
+		serverStream.Start()
+		conn.ServerStream = serverStream
+	}
+	i.connPool.Put(flow, conn)
+	conn.Start(true)
+	return conn
+}
+
 func (i *Inquisitor) dispatchPackets() {
 	var conn *Connection
 	var err error
@@ -227,23 +247,7 @@ func (i *Inquisitor) dispatchPackets() {
 					panic(err) // wtf
 				}
 			} else {
-				// XXX TODO: start the loggers in the connection goroutine instead of this one?
-				conn = NewConnection(i.closeConnectionChan, i.pager, i.InquisitorOptions.BufferedPerConnection, i.InquisitorOptions.BufferedTotal)
-				conn.AttackLogger = i.AttackLogger
-				if i.PacketLog {
-					conn.PacketLogger = NewPcapLogger(i.LogDir, packetManifest.Flow)
-					conn.PacketLogger.Start()
-				}
-				if i.StreamLog {
-					clientStream := NewStreamLogger(i.LogDir, packetManifest.Flow)
-					clientStream.Start()
-					conn.ClientStream = clientStream
-					serverStream := NewStreamLogger(i.LogDir, packetManifest.Flow.Reverse())
-					serverStream.Start()
-					conn.ServerStream = serverStream
-				}
-				i.connPool.Put(packetManifest.Flow, conn)
-				conn.Start(true)
+				conn = i.setupNewConnection(packetManifest.Flow)
 			}
 			conn.receivePacket(&packetManifest)
 		}
