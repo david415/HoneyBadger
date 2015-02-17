@@ -1,5 +1,5 @@
 /*
- *    pcap_loggers.go - HoneyBadger core library for detecting TCP attacks
+ *    pcap_logger.go - HoneyBadger core library for detecting TCP attacks
  *    such as handshake-hijack, segment veto and sloppy injection.
  *
  *    Copyright (C) 2014  David Stainton
@@ -25,6 +25,7 @@ import (
 	"code.google.com/p/gopacket/layers"
 	"code.google.com/p/gopacket/pcapgo"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -48,38 +49,40 @@ type PcapLogger struct {
 	Dir        string
 	Flow       TcpIpFlow
 	writer     *pcapgo.Writer
-	file       *os.File
+	fileWriter io.WriteCloser
 }
 
 // NewPcapLogger returns a PcapLogger struct...
 // and in doing so writes a pcap header to the beginning of the file.
 func NewPcapLogger(dir string, flow TcpIpFlow) *PcapLogger {
-	var err error
 	p := PcapLogger{
 		packetChan: make(chan TimedPacket),
 		Flow:       flow,
 		Dir:        dir,
 	}
-	p.file, err = os.OpenFile(filepath.Join(p.Dir, fmt.Sprintf("%s.pcap", p.Flow.String())), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		panic(fmt.Sprintf("error opening file: %v", err))
-	}
-	p.writer = pcapgo.NewWriter(p.file)
-	err = p.writer.WriteFileHeader(65536, layers.LinkTypeEthernet) // XXX
-	if err != nil {
-		panic(err)
-	}
 	return &p
 }
 
 func (p *PcapLogger) Start() {
+	var err error
+	if p.fileWriter == nil {
+		p.fileWriter, err = os.OpenFile(filepath.Join(p.Dir, fmt.Sprintf("%s.pcap", p.Flow.String())), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+			panic(fmt.Sprintf("error opening file: %v", err))
+		}
+	}
+	p.writer = pcapgo.NewWriter(p.fileWriter)
+	err = p.writer.WriteFileHeader(65536, layers.LinkTypeEthernet) // XXX
+	if err != nil {
+		panic(err)
+	}
 	go p.logPackets()
 }
 
 // Close causes the file to be closed.
 func (p *PcapLogger) Stop() {
 	p.stopChan <- true
-	p.file.Close()
+	p.fileWriter.Close()
 }
 
 func (p *PcapLogger) logPackets() {

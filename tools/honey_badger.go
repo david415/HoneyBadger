@@ -31,12 +31,20 @@ import (
 
 func main() {
 	var (
-		iface       = flag.String("i", "eth0", "Interface to get packets from")
-		snaplen     = flag.Int("s", 65536, "SnapLen for pcap packet capture")
-		filter      = flag.String("f", "tcp", "BPF filter for pcap")
-		logDir      = flag.String("l", "honeyBadger-logs", "log directory")
-		wireTimeout = flag.String("w", "10s", "timeout for reading packets off the wire")
-		packetLog   = flag.Bool("packet_log", false, "if set to true then log all packets for each tracked TCP connection")
+		iface                 = flag.String("i", "eth0", "Interface to get packets from")
+		snaplen               = flag.Int("s", 65536, "SnapLen for pcap packet capture")
+		filter                = flag.String("f", "tcp", "BPF filter for pcap")
+		logDir                = flag.String("l", "honeyBadger-logs", "log directory")
+		wireTimeout           = flag.String("w", "10s", "timeout for reading packets off the wire")
+		packetLog             = flag.Bool("packet_log", true, "if set to true then log all packets for each tracked TCP connection")
+		streamLog             = flag.Bool("stream_log", true, "if set to true then log both reassembled TCP streams for each tracked TCP connection")
+		bufferedPerConnection = flag.Int("connection_max_buffer", 0, `
+Max packets to buffer for a single connection before skipping over a gap in data
+and continuing to stream the connection after the buffer.  If zero or less, this
+is infinite.`)
+		bufferedTotal = flag.Int("total_max_buffer", 0, `
+Max packets to buffer total before skipping over gaps in connections and
+continuing to stream connection data.  If zero or less, this is infinite`)
 	)
 	flag.Parse()
 
@@ -45,7 +53,7 @@ func main() {
 		log.Fatal("invalid wire timeout duration: ", *wireTimeout)
 	}
 
-	service := HoneyBadger.NewInquisitor(*iface, wireDuration, *filter, *snaplen, *logDir, *packetLog)
+	service := HoneyBadger.NewInquisitor(*iface, wireDuration, *filter, *snaplen, *logDir, *packetLog, *streamLog, *bufferedPerConnection, *bufferedTotal)
 	log.Println("HoneyBadger: comprehensive TCP injection attack detection.")
 	service.Start()
 

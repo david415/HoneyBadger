@@ -39,7 +39,7 @@ func (d *DummyAttackLogger) Start() {
 func (d *DummyAttackLogger) Stop() {
 }
 
-func (d *DummyAttackLogger) ReportHijackAttack(instant time.Time, flow TcpIpFlow) {
+func (d *DummyAttackLogger) ReportHijackAttack(instant time.Time, flow TcpIpFlow, Seq, Ack uint32) {
 	d.Count += 1
 }
 
@@ -52,7 +52,7 @@ func TestInjectionDetector(t *testing.T) {
 
 	fmt.Printf("attackLogger %v\n", attackLogger.Count)
 
-	conn := NewConnection(nil)
+	conn := NewConnection(nil, nil, 0, 0)
 	conn.ClientStreamRing.Value = Reassembly{
 		Seq:   Sequence(5),
 		Bytes: []byte{1, 2, 3, 4, 5},
@@ -125,7 +125,7 @@ func TestInjectionDetector(t *testing.T) {
 }
 
 func TestGetRingSlice(t *testing.T) {
-	conn := NewConnection(nil)
+	conn := NewConnection(nil, nil, 0, 0)
 	for j := 5; j < 40; j += 5 {
 		conn.ClientStreamRing.Value = Reassembly{
 			Seq:   Sequence(j),
@@ -602,7 +602,7 @@ func TestGetOverlapBytes(t *testing.T) {
 			},
 		},
 	}
-	conn := NewConnection(nil)
+	conn := NewConnection(nil, nil, 0, 0)
 	for j := 5; j < 40; j += 5 {
 		conn.ClientStreamRing.Value = Reassembly{
 			Seq:   Sequence(j),
@@ -679,7 +679,7 @@ func TestGetOverlapRingsWithZeroRings(t *testing.T) {
 		TCP:     tcp,
 		Payload: payload,
 	}
-	conn := NewConnection(nil)
+	conn := NewConnection(nil, nil, 0, 0)
 	head, tail := conn.getOverlapRings(p, flow)
 	if head == nil || tail == nil {
 		return
@@ -834,7 +834,7 @@ func TestGetOverlapRings(t *testing.T) {
 		Protocol: layers.IPProtocolTCP,
 	}
 
-	conn := NewConnection(nil)
+	conn := NewConnection(nil, nil, 0, 0)
 	for j := 5; j < 40; j += 5 {
 		conn.ClientStreamRing.Value = Reassembly{
 			Seq:   Sequence(j),
