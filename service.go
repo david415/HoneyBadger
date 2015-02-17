@@ -55,14 +55,11 @@ type InquisitorOptions struct {
 // with incoming packets weather they be from a pcap file or directly off the wire.
 type Inquisitor struct {
 	InquisitorOptions
-
-	stopCaptureChan    chan bool
-	decodePacketChan   chan TimedRawPacket
-	stopDecodeChan     chan bool
-	dispatchPacketChan chan PacketManifest
-	stopDispatchChan   chan bool
-
-	stopChan            chan bool
+	stopCaptureChan     chan bool
+	decodePacketChan    chan TimedRawPacket
+	stopDecodeChan      chan bool
+	dispatchPacketChan  chan PacketManifest
+	stopDispatchChan    chan bool
 	closeConnectionChan chan CloseRequest
 	connPool            *ConnectionPool
 	handle              *pcap.Handle
@@ -93,11 +90,9 @@ func (i *Inquisitor) Start() {
 	if i.handle == nil {
 		i.setupHandle()
 	}
-
 	go i.capturePackets()  // stopCaptureChan
 	go i.decodePackets()   // stopDecodeChan decodePacketChan
 	go i.dispatchPackets() // stopDispatchChan dispatchPacketChan
-
 	i.pager.Start()
 	i.AttackLogger.Start()
 }
@@ -107,7 +102,6 @@ func (i *Inquisitor) Stop() {
 	i.stopDispatchChan <- true
 	i.stopDecodeChan <- true
 	i.stopCaptureChan <- true
-
 	i.AttackLogger.Stop()
 	i.handle.Close()
 	i.pager.Stop()
