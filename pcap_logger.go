@@ -57,6 +57,7 @@ type PcapLogger struct {
 func NewPcapLogger(dir string, flow TcpIpFlow) *PcapLogger {
 	p := PcapLogger{
 		packetChan: make(chan TimedPacket),
+		stopChan:   make(chan bool),
 		Flow:       flow,
 		Dir:        dir,
 	}

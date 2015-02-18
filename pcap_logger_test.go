@@ -40,18 +40,33 @@ func makeTestPacket() []byte {
 	return packetData
 }
 
+type TestPcapWriter struct {
+	lastWrite []byte
+}
+
+func NewTestPcapWriter() *TestPcapWriter {
+	return &TestPcapWriter{}
+}
+
+func (w *TestPcapWriter) Write(data []byte) (int, error) {
+	w.lastWrite = data
+	return len(data), nil
+}
+
+func (w *TestPcapWriter) Close() error {
+	return nil
+}
+
 func TestPcapLogger(t *testing.T) {
 	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
 	flow := NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 
 	pcapLogger := NewPcapLogger("fake-dir", flow)
-	testWriter := NewTestSignalWriter()
+	testWriter := NewTestPcapWriter()
 	pcapLogger.fileWriter = testWriter
 
-	go pcapLogger.Start()
-
-	<-testWriter.signalChan
+	pcapLogger.Start()
 
 	// test pcap header
 	want := []byte("\xd4\xc3\xb2\xa1\x02\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x01\x00\x00\x00")
@@ -63,14 +78,12 @@ func TestPcapLogger(t *testing.T) {
 	// test pcap packet
 	rawPacket := makeTestPacket()
 	testWriter.lastWrite = make([]byte, 0)
-	go pcapLogger.WritePacket(rawPacket, time.Now())
-
-	<-testWriter.signalChan
+	pcapLogger.WritePacket(rawPacket, time.Now())
 
 	if !bytes.Equal(testWriter.lastWrite, rawPacket) {
 		t.Errorf("pcap packet is wrong")
 		t.Fail()
 	}
 
-	go pcapLogger.Stop()
+	pcapLogger.Stop()
 }
