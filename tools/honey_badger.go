@@ -36,6 +36,7 @@ func main() {
 		filter                = flag.String("f", "tcp", "BPF filter for pcap")
 		logDir                = flag.String("l", "honeyBadger-logs", "log directory")
 		wireTimeout           = flag.String("w", "10s", "timeout for reading packets off the wire")
+		metadataAttackLog     = flag.Bool("metadata_attack_log", true, "if set to true then attack reports will only include metadata")
 		packetLog             = flag.Bool("packet_log", false, "if set to true then log all packets for each tracked TCP connection")
 		streamLog             = flag.Bool("stream_log", false, "if set to true then log both reassembled TCP streams for each tracked TCP connection")
 		tcpTimeout            = flag.Duration("tcp_idle_timeout", time.Minute*5, "tcp idle timeout duration")
@@ -67,6 +68,7 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		StreamLog:             *streamLog,
 		TcpIdleTimeout:        *tcpTimeout,
 		MaxRingPackets:        *maxRingPackets,
+		MetaDataAttackLog:     *metadataAttackLog,
 	}
 
 	service := HoneyBadger.NewInquisitor(&options)

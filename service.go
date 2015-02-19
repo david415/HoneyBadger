@@ -50,6 +50,7 @@ type InquisitorOptions struct {
 	StreamLog             bool
 	TcpIdleTimeout        time.Duration
 	MaxRingPackets        int
+	MetaDataAttackLog     bool
 }
 
 // Inquisitor sets up the connection pool and is an abstraction layer for dealing
@@ -78,10 +79,13 @@ func NewInquisitor(options *InquisitorOptions) *Inquisitor {
 		dispatchPacketChan:  make(chan PacketManifest),
 		stopDispatchChan:    make(chan bool),
 		closeConnectionChan: make(chan CloseRequest),
-
-		pager:        NewPager(),
-		connPool:     NewConnectionPool(),
-		AttackLogger: NewAttackJsonLogger(options.LogDir),
+		pager:               NewPager(),
+		connPool:            NewConnectionPool(),
+	}
+	if options.MetaDataAttackLog == true {
+		i.AttackLogger = NewAttackMetadataJsonLogger(options.LogDir)
+	} else {
+		i.AttackLogger = NewAttackJsonLogger(options.LogDir)
 	}
 	return &i
 }
@@ -194,6 +198,7 @@ func (i *Inquisitor) setupNewConnection(flow TcpIpFlow) *Connection {
 	}
 	conn := NewConnection(&options)
 	conn.AttackLogger = i.AttackLogger
+
 	if i.PacketLog {
 		conn.PacketLogger = NewPcapLogger(i.LogDir, flow)
 		conn.PacketLogger.Start()
