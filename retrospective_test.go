@@ -51,8 +51,15 @@ func TestInjectionDetector(t *testing.T) {
 	attackLogger := NewDummyAttackLogger()
 
 	fmt.Printf("attackLogger %v\n", attackLogger.Count)
-
-	conn := NewConnection(nil, nil, 40, 0, 0)
+	options := ConnectionOptions{
+		MaxBufferedPagesTotal:         0,
+		MaxBufferedPagesPerConnection: 0,
+		MaxRingPackets:                40,
+		closeRequestChan:              nil,
+		pager:                         nil,
+		LogDir:                        "fake-log-dir",
+	}
+	conn := NewConnection(&options)
 	conn.ClientStreamRing.Value = Reassembly{
 		Seq:   Sequence(5),
 		Bytes: []byte{1, 2, 3, 4, 5},
@@ -125,7 +132,15 @@ func TestInjectionDetector(t *testing.T) {
 }
 
 func TestGetRingSlice(t *testing.T) {
-	conn := NewConnection(nil, nil, 40, 0, 0)
+	options := ConnectionOptions{
+		MaxBufferedPagesTotal:         0,
+		MaxBufferedPagesPerConnection: 0,
+		MaxRingPackets:                40,
+		closeRequestChan:              nil,
+		pager:                         nil,
+		LogDir:                        "fake-log-dir",
+	}
+	conn := NewConnection(&options)
 	for j := 5; j < 40; j += 5 {
 		conn.ClientStreamRing.Value = Reassembly{
 			Seq:   Sequence(j),
@@ -602,7 +617,16 @@ func TestGetOverlapBytes(t *testing.T) {
 			},
 		},
 	}
-	conn := NewConnection(nil, nil, 40, 0, 0)
+	options := ConnectionOptions{
+		MaxBufferedPagesTotal:         0,
+		MaxBufferedPagesPerConnection: 0,
+		MaxRingPackets:                40,
+		closeRequestChan:              nil,
+		pager:                         nil,
+		LogDir:                        "fake-log-dir",
+	}
+	conn := NewConnection(&options)
+
 	for j := 5; j < 40; j += 5 {
 		conn.ClientStreamRing.Value = Reassembly{
 			Seq:   Sequence(j),
@@ -679,7 +703,15 @@ func TestGetOverlapRingsWithZeroRings(t *testing.T) {
 		TCP:     tcp,
 		Payload: payload,
 	}
-	conn := NewConnection(nil, nil, 40, 0, 0)
+	options := ConnectionOptions{
+		MaxBufferedPagesTotal:         0,
+		MaxBufferedPagesPerConnection: 0,
+		MaxRingPackets:                40,
+		closeRequestChan:              nil,
+		pager:                         nil,
+		LogDir:                        "fake-log-dir",
+	}
+	conn := NewConnection(&options)
 	head, tail := conn.getOverlapRings(p, flow)
 	if head == nil || tail == nil {
 		return
@@ -833,8 +865,15 @@ func TestGetOverlapRings(t *testing.T) {
 		TTL:      64,
 		Protocol: layers.IPProtocolTCP,
 	}
-
-	conn := NewConnection(nil, nil, 40, 0, 0)
+	options := ConnectionOptions{
+		MaxBufferedPagesTotal:         0,
+		MaxBufferedPagesPerConnection: 0,
+		MaxRingPackets:                40,
+		closeRequestChan:              nil,
+		pager:                         nil,
+		LogDir:                        "fake-log-dir",
+	}
+	conn := NewConnection(&options)
 	for j := 5; j < 40; j += 5 {
 		conn.ClientStreamRing.Value = Reassembly{
 			Seq:   Sequence(j),

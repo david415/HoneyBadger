@@ -25,7 +25,10 @@ import (
 	"code.google.com/p/gopacket"
 	"code.google.com/p/gopacket/layers"
 	"container/ring"
+	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -73,6 +76,9 @@ type ConnectionOptions struct {
 	MaxBufferedPagesTotal         int
 	MaxBufferedPagesPerConnection int
 	MaxRingPackets                int
+	closeRequestChan              chan CloseRequest
+	pager                         *Pager
+	LogDir                        string
 }
 
 // Connection is used to track client and server flows for a given TCP connection.
@@ -80,63 +86,47 @@ type ConnectionOptions struct {
 // hanshake hijack and other TCP attacks such as segment veto and sloppy injection.
 type Connection struct {
 	ConnectionOptions
-
+	attackDetected            bool
 	closeRequestChanListening bool
-	closeRequestChan          chan CloseRequest
 	stopChan                  chan bool
 	receiveChan               chan *PacketManifest
-
-	pager       *Pager
-	packetCount uint64
-	lastSeen    time.Time
-
-	state       uint8
-	clientState uint8
-	serverState uint8
-
-	clientFlow  TcpIpFlow
-	serverFlow  TcpIpFlow
-	closingFlow TcpIpFlow
-
-	clientNextSeq Sequence
-	serverNextSeq Sequence
-	hijackNextAck Sequence
-
-	ClientStreamRing *ring.Ring
-	ServerStreamRing *ring.Ring
-
-	ClientCoalesce *OrderedCoalesce
-	ServerCoalesce *OrderedCoalesce
-
-	ClientReassembly []Reassembly
-	ServerReassembly []Reassembly
-
-	PacketLogger PacketLogger
-	AttackLogger AttackLogger
-
-	ClientStream Stream
-	ServerStream Stream
+	packetCount               uint64
+	lastSeen                  time.Time
+	state                     uint8
+	clientState               uint8
+	serverState               uint8
+	clientFlow                TcpIpFlow
+	serverFlow                TcpIpFlow
+	closingFlow               TcpIpFlow
+	clientNextSeq             Sequence
+	serverNextSeq             Sequence
+	hijackNextAck             Sequence
+	ClientStreamRing          *ring.Ring
+	ServerStreamRing          *ring.Ring
+	ClientCoalesce            *OrderedCoalesce
+	ServerCoalesce            *OrderedCoalesce
+	ClientReassembly          []Reassembly
+	ServerReassembly          []Reassembly
+	PacketLogger              PacketLogger
+	AttackLogger              AttackLogger
+	ClientStream              Stream
+	ServerStream              Stream
 }
 
 // NewConnection returns a new Connection struct
-func NewConnection(closeRequestChan chan CloseRequest, pager *Pager, maxRingPackets, bufferedPerConnection, bufferedTotal int) *Connection {
+func NewConnection(options *ConnectionOptions) *Connection {
 	conn := Connection{
-		ConnectionOptions: ConnectionOptions{
-			MaxRingPackets:                maxRingPackets,
-			MaxBufferedPagesTotal:         bufferedTotal,
-			MaxBufferedPagesPerConnection: bufferedPerConnection,
-		},
-		pager:            pager,
-		closeRequestChan: closeRequestChan,
-		stopChan:         make(chan bool),
-		receiveChan:      make(chan *PacketManifest),
-		state:            TCP_UNKNOWN,
-		clientNextSeq:    invalidSequence,
-		serverNextSeq:    invalidSequence,
-		ClientStreamRing: ring.New(maxRingPackets),
-		ServerStreamRing: ring.New(maxRingPackets),
-		ClientReassembly: make([]Reassembly, 0),
-		ServerReassembly: make([]Reassembly, 0),
+		ConnectionOptions: *options,
+		attackDetected:    false,
+		stopChan:          make(chan bool),
+		receiveChan:       make(chan *PacketManifest),
+		state:             TCP_UNKNOWN,
+		clientNextSeq:     invalidSequence,
+		serverNextSeq:     invalidSequence,
+		ClientStreamRing:  ring.New(options.MaxRingPackets),
+		ServerStreamRing:  ring.New(options.MaxRingPackets),
+		ClientReassembly:  make([]Reassembly, 0),
+		ServerReassembly:  make([]Reassembly, 0),
 	}
 
 	conn.ClientCoalesce = NewOrderedCoalesce(conn.ClientReassembly, &conn.clientFlow, conn.pager, conn.ClientStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2)
@@ -145,10 +135,10 @@ func NewConnection(closeRequestChan chan CloseRequest, pager *Pager, maxRingPack
 	return &conn
 }
 
-// Close frees up all resources used by the connection
-// We send a close request to the Inquisitor;
-// once we receive response on the closeReadyChan
-// we call our Stop method.
+// Close is used by the Connection to shutdown itself.
+// Firstly it removes it's entry from the connection pool...
+// if closeRequestChanListening is set to true.
+// After that Stop is called.
 func (c *Connection) Close() {
 	log.Printf("close detected for %s\n", c.clientFlow.String())
 
@@ -159,16 +149,8 @@ func (c *Connection) Close() {
 			Flow:           &c.clientFlow,
 			CloseReadyChan: closeReadyChan,
 		}
-		log.Print("close request sent\n")
 		<-closeReadyChan
-		log.Print("close request completed.\n")
 	}
-
-	if c.ClientStream != nil {
-		c.ClientStream.ReassemblyComplete()
-		c.ServerStream.ReassemblyComplete()
-	}
-
 	c.Stop()
 }
 
@@ -180,16 +162,36 @@ func (c *Connection) Start(closeRequestChanListening bool) {
 	go c.startReceivingPackets()
 }
 
-// Stop is used to stop the packet receiving goroutine and
-// the packet logger.
+// Stop frees up all resources used by the connection
 func (c *Connection) Stop() {
 	log.Print("Connection.Stop() called.\n")
-	c.stopChan <- true
+	if c.ClientStream != nil {
+		c.ClientStream.ReassemblyComplete()
+		c.ServerStream.ReassemblyComplete()
+	}
 	if c.PacketLogger != nil {
 		log.Print("stoping pcap logger\n")
 		c.PacketLogger.Stop()
 	}
 	log.Printf("stopped tracking %s\n", c.clientFlow.String())
+	c.stopChan <- true
+	log.Print("checking attack detection status\n")
+	if c.attackDetected == false {
+		c.removeAllLogs()
+	} else {
+		log.Print("not removing logs. attack detected.\n")
+	}
+}
+
+// removeAllLogs removes all the logs associated with this Connection instance
+func (c *Connection) removeAllLogs() {
+	log.Printf("removeAllLogs %s\n", c.clientFlow.String())
+	os.Remove(filepath.Join(c.LogDir, fmt.Sprintf("%s.stream", c.clientFlow.String())))
+	os.Remove(filepath.Join(c.LogDir, fmt.Sprintf("%s.stream", c.serverFlow.String())))
+	os.Remove(filepath.Join(c.LogDir, fmt.Sprintf("%s.pcap", c.clientFlow.String())))
+	os.Remove(filepath.Join(c.LogDir, fmt.Sprintf("%s.pcap", c.serverFlow.String())))
+	os.Remove(filepath.Join(c.LogDir, fmt.Sprintf("%s.attackreport.json", c.clientFlow.String())))
+	os.Remove(filepath.Join(c.LogDir, fmt.Sprintf("%s.attackreport.json", c.serverFlow.String())))
 }
 
 // detectHijack checks for duplicate SYN/ACK indicating handshake hijake
@@ -202,6 +204,7 @@ func (c *Connection) detectHijack(p PacketManifest, flow TcpIpFlow) {
 	if p.TCP.ACK && p.TCP.SYN {
 		if Sequence(p.TCP.Ack).Difference(c.hijackNextAck) == 0 {
 			c.AttackLogger.ReportHijackAttack(time.Now(), flow, p.TCP.Seq, p.TCP.Ack)
+			c.attackDetected = true
 		}
 	}
 }
@@ -266,6 +269,7 @@ func (c *Connection) detectInjection(p PacketManifest, flow TcpIpFlow) {
 	overlapBytes, startOffset, endOffset := c.getOverlapBytes(head, tail, start, end)
 	if !bytes.Equal(overlapBytes, p.Payload[startOffset:endOffset]) {
 		c.AttackLogger.ReportInjectionAttack("injection", time.Now(), flow, p.Payload, overlapBytes, start, end, startOffset, endOffset)
+		c.attackDetected = true
 	} else {
 		log.Print("not an attack attempt; a normal TCP retransmission.\n")
 	}
@@ -594,7 +598,6 @@ func (c *Connection) receivePacketState(p *PacketManifest) {
 				c.clientNextSeq = c.sendToStream(c.ServerReassembly, c.clientNextSeq, c.serverNextSeq, &c.ServerStream, &c.ClientStream, c.ServerCoalesce, c.ClientCoalesce)
 			}
 		}
-
 		c.ClientReassembly = make([]Reassembly, 0)
 		c.ServerReassembly = make([]Reassembly, 0)
 	}
@@ -604,6 +607,7 @@ func (c *Connection) startReceivingPackets() {
 	for {
 		select {
 		case <-c.stopChan:
+			log.Print("stopChan signaled\n")
 			return
 		case p := <-c.receiveChan:
 			c.receivePacketState(p)
@@ -615,7 +619,6 @@ func (c *Connection) sendToStream(ret []Reassembly, nextSeq, otherNextSeq Sequen
 	nextSeq = coalesce.addContiguous(nextSeq)
 	stream := *streamPtr
 	stream.Reassembled(ret)
-
 	if ret[len(ret)-1].End {
 		otherRet := []Reassembly{
 			Reassembly{
@@ -626,7 +629,7 @@ func (c *Connection) sendToStream(ret []Reassembly, nextSeq, otherNextSeq Sequen
 		otherNextSeq = otherCoalesce.addContiguous(otherNextSeq)
 		otherStream := *otherStreamPtr
 		otherStream.Reassembled(otherRet)
-		c.Close()
+		go c.Close()
 	}
 	return nextSeq
 }

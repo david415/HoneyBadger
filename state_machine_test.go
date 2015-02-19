@@ -24,8 +24,15 @@ func (d DummyStreamLogger) ReassemblyComplete() {
 }
 
 func TestStateDataTransfer(t *testing.T) {
-	closeConnectionChan := make(chan CloseRequest)
-	conn := NewConnection(closeConnectionChan, nil, 40, 0, 0)
+	options := ConnectionOptions{
+		MaxBufferedPagesTotal:         0,
+		MaxBufferedPagesPerConnection: 0,
+		MaxRingPackets:                40,
+		closeRequestChan:              nil,
+		pager:                         nil,
+		LogDir:                        "fake-log-dir",
+	}
+	conn := NewConnection(&options)
 	conn.AttackLogger = NewDummyAttackLogger()
 	conn.ClientStream = NewDummyStreamLogger()
 	conn.ServerStream = NewDummyStreamLogger()
@@ -141,7 +148,15 @@ func TestStateDataTransfer(t *testing.T) {
 }
 
 func TestTCPConnect(t *testing.T) {
-	conn := NewConnection(nil, nil, 40, 0, 0)
+	options := ConnectionOptions{
+		MaxBufferedPagesTotal:         0,
+		MaxBufferedPagesPerConnection: 0,
+		MaxRingPackets:                40,
+		closeRequestChan:              nil,
+		pager:                         nil,
+		LogDir:                        "fake-log-dir",
+	}
+	conn := NewConnection(&options)
 	conn.Start(false)
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},
@@ -253,9 +268,15 @@ func TestServerThreeWayClose(t *testing.T) {
 func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 	var closerState, remoteState *uint8
 	attackLogger := NewDummyAttackLogger()
-
-	closeConnectionChan := make(chan CloseRequest)
-	conn := NewConnection(closeConnectionChan, nil, 40, 0, 0)
+	options := ConnectionOptions{
+		MaxBufferedPagesTotal:         0,
+		MaxBufferedPagesPerConnection: 0,
+		MaxRingPackets:                40,
+		closeRequestChan:              nil,
+		pager:                         nil,
+		LogDir:                        "fake-log-dir",
+	}
+	conn := NewConnection(&options)
 	conn.AttackLogger = attackLogger
 	conn.ClientStream = NewDummyStreamLogger()
 	conn.ServerStream = NewDummyStreamLogger()
@@ -393,7 +414,15 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 
 func TestTCPHijack(t *testing.T) {
 	attackLogger := NewDummyAttackLogger()
-	conn := NewConnection(nil, nil, 40, 0, 0)
+	options := ConnectionOptions{
+		MaxBufferedPagesTotal:         0,
+		MaxBufferedPagesPerConnection: 0,
+		MaxRingPackets:                40,
+		closeRequestChan:              nil,
+		pager:                         nil,
+		LogDir:                        "fake-log-dir",
+	}
+	conn := NewConnection(&options)
 	conn.AttackLogger = attackLogger
 	conn.Start(false)
 

@@ -91,9 +91,9 @@ func (i *Inquisitor) Start() {
 	if i.handle == nil {
 		i.setupHandle()
 	}
-	go i.capturePackets()  // stopCaptureChan
-	go i.decodePackets()   // stopDecodeChan decodePacketChan
-	go i.dispatchPackets() // stopDispatchChan dispatchPacketChan
+	go i.capturePackets()
+	go i.decodePackets()
+	go i.dispatchPackets()
 	i.pager.Start()
 	i.AttackLogger.Start()
 }
@@ -103,6 +103,7 @@ func (i *Inquisitor) Stop() {
 	i.stopDispatchChan <- true
 	i.stopDecodeChan <- true
 	i.stopCaptureChan <- true
+	i.connPool.CloseAllConnections()
 	i.AttackLogger.Stop()
 	i.handle.Close()
 	i.pager.Stop()
@@ -183,7 +184,15 @@ func (i *Inquisitor) decodePackets() {
 }
 
 func (i *Inquisitor) setupNewConnection(flow TcpIpFlow) *Connection {
-	conn := NewConnection(i.closeConnectionChan, i.pager, i.InquisitorOptions.MaxRingPackets, i.InquisitorOptions.BufferedPerConnection, i.InquisitorOptions.BufferedTotal)
+	options := ConnectionOptions{
+		MaxBufferedPagesTotal:         i.InquisitorOptions.BufferedTotal,
+		MaxBufferedPagesPerConnection: i.InquisitorOptions.BufferedPerConnection,
+		MaxRingPackets:                i.InquisitorOptions.MaxRingPackets,
+		closeRequestChan:              i.closeConnectionChan,
+		pager:                         i.pager,
+		LogDir:                        i.LogDir,
+	}
+	conn := NewConnection(&options)
 	conn.AttackLogger = i.AttackLogger
 	if i.PacketLog {
 		conn.PacketLogger = NewPcapLogger(i.LogDir, flow)
