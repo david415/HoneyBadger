@@ -588,19 +588,18 @@ func (c *Connection) receivePacketState(p *PacketManifest) {
 		c.stateConnectionClosing(*p)
 	}
 
-	if c.ClientStream != nil {
-		if p.Flow.Equal(c.serverFlow) {
-			if len(c.ClientReassembly) > 0 {
-				c.serverNextSeq = c.sendToStream(c.ClientReassembly, c.serverNextSeq, c.clientNextSeq, &c.ClientStream, &c.ServerStream, c.ClientCoalesce, c.ServerCoalesce)
-			}
-		} else {
-			if len(c.ServerReassembly) > 0 {
-				c.clientNextSeq = c.sendToStream(c.ServerReassembly, c.clientNextSeq, c.serverNextSeq, &c.ServerStream, &c.ClientStream, c.ServerCoalesce, c.ClientCoalesce)
-			}
+	if p.Flow.Equal(c.serverFlow) {
+		if len(c.ClientReassembly) > 0 {
+			c.serverNextSeq = c.sendToStream(c.ClientReassembly, c.serverNextSeq, c.clientNextSeq, c.ClientStream, c.ServerStream, c.ClientCoalesce, c.ServerCoalesce)
 		}
-		c.ClientReassembly = make([]Reassembly, 0)
-		c.ServerReassembly = make([]Reassembly, 0)
+	} else {
+		if len(c.ServerReassembly) > 0 {
+			c.clientNextSeq = c.sendToStream(c.ServerReassembly, c.clientNextSeq, c.serverNextSeq, c.ServerStream, c.ClientStream, c.ServerCoalesce, c.ClientCoalesce)
+		}
 	}
+	c.ClientReassembly = make([]Reassembly, 0)
+	c.ServerReassembly = make([]Reassembly, 0)
+
 }
 
 func (c *Connection) startReceivingPackets() {
@@ -615,10 +614,11 @@ func (c *Connection) startReceivingPackets() {
 	}
 }
 
-func (c *Connection) sendToStream(ret []Reassembly, nextSeq, otherNextSeq Sequence, streamPtr, otherStreamPtr *Stream, coalesce, otherCoalesce *OrderedCoalesce) Sequence {
+func (c *Connection) sendToStream(ret []Reassembly, nextSeq, otherNextSeq Sequence, stream, otherStream Stream, coalesce, otherCoalesce *OrderedCoalesce) Sequence {
 	nextSeq = coalesce.addContiguous(nextSeq)
-	stream := *streamPtr
-	stream.Reassembled(ret)
+	if stream != nil {
+		stream.Reassembled(ret)
+	}
 	if ret[len(ret)-1].End {
 		otherRet := []Reassembly{
 			Reassembly{
@@ -627,8 +627,9 @@ func (c *Connection) sendToStream(ret []Reassembly, nextSeq, otherNextSeq Sequen
 			},
 		}
 		otherNextSeq = otherCoalesce.addContiguous(otherNextSeq)
-		otherStream := *otherStreamPtr
-		otherStream.Reassembled(otherRet)
+		if otherStream != nil {
+			otherStream.Reassembled(otherRet)
+		}
 		go c.Close()
 	}
 	return nextSeq
