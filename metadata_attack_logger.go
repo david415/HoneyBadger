@@ -124,13 +124,10 @@ func (a *AttackMetadataJsonLogger) SerializeAndWrite(unserializedAttackReport Un
 // Publish writes a JSON report to the attack-report file for that flow.
 func (a *AttackMetadataJsonLogger) Publish(report *AttackReport) {
 	b, err := json.Marshal(*report)
-
-	if a.writer == nil {
-		a.writer, err = os.OpenFile(filepath.Join(a.LogDir, fmt.Sprintf("%s.metadata-attackreport.json", report.Flow)), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	}
-
+	a.writer, err = os.OpenFile(filepath.Join(a.LogDir, fmt.Sprintf("%s.metadata-attackreport.json", report.Flow)), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		panic(fmt.Sprintf("error opening file: %v", err))
 	}
-	a.writer.Write([]byte(fmt.Sprintf("%s\n", string(b)))) // ugly
+	defer a.writer.Close()
+	a.writer.Write([]byte(fmt.Sprintf("%s\n", string(b))))
 }
