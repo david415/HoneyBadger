@@ -44,7 +44,7 @@ func TestOrderedCoalesce(t *testing.T) {
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
 
-	coalesce.Start()
+	coalesce.pager.Start()
 	coalesce.insert(p, nextSeq)
 
 	if coalesce.pager.Used() != 1 {
@@ -52,5 +52,5 @@ func TestOrderedCoalesce(t *testing.T) {
 		t.Fail()
 	}
 
-	coalesce.Stop()
+	coalesce.pager.Stop()
 }

@@ -211,12 +211,12 @@ func NewOrderedCoalesce(ret []Reassembly, flow *TcpIpFlow, pager *Pager, streamR
 	}
 }
 
-func (o *OrderedCoalesce) Start() {
-	o.pager.Start()
-}
-
-func (o *OrderedCoalesce) Stop() {
-	o.pager.Stop()
+// Close returns all used pages to the page cache via the Pager
+func (o *OrderedCoalesce) Close() {
+	log.Print("OrderedCoalesce.Close()\n")
+	for p := o.first; p != nil; p = p.next {
+		o.pager.Replace(p)
+	}
 }
 
 func (o *OrderedCoalesce) insert(packetManifest PacketManifest, nextSeq Sequence) Sequence {

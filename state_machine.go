@@ -181,6 +181,8 @@ func (c *Connection) Stop() {
 	} else {
 		log.Print("not removing logs. attack detected.\n")
 	}
+	c.ClientCoalesce.Close()
+	c.ServerCoalesce.Close()
 }
 
 // removeAllLogs removes all the logs associated with this Connection instance
