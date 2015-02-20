@@ -301,7 +301,7 @@ func (o *OrderedCoalesce) pushBetween(prev, next, first, last *page) {
 }
 
 // addNext pops the first page off our doubly-linked-list and
-// adds it to the return array.
+// appends it to the return array AND appends it to the reassembly-ring.
 func (o *OrderedCoalesce) addNext(nextSeq Sequence) Sequence {
 	diff := nextSeq.Difference(o.first.Seq)
 	if nextSeq == Sequence(invalidSequence) {
@@ -328,6 +328,11 @@ func (o *OrderedCoalesce) addNext(nextSeq Sequence) Sequence {
 	}
 	o.first.Bytes, nextSeq = byteSpan(nextSeq, o.first.Seq, o.first.Bytes) // XXX injection happens here
 	log.Printf("%s   adding from r (%v, %v)", o.Flow.String(), o.first.Seq, nextSeq)
+
+	// append reassembly to the reassembly ring buffer
+	o.StreamRing.Value = o.first.Reassembly
+	o.StreamRing = o.StreamRing.Next()
+
 	o.ret = append(o.ret, o.first.Reassembly)
 	o.pager.Replace(o.first)
 	if o.first == o.last {
