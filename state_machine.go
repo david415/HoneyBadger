@@ -592,16 +592,15 @@ func (c *Connection) receivePacketState(p *PacketManifest) {
 
 	if p.Flow.Equal(c.serverFlow) {
 		if len(c.ClientReassembly) > 0 {
-			c.serverNextSeq = c.sendToStream(c.ClientReassembly, c.serverNextSeq, c.clientNextSeq, c.ClientStream, c.ServerStream, c.ClientCoalesce, c.ServerCoalesce)
+			c.serverNextSeq = c.sendToStream(c.ClientReassembly, c.serverNextSeq, c.ClientStreamRing, c.ClientStream, c.ClientCoalesce)
 		}
 	} else {
 		if len(c.ServerReassembly) > 0 {
-			c.clientNextSeq = c.sendToStream(c.ServerReassembly, c.clientNextSeq, c.serverNextSeq, c.ServerStream, c.ClientStream, c.ServerCoalesce, c.ClientCoalesce)
+			c.clientNextSeq = c.sendToStream(c.ServerReassembly, c.clientNextSeq, c.ServerStreamRing, c.ServerStream, c.ServerCoalesce)
 		}
 	}
 	c.ClientReassembly = make([]Reassembly, 0)
 	c.ServerReassembly = make([]Reassembly, 0)
-
 }
 
 func (c *Connection) startReceivingPackets() {
@@ -616,22 +615,18 @@ func (c *Connection) startReceivingPackets() {
 	}
 }
 
-func (c *Connection) sendToStream(ret []Reassembly, nextSeq, otherNextSeq Sequence, stream, otherStream Stream, coalesce, otherCoalesce *OrderedCoalesce) Sequence {
+// sendToStream send the current values in ret to the stream-ring buffer and the stream-logger
+// closing the connection if the last thing sent had End set.
+func (c *Connection) sendToStream(ret []Reassembly, nextSeq Sequence, streamRing *ring.Ring, stream Stream, coalesce *OrderedCoalesce) Sequence {
 	nextSeq = coalesce.addContiguous(nextSeq)
+	for _, reassembly := range ret {
+		streamRing.Value = reassembly
+		streamRing = streamRing.Next()
+	}
 	if stream != nil {
 		stream.Reassembled(ret)
 	}
 	if ret[len(ret)-1].End {
-		otherRet := []Reassembly{
-			Reassembly{
-				Seen: ret[len(ret)-1].Seen,
-				End:  true,
-			},
-		}
-		otherNextSeq = otherCoalesce.addContiguous(otherNextSeq)
-		if otherStream != nil {
-			otherStream.Reassembled(otherRet)
-		}
 		go c.Close()
 	}
 	return nextSeq
