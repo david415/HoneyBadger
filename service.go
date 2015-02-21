@@ -239,6 +239,7 @@ func (i *Inquisitor) dispatchPackets() {
 			i.connPool.Delete(*closeRequest.Flow)
 			closeRequest.CloseReadyChan <- true
 		case packetManifest := <-i.dispatchPacketChan:
+			lastTimestamp = packetManifest.Timestamp
 			if i.connPool.Has(packetManifest.Flow) {
 				conn, err = i.connPool.Get(packetManifest.Flow)
 				if err != nil {
