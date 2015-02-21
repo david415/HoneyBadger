@@ -101,6 +101,7 @@ type Connection struct {
 	clientNextSeq             Sequence
 	serverNextSeq             Sequence
 	hijackNextAck             Sequence
+	firstSynAckSeq            uint32
 	ClientStreamRing          *ring.Ring
 	ServerStreamRing          *ring.Ring
 	ClientCoalesce            *OrderedCoalesce
@@ -205,8 +206,12 @@ func (c *Connection) detectHijack(p PacketManifest, flow TcpIpFlow) {
 	}
 	if p.TCP.ACK && p.TCP.SYN {
 		if Sequence(p.TCP.Ack).Difference(c.hijackNextAck) == 0 {
-			c.AttackLogger.ReportHijackAttack(time.Now(), flow, p.TCP.Seq, p.TCP.Ack)
-			c.attackDetected = true
+			if p.TCP.Seq != c.firstSynAckSeq {
+				c.AttackLogger.ReportHijackAttack(time.Now(), flow, p.TCP.Seq, p.TCP.Ack)
+				c.attackDetected = true
+			} else {
+				log.Print("SYN/ACK retransmission\n")
+			}
 		}
 	}
 }
@@ -321,6 +326,7 @@ func (c *Connection) stateConnectionRequest(p PacketManifest) {
 	}
 	c.state = TCP_CONNECTION_ESTABLISHED
 	c.serverNextSeq = Sequence(p.TCP.Seq).Add(len(p.Payload) + 1) // XXX see above comment about TCP extentions
+	c.firstSynAckSeq = p.TCP.Seq
 }
 
 // stateConnectionEstablished is called by our TCP FSM runtime and
