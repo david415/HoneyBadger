@@ -221,25 +221,21 @@ func (i *Inquisitor) dispatchPackets() {
 	var err error
 	timeout := i.InquisitorOptions.TcpIdleTimeout
 	ticker := time.Tick(timeout)
-	var lastTimestamp time.Time
 	for {
 		select {
 		case <-ticker:
-			if !lastTimestamp.IsZero() {
-				log.Printf("lastTimestamp is %s\n", lastTimestamp)
-				lastTimestamp = lastTimestamp.Add(timeout)
-				closed := i.connPool.CloseOlderThan(lastTimestamp)
-				if closed != 0 {
-					log.Printf("timeout closed %d connections\n", closed)
-				}
+			closed := i.connPool.CloseOlderThan(time.Now().Add(timeout * -1))
+			if closed != 0 {
+				log.Printf("timeout closed %d connections\n", closed)
 			}
 		case <-i.stopDispatchChan:
 			return
 		case closeRequest := <-i.closeConnectionChan:
+			log.Print("closeRequest received\n")
 			i.connPool.Delete(*closeRequest.Flow)
 			closeRequest.CloseReadyChan <- true
+			log.Print("closeRequest ready\n")
 		case packetManifest := <-i.dispatchPacketChan:
-			lastTimestamp = packetManifest.Timestamp
 			if i.connPool.Has(packetManifest.Flow) {
 				conn, err = i.connPool.Get(packetManifest.Flow)
 				if err != nil {
