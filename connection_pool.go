@@ -68,7 +68,8 @@ func (c *ConnectionPool) CloseOlderThan(t time.Time) int {
 		return 0
 	}
 	for _, conn := range conns {
-		if conn.lastSeen.Equal(t) || conn.lastSeen.Before(t) {
+		lastSeen := conn.getLastSeen()
+		if lastSeen.Equal(t) || lastSeen.Before(t) {
 			conn.Stop()
 			c.Delete(conn.clientFlow)
 			closed += 1

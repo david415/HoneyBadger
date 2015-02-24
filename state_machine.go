@@ -29,6 +29,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -92,6 +93,7 @@ type Connection struct {
 	receiveChan               chan *PacketManifest
 	packetCount               uint64
 	lastSeen                  time.Time
+	lastSeenMutex             sync.Mutex
 	state                     uint8
 	clientState               uint8
 	serverState               uint8
@@ -134,6 +136,22 @@ func NewConnection(options *ConnectionOptions) *Connection {
 	conn.ServerCoalesce = NewOrderedCoalesce(conn.ServerReassembly, &conn.serverFlow, conn.pager, conn.ServerStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2)
 
 	return &conn
+}
+
+// getLastSeen returns the lastSeen timestamp after grabbing the lock
+func (c *Connection) getLastSeen() time.Time {
+	c.lastSeenMutex.Lock()
+	defer c.lastSeenMutex.Unlock()
+	return c.lastSeen
+}
+
+// updateLastSeen updates our lastSeen with the new timestamp after grabbing the lock
+func (c *Connection) updateLastSeen(timestamp time.Time) {
+	c.lastSeenMutex.Lock()
+	defer c.lastSeenMutex.Unlock()
+	if c.lastSeen.Before(timestamp) {
+		c.lastSeen = timestamp
+	}
 }
 
 // Close is used by the Connection to shutdown itself.
@@ -575,9 +593,8 @@ func (c *Connection) receivePacket(p *PacketManifest) {
 // http://ants.iis.sinica.edu.tw/3bkmj9ltewxtsrrvnoknfdxrm3zfwrr/17/p520460.pdf
 // The goal is to detect all manner of content injection.
 func (c *Connection) receivePacketState(p *PacketManifest) {
-	if c.lastSeen.Before(p.Timestamp) {
-		c.lastSeen = p.Timestamp
-	}
+	c.updateLastSeen(p.Timestamp)
+
 	if c.PacketLogger != nil {
 		c.PacketLogger.WritePacket(p.RawPacket, p.Timestamp)
 	}
