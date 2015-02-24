@@ -31,6 +31,11 @@ type PageRequest struct {
 	ResponseChan chan *page
 }
 
+type PageReplaceRequest struct {
+	Page     *page
+	DoneChan chan bool
+}
+
 // Pager is used to synchronize access to our pagecache among many goroutines.
 // No locks are used here. Instead, we use channels to send page points between goroutines.
 type Pager struct {
@@ -38,7 +43,7 @@ type Pager struct {
 
 	stopChan        chan bool
 	requestPageChan chan *PageRequest
-	replacePageChan chan *page
+	replacePageChan chan *PageReplaceRequest
 }
 
 // NewPager creates a new Pager struct with an initialized pagecache and
@@ -47,7 +52,7 @@ func NewPager() *Pager {
 	return &Pager{
 		pageCache:       newPageCache(),
 		requestPageChan: make(chan *PageRequest),
-		replacePageChan: make(chan *page),
+		replacePageChan: make(chan *PageReplaceRequest),
 		stopChan:        make(chan bool),
 	}
 }
@@ -77,7 +82,12 @@ func (p *Pager) Next(timestamp time.Time) *page {
 
 // Replace takes a page pointer argument and appends it to the pagecache's free list
 func (p *Pager) Replace(pagePtr *page) {
-	p.replacePageChan <- pagePtr
+	replaceRequest := PageReplaceRequest{
+		Page:     pagePtr,
+		DoneChan: make(chan bool),
+	}
+	p.replacePageChan <- &replaceRequest
+	<-replaceRequest.DoneChan
 }
 
 func (p *Pager) Used() int {
@@ -93,8 +103,9 @@ func (p *Pager) receivePageRequests() {
 			return
 		case pageRequest := <-p.requestPageChan:
 			pageRequest.ResponseChan <- p.pageCache.next(pageRequest.Timestamp)
-		case pagePtr := <-p.replacePageChan:
-			p.pageCache.replace(pagePtr)
+		case pageReplaceRequest := <-p.replacePageChan:
+			p.pageCache.replace(pageReplaceRequest.Page)
+			pageReplaceRequest.DoneChan <- true
 		}
 	}
 }
