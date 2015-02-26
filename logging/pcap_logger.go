@@ -18,13 +18,14 @@
  *    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package HoneyBadger
+package logging
 
 import (
 	"code.google.com/p/gopacket"
 	"code.google.com/p/gopacket/layers"
 	"code.google.com/p/gopacket/pcapgo"
 	"fmt"
+	"github.com/david415/HoneyBadger/types"
 	"io"
 	"os"
 	"path/filepath"
@@ -47,14 +48,14 @@ type PcapLogger struct {
 	packetChan chan TimedPacket
 	stopChan   chan bool
 	Dir        string
-	Flow       TcpIpFlow
+	Flow       *types.TcpIpFlow
 	writer     *pcapgo.Writer
 	fileWriter io.WriteCloser
 }
 
 // NewPcapLogger returns a PcapLogger struct...
 // and in doing so writes a pcap header to the beginning of the file.
-func NewPcapLogger(dir string, flow TcpIpFlow) *PcapLogger {
+func NewPcapLogger(dir string, flow *types.TcpIpFlow) *PcapLogger {
 	p := PcapLogger{
 		packetChan: make(chan TimedPacket),
 		stopChan:   make(chan bool),

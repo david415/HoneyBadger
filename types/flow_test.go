@@ -1,4 +1,4 @@
-package HoneyBadger
+package types
 
 import (
 	"code.google.com/p/gopacket"
@@ -125,7 +125,7 @@ func TestNewTcpIpFlowFromPacket(t *testing.T) {
 	}
 
 	flow1, err = NewTcpIpFlowFromPacket([]byte{1, 2, 3, 4, 5, 6, 7})
-	if err == nil || !flow1.Equal(TcpIpFlow{}) {
+	if err == nil || !flow1.Equal(&TcpIpFlow{}) {
 		t.Error("NewTcpIpFlowFromPacket fail")
 		t.Fail()
 	}

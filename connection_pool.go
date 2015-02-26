@@ -22,6 +22,7 @@ package HoneyBadger
 
 import (
 	"fmt"
+	"github.com/david415/HoneyBadger/types"
 	"log"
 	"time"
 )
@@ -29,14 +30,14 @@ import (
 // ConnectionPool is used to track TCP connections.
 // This is inspired by gopacket.tcpassembly's StreamPool.
 type ConnectionPool struct {
-	connectionMap map[ConnectionHash]*Connection
+	connectionMap map[types.ConnectionHash]*Connection
 	size          int
 }
 
 // NewConnectionPool returns a new ConnectionPool struct
 func NewConnectionPool() *ConnectionPool {
 	return &ConnectionPool{
-		connectionMap: make(map[ConnectionHash]*Connection),
+		connectionMap: make(map[types.ConnectionHash]*Connection),
 	}
 }
 
@@ -99,7 +100,7 @@ func (c *ConnectionPool) CloseAllConnections() int {
 
 // Has returns true if the given TcpIpFlow is a key in our
 // either of flowAMap or flowBMap
-func (c *ConnectionPool) Has(flow TcpIpFlow) bool {
+func (c *ConnectionPool) Has(flow *types.TcpIpFlow) bool {
 	connectionHash := flow.ConnectionHash()
 	_, ok := c.connectionMap[connectionHash]
 	return ok
@@ -108,30 +109,24 @@ func (c *ConnectionPool) Has(flow TcpIpFlow) bool {
 // Get returns the Connection struct pointer corresponding
 // to the given TcpIpFlow key in one of the flow maps
 // flowAMap or flowBMap
-func (c *ConnectionPool) Get(flow TcpIpFlow) (*Connection, error) {
+func (c *ConnectionPool) Get(flow *types.TcpIpFlow) (*Connection, error) {
 	connectionHash := flow.ConnectionHash()
 	val, ok := c.connectionMap[connectionHash]
 	if ok {
 		return val, nil
 	} else {
-		return nil, fmt.Errorf("failed to retreive flow\n")
+		return nil, fmt.Errorf("failed to retreive flow")
 	}
 }
 
 // Put sets the connectionMap's key/value.. where a given TcpBidirectionalFlow
 // is the key and a Connection struct pointer is the value.
-func (c *ConnectionPool) Put(flow TcpIpFlow, conn *Connection) {
+func (c *ConnectionPool) Put(flow *types.TcpIpFlow, conn *Connection) {
 	connectionHash := flow.ConnectionHash()
 	c.connectionMap[connectionHash] = conn
 }
 
 // Delete removes a connection from the pool
-func (c *ConnectionPool) Delete(flow TcpIpFlow) {
-	connectionHash := flow.ConnectionHash()
-	_, ok := c.connectionMap[connectionHash]
-	if ok {
-		delete(c.connectionMap, connectionHash)
-	} else {
-		log.Printf("ConnectionPool.Delete: connectionHash not found: %s\n", flow.String())
-	}
+func (c *ConnectionPool) Delete(flow *types.TcpIpFlow) {
+	delete(c.connectionMap, flow.ConnectionHash())
 }

@@ -18,7 +18,7 @@
  *    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package HoneyBadger
+package types
 
 import (
 	"code.google.com/p/gopacket"
@@ -56,17 +56,17 @@ type TcpIpFlow struct {
 }
 
 // NewTcpIpFlowFromLayers given IPv4 and TCP layers it returns a TcpIpFlow
-func NewTcpIpFlowFromLayers(ipLayer layers.IPv4, tcpLayer layers.TCP) TcpIpFlow {
-	return TcpIpFlow{
+func NewTcpIpFlowFromLayers(ipLayer layers.IPv4, tcpLayer layers.TCP) *TcpIpFlow {
+	return &TcpIpFlow{
 		ipFlow:  ipLayer.NetworkFlow(),
 		tcpFlow: tcpLayer.TransportFlow(),
 	}
 }
 
 // NewTcpIpFlowFromFlows given an IP flow and TCP flow returns a TcpIpFlow
-func NewTcpIpFlowFromFlows(ipFlow gopacket.Flow, tcpFlow gopacket.Flow) TcpIpFlow {
+func NewTcpIpFlowFromFlows(ipFlow gopacket.Flow, tcpFlow gopacket.Flow) *TcpIpFlow {
 	// XXX todo: check that the flow types are correct
-	return TcpIpFlow{
+	return &TcpIpFlow{
 		ipFlow:  ipFlow,
 		tcpFlow: tcpFlow,
 	}
@@ -85,33 +85,33 @@ func (t *TcpIpFlow) ConnectionHash() ConnectionHash {
 }
 
 // String returns the string representation of a TcpIpFlow
-func (t *TcpIpFlow) String() string {
+func (t TcpIpFlow) String() string {
 	return fmt.Sprintf("%s:%s-%s:%s", t.ipFlow.Src().String(), t.tcpFlow.Src().String(), t.ipFlow.Dst().String(), t.tcpFlow.Dst().String())
 }
 
 // Reverse returns a reversed TcpIpFlow, that is to say the resulting
 // TcpIpFlow flow will be made up of a reversed IP flow and a reversed
 // TCP flow.
-func (t *TcpIpFlow) Reverse() TcpIpFlow {
+func (t *TcpIpFlow) Reverse() *TcpIpFlow {
 	return NewTcpIpFlowFromFlows(t.ipFlow.Reverse(), t.tcpFlow.Reverse())
 }
 
 // Equal returns true if TcpIpFlow structs t and s are equal. False otherwise.
-func (t *TcpIpFlow) Equal(s TcpIpFlow) bool {
+func (t *TcpIpFlow) Equal(s *TcpIpFlow) bool {
 	return t.ipFlow == s.ipFlow && t.tcpFlow == s.tcpFlow
 }
 
 // getPacketFlow returns a TcpIpFlow struct given a byte array packet
-func NewTcpIpFlowFromPacket(packet []byte) (TcpIpFlow, error) {
+func NewTcpIpFlowFromPacket(packet []byte) (*TcpIpFlow, error) {
 	var ip layers.IPv4
 	var tcp layers.TCP
 	decoded := []gopacket.LayerType{}
 	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeIPv4, &ip, &tcp)
 	err := parser.DecodeLayers(packet, &decoded)
 	if err != nil {
-		return TcpIpFlow{}, err
+		return &TcpIpFlow{}, err
 	}
-	return TcpIpFlow{
+	return &TcpIpFlow{
 		ipFlow:  ip.NetworkFlow(),
 		tcpFlow: tcp.TransportFlow(),
 	}, nil

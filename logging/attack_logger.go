@@ -18,12 +18,13 @@
  *    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package HoneyBadger
+package logging
 
 import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/david415/HoneyBadger/types"
 	"io"
 	"log"
 	"os"
@@ -31,42 +32,16 @@ import (
 	"time"
 )
 
-type UnserializedAttackReport struct {
+type serializedEvent struct {
 	Type                     string
 	Time                     time.Time
-	Flow                     TcpIpFlow
+	Flow                     *types.TcpIpFlow
 	HijackSeq                uint32
 	HijackAck                uint32
-	AttemptPayload           []byte
-	OverlapPayload           []byte
-	Start, End               Sequence
+	Payload                  string
+	Overlap                  string
+	Start, End               types.Sequence
 	OverlapStart, OverlapEnd int
-}
-
-// AttackReport contains information about the TCP injection attack
-type AttackReport struct {
-	Type          string
-	Flow          string
-	Time          string
-	HijackSeq     uint32
-	HijackAck     uint32
-	Payload       string
-	Overlap       string
-	StartSequence uint32
-	EndSequence   uint32
-	OverlapStart  int
-	OverlapEnd    int
-}
-
-// The AttackLogger interface is used to describe TCP injection attack loggers.
-// For the time being I have specified only two methods.. one for handshake hijack attacks
-// and the other for injection attacks. However if an attack logger's implementation requires
-// more methods then we should add those. Perhaps a Close() method will be required in the future for instance.
-type AttackLogger interface {
-	ReportHijackAttack(instant time.Time, flow TcpIpFlow, Seq, Ack uint32)
-	ReportInjectionAttack(attackType string, instant time.Time, flow TcpIpFlow, attemptPayload []byte, overlap []byte, start, end Sequence, overlapStart, overlapEnd int)
-	Start()
-	Stop()
 }
 
 // AttackJsonLogger is responsible for recording all attack reports as JSON objects in a file.
@@ -74,7 +49,7 @@ type AttackJsonLogger struct {
 	writer           io.WriteCloser
 	LogDir           string
 	stopChan         chan bool
-	attackReportChan chan UnserializedAttackReport
+	attackReportChan chan types.Event
 }
 
 // NewAttackJsonLogger returns a pointer to a AttackJsonLogger struct
@@ -82,7 +57,7 @@ func NewAttackJsonLogger(logDir string) *AttackJsonLogger {
 	a := AttackJsonLogger{
 		LogDir:           logDir,
 		stopChan:         make(chan bool),
-		attackReportChan: make(chan UnserializedAttackReport),
+		attackReportChan: make(chan types.Event),
 	}
 	return &a
 }
@@ -107,62 +82,57 @@ func (a *AttackJsonLogger) receiveReports() {
 }
 
 // ReportHijackAttack method is called to record a TCP handshake hijack attack
-func (a *AttackJsonLogger) ReportHijackAttack(instant time.Time, flow TcpIpFlow, Seq, Ack uint32) {
+func (a *AttackJsonLogger) ReportHijackAttack(instant time.Time, flow *types.TcpIpFlow, Seq, Ack uint32) {
 	log.Print("ReportHijackAttack\n")
-	unserializedAttackReport := UnserializedAttackReport{
+	event := types.Event{
 		Type:      "hijack",
 		Time:      instant,
 		Flow:      flow,
 		HijackSeq: Seq,
 		HijackAck: Ack,
 	}
-	a.attackReportChan <- unserializedAttackReport
+	a.attackReportChan <- event
 }
 
 // ReportInjectionAttack takes the details of an injection attack and writes
 // an attack report to the attack log file
-func (a *AttackJsonLogger) ReportInjectionAttack(attackType string, instant time.Time, flow TcpIpFlow, attemptPayload []byte, overlap []byte, start, end Sequence, overlapStart, overlapEnd int) {
+func (a *AttackJsonLogger) ReportInjectionAttack(attackType string, instant time.Time, flow *types.TcpIpFlow, attemptPayload []byte, overlap []byte, start, end types.Sequence, overlapStart, overlapEnd int) {
 	log.Print("ReportInjectionAttack\n")
-	unserializedAttackReport := UnserializedAttackReport{
-		Type:           attackType,
-		Time:           instant,
-		Flow:           flow,
-		AttemptPayload: attemptPayload,
-		OverlapPayload: overlap,
-		Start:          start,
-		End:            end,
-		OverlapStart:   overlapStart,
-		OverlapEnd:     overlapEnd,
+	event := types.Event{
+		Type:          attackType,
+		Time:          instant,
+		Flow:          flow,
+		Payload:       attemptPayload,
+		Overlap:       overlap,
+		StartSequence: start,
+		EndSequence:   end,
+		OverlapStart:  overlapStart,
+		OverlapEnd:    overlapEnd,
 	}
-	a.attackReportChan <- unserializedAttackReport
+	a.attackReportChan <- event
 }
 
-func (a *AttackJsonLogger) SerializeAndWrite(unserializedAttackReport UnserializedAttackReport) {
-	timeText, err := unserializedAttackReport.Time.MarshalText()
-	if err != nil {
-		panic(err)
+func (a *AttackJsonLogger) SerializeAndWrite(event types.Event) {
+	serialized := &serializedEvent{
+		Type:         event.Type,
+		Flow:         event.Flow,
+		HijackSeq:    event.HijackSeq,
+		HijackAck:    event.HijackAck,
+		Time:         event.Time,
+		Payload:      base64.StdEncoding.EncodeToString(event.Payload),
+		Overlap:      base64.StdEncoding.EncodeToString(event.Overlap),
+		Start:        event.StartSequence,
+		End:          event.EndSequence,
+		OverlapStart: event.OverlapStart,
+		OverlapEnd:   event.OverlapEnd,
 	}
-
-	report := &AttackReport{
-		Type:          unserializedAttackReport.Type,
-		Flow:          unserializedAttackReport.Flow.String(),
-		HijackSeq:     unserializedAttackReport.HijackSeq,
-		HijackAck:     unserializedAttackReport.HijackAck,
-		Time:          string(timeText),
-		Payload:       base64.StdEncoding.EncodeToString(unserializedAttackReport.AttemptPayload),
-		Overlap:       base64.StdEncoding.EncodeToString(unserializedAttackReport.OverlapPayload),
-		StartSequence: uint32(unserializedAttackReport.Start),
-		EndSequence:   uint32(unserializedAttackReport.End),
-		OverlapStart:  unserializedAttackReport.OverlapStart,
-		OverlapEnd:    unserializedAttackReport.OverlapEnd,
-	}
-	a.Publish(report)
+	a.Publish(serialized)
 }
 
 // Publish writes a JSON report to the attack-report file for that flow.
-func (a *AttackJsonLogger) Publish(report *AttackReport) {
-	b, err := json.Marshal(*report)
-	a.writer, err = os.OpenFile(filepath.Join(a.LogDir, fmt.Sprintf("%s.attackreport.json", report.Flow)), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+func (a *AttackJsonLogger) Publish(event *serializedEvent) {
+	b, err := json.Marshal(event)
+	a.writer, err = os.OpenFile(filepath.Join(a.LogDir, fmt.Sprintf("%s.attackreport.json", event.Flow)), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		panic(fmt.Sprintf("error opening file: %v", err))
 	}

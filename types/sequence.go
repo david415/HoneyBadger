@@ -2,7 +2,7 @@
    included here for use with HoneyBadger.
 */
 
-package HoneyBadger
+package types
 
 // Copyright 2012 Google, Inc. All rights reserved.
 //
@@ -10,8 +10,10 @@ package HoneyBadger
 // that can be found in the LICENSE file in the root of the source
 // tree.
 
-const invalidSequence = -1
-const uint32Max = 0xFFFFFFFF
+const (
+	InvalidSequence Sequence = Sequence(-1)
+	uint32Max                = 0xFFFFFFFF
+)
 
 // Sequence is a TCP sequence number.  It provides a few convenience functions
 // for handling TCP wrap-around.  The sequence should always be in the range

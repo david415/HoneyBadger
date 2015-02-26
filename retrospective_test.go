@@ -5,10 +5,11 @@ import (
 	"code.google.com/p/gopacket"
 	"code.google.com/p/gopacket/layers"
 	"container/ring"
-	"fmt"
+	//	"fmt"
+	"github.com/david415/HoneyBadger/types"
+	"log"
 	"net"
 	"testing"
-	"time"
 )
 
 type reassemblyInput struct {
@@ -33,24 +34,13 @@ func NewDummyAttackLogger() *DummyAttackLogger {
 	return &a
 }
 
-func (d *DummyAttackLogger) Start() {
-}
-
-func (d *DummyAttackLogger) Stop() {
-}
-
-func (d *DummyAttackLogger) ReportHijackAttack(instant time.Time, flow TcpIpFlow, Seq, Ack uint32) {
-	d.Count += 1
-}
-
-func (d *DummyAttackLogger) ReportInjectionAttack(attackType string, instant time.Time, flow TcpIpFlow, attemptPayload []byte, overlap []byte, start, end Sequence, overlapStart, overlapEnd int) {
+func (d *DummyAttackLogger) Log(event *types.Event) {
 	d.Count += 1
 }
 
 func TestInjectionDetector(t *testing.T) {
+	log.Print("TestInjectionDetector")
 	attackLogger := NewDummyAttackLogger()
-
-	fmt.Printf("attackLogger %v\n", attackLogger.Count)
 	options := ConnectionOptions{
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
@@ -60,13 +50,12 @@ func TestInjectionDetector(t *testing.T) {
 		LogDir:                        "fake-log-dir",
 	}
 	conn := NewConnection(&options)
-	conn.ClientStreamRing.Value = Reassembly{
-		Seq:   Sequence(5),
+	conn.ClientStreamRing.Value = types.Reassembly{
+		Seq:   types.Sequence(5),
 		Bytes: []byte{1, 2, 3, 4, 5},
 	}
 	conn.ClientStreamRing = conn.ClientStreamRing.Next()
 	conn.AttackLogger = attackLogger
-
 	p := PacketManifest{
 		IP: layers.IPv4{
 			SrcIP:    net.IP{1, 2, 3, 4},
@@ -82,8 +71,13 @@ func TestInjectionDetector(t *testing.T) {
 		},
 		Payload: []byte{1, 2, 3, 4, 5, 6, 7},
 	}
-	flow := NewTcpIpFlowFromLayers(p.IP, p.TCP)
-	conn.detectInjection(p, flow)
+
+	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
+	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
+	conn.serverFlow = types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
+	conn.clientFlow = conn.serverFlow.Reverse()
+	conn.detectInjection(p, conn.serverFlow)
+
 	if attackLogger.Count == 0 {
 		t.Errorf("detectInjection failed; count == %d\n", attackLogger.Count)
 		t.Fail()
@@ -96,7 +90,7 @@ func TestInjectionDetector(t *testing.T) {
 		DstPort: 2,
 	}
 	p.Payload = []byte{3, 4, 5}
-	conn.detectInjection(p, flow)
+	conn.detectInjection(p, conn.serverFlow)
 	if attackLogger.Count == 0 {
 		t.Error("failed to detect injection\n")
 		t.Fail()
@@ -110,7 +104,7 @@ func TestInjectionDetector(t *testing.T) {
 		DstPort: 2,
 	}
 	p.Payload = []byte{1, 2, 3, 4, 5, 6}
-	conn.detectInjection(p, flow)
+	conn.detectInjection(p, conn.serverFlow)
 	if attackLogger.Count == 0 {
 		t.Error("failed to detect injection\n")
 		t.Fail()
@@ -124,9 +118,9 @@ func TestInjectionDetector(t *testing.T) {
 		DstPort: 2,
 	}
 	p.Payload = []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17}
-	conn.detectInjection(p, flow)
+	conn.detectInjection(p, conn.serverFlow)
 	if attackLogger.Count != 1 {
-		t.Error("injection detectin failure\n")
+		t.Error("injection detection failure\n")
 		t.Fail()
 	}
 }
@@ -142,8 +136,8 @@ func TestGetRingSlice(t *testing.T) {
 	}
 	conn := NewConnection(&options)
 	for j := 5; j < 40; j += 5 {
-		conn.ClientStreamRing.Value = Reassembly{
-			Seq:   Sequence(j),
+		conn.ClientStreamRing.Value = types.Reassembly{
+			Seq:   types.Sequence(j),
 			Bytes: []byte{1, 2, 3, 4, 5},
 		}
 		conn.ClientStreamRing = conn.ClientStreamRing.Next()
@@ -164,8 +158,12 @@ func TestGetRingSlice(t *testing.T) {
 		},
 		Payload: []byte{1, 2, 3, 4, 5, 6, 7},
 	}
-	flow := NewTcpIpFlowFromLayers(p.IP, p.TCP)
-	head, tail := conn.getOverlapRings(p, flow)
+
+	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
+	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
+	conn.serverFlow = types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
+	conn.clientFlow = conn.serverFlow.Reverse()
+	head, tail := conn.getOverlapRings(p, conn.serverFlow)
 
 	ringSlice := getRingSlice(head, tail, 0, 1)
 	if !bytes.Equal(ringSlice, []byte{1, 2, 3, 4, 5, 1}) {
@@ -225,7 +223,7 @@ func TestGetRingSlice(t *testing.T) {
 		Payload: []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
 	}
 
-	head, tail = conn.getOverlapRings(p, flow)
+	head, tail = conn.getOverlapRings(p, conn.serverFlow)
 	ringSlice = getRingSlice(head, tail, 0, 2)
 
 	if !bytes.Equal(ringSlice, []byte{1, 2, 3, 4, 5, 1, 2}) {
@@ -259,8 +257,8 @@ func TestGetRingSlicePanic2(t *testing.T) {
 	}()
 
 	head := ring.New(3)
-	head.Value = Reassembly{
-		Seq:   Sequence(2),
+	head.Value = types.Reassembly{
+		Seq:   types.Sequence(2),
 		Bytes: []byte{1, 2, 3, 4, 5},
 	}
 	_ = getRingSlice(head, nil, 6, 0)
@@ -275,14 +273,14 @@ func TestGetRingSlicePanic3(t *testing.T) {
 	}()
 
 	head := ring.New(3)
-	head.Value = Reassembly{
-		Seq:   Sequence(2),
+	head.Value = types.Reassembly{
+		Seq:   types.Sequence(2),
 		Bytes: []byte{1, 2, 3, 4, 5},
 	}
 
 	tail := ring.New(3)
-	tail.Value = Reassembly{
-		Seq:   Sequence(2),
+	tail.Value = types.Reassembly{
+		Seq:   types.Sequence(2),
 		Bytes: []byte{1, 2, 3, 4, 5},
 	}
 	_ = getRingSlice(head, tail, 0, 6)
@@ -297,8 +295,8 @@ func TestGetRingSlicePanic4(t *testing.T) {
 	}()
 
 	head := ring.New(3)
-	head.Value = Reassembly{
-		Seq:   Sequence(2),
+	head.Value = types.Reassembly{
+		Seq:   types.Sequence(2),
 		Bytes: []byte{1, 2, 3, 4, 5},
 	}
 	_ = getRingSlice(head, head, 0, 0)
@@ -306,10 +304,10 @@ func TestGetRingSlicePanic4(t *testing.T) {
 
 func TestGetEndSequence(t *testing.T) {
 	var tail *ring.Ring = ring.New(10)
-	var end Sequence
+	var end types.Sequence
 
 	end = 9
-	tail.Value = Reassembly{
+	tail.Value = types.Reassembly{
 		Seq:   5,
 		Bytes: []byte{1, 2, 3, 4, 5},
 	}
@@ -320,7 +318,7 @@ func TestGetEndSequence(t *testing.T) {
 	}
 
 	end = 9
-	tail.Value = Reassembly{
+	tail.Value = types.Reassembly{
 		Seq:   5,
 		Bytes: []byte{1, 2, 3, 4, 5},
 	}
@@ -332,9 +330,9 @@ func TestGetEndSequence(t *testing.T) {
 }
 
 func TestGetStartSequence(t *testing.T) {
-	var start Sequence = 4
+	var start types.Sequence = 4
 	var head *ring.Ring = ring.New(10)
-	head.Value = Reassembly{
+	head.Value = types.Reassembly{
 		Seq:   3,
 		Bytes: []byte{1, 2, 3, 4, 5, 6, 7},
 	}
@@ -354,7 +352,7 @@ func TestGetStartSequence(t *testing.T) {
 
 func TestGetHeadRingOffset(t *testing.T) {
 	head := ring.New(3)
-	head.Value = Reassembly{
+	head.Value = types.Reassembly{
 		Seq:   3,
 		Bytes: []byte{1, 2, 3, 4, 5, 6, 7},
 	}
@@ -382,7 +380,7 @@ func TestGetHeadRingOffset(t *testing.T) {
 
 func TestGetTailRingOffset(t *testing.T) {
 	tail := ring.New(3)
-	tail.Value = Reassembly{
+	tail.Value = types.Reassembly{
 		Seq:   3,
 		Bytes: []byte{1, 2, 3, 4, 5, 6, 7},
 	}
@@ -407,9 +405,9 @@ func TestGetTailRingOffset(t *testing.T) {
 }
 
 func TestGetStartOverlapSequenceAndOffset(t *testing.T) {
-	var start Sequence = 3
+	var start types.Sequence = 3
 	head := ring.New(3)
-	head.Value = Reassembly{
+	head.Value = types.Reassembly{
 		Seq:   3,
 		Bytes: []byte{1, 2, 3, 4, 5, 6, 7},
 	}
@@ -458,9 +456,9 @@ func TestGetStartOverlapSequenceAndOffset(t *testing.T) {
 }
 
 func TestGetEndOverlapSequenceAndOffset(t *testing.T) {
-	var end Sequence = 3
+	var end types.Sequence = 3
 	tail := ring.New(3)
-	tail.Value = Reassembly{
+	tail.Value = types.Reassembly{
 		Seq:   3,
 		Bytes: []byte{1, 2, 3, 4, 5, 6, 7},
 	}
@@ -628,15 +626,15 @@ func TestGetOverlapBytes(t *testing.T) {
 	conn := NewConnection(&options)
 
 	for j := 5; j < 40; j += 5 {
-		conn.ClientStreamRing.Value = Reassembly{
-			Seq:   Sequence(j),
+		conn.ClientStreamRing.Value = types.Reassembly{
+			Seq:   types.Sequence(j),
 			Bytes: []byte{byte(j + 1), byte(j + 2), byte(j + 3), byte(j + 4), byte(j + 5)},
 		}
 		conn.ClientStreamRing = conn.ClientStreamRing.Next()
 	}
 	for i := 0; i < len(overlapBytesTests); i++ {
 		var startSeq uint32 = overlapBytesTests[i].in.Seq
-		start := Sequence(startSeq)
+		start := types.Sequence(startSeq)
 		end := start.Add(len(overlapBytesTests[i].in.Payload) - 1)
 		p := PacketManifest{
 			IP: layers.IPv4{
@@ -653,8 +651,13 @@ func TestGetOverlapBytes(t *testing.T) {
 			},
 			Payload: overlapBytesTests[i].in.Payload,
 		}
-		flow := NewTcpIpFlowFromLayers(p.IP, p.TCP)
-		head, tail := conn.getOverlapRings(p, flow)
+
+		ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
+		tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
+		conn.serverFlow = types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
+		conn.clientFlow = conn.serverFlow.Reverse()
+
+		head, tail := conn.getOverlapRings(p, conn.serverFlow)
 		if head == nil || tail == nil {
 			t.Errorf("%d getOverlapRings returned a nil\n", i)
 			t.Fail()
@@ -697,7 +700,6 @@ func TestGetOverlapRingsWithZeroRings(t *testing.T) {
 	}
 	tcp.SetNetworkLayerForChecksum(&ip)
 	payload := gopacket.Payload([]byte{1, 2, 3, 4})
-	flow := NewTcpIpFlowFromLayers(ip, tcp)
 	p := PacketManifest{
 		IP:      ip,
 		TCP:     tcp,
@@ -712,7 +714,13 @@ func TestGetOverlapRingsWithZeroRings(t *testing.T) {
 		LogDir:                        "fake-log-dir",
 	}
 	conn := NewConnection(&options)
-	head, tail := conn.getOverlapRings(p, flow)
+
+	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
+	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
+	conn.serverFlow = types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
+	conn.clientFlow = conn.serverFlow.Reverse()
+
+	head, tail := conn.getOverlapRings(p, conn.serverFlow)
 	if head == nil || tail == nil {
 		return
 	} else {
@@ -724,134 +732,134 @@ func TestGetOverlapRingsWithZeroRings(t *testing.T) {
 func TestGetOverlapRings(t *testing.T) {
 	overlapTests := []struct {
 		in   reassemblyInput
-		want []*Reassembly
+		want []*types.Reassembly
 	}{
 		{
-			reassemblyInput{7, []byte{1, 2}}, []*Reassembly{
-				&Reassembly{
+			reassemblyInput{7, []byte{1, 2}}, []*types.Reassembly{
+				&types.Reassembly{
 					Seq: 5,
 				},
-				&Reassembly{
-					Seq: 5,
-				},
-			},
-		},
-		{
-			reassemblyInput{5, []byte{1, 2, 3, 4, 5}}, []*Reassembly{
-				&Reassembly{
-					Seq: 5,
-				},
-				&Reassembly{
+				&types.Reassembly{
 					Seq: 5,
 				},
 			},
 		},
 		{
-			reassemblyInput{5, []byte{1, 2, 3, 4, 5, 6}}, []*Reassembly{
-				&Reassembly{
+			reassemblyInput{5, []byte{1, 2, 3, 4, 5}}, []*types.Reassembly{
+				&types.Reassembly{
 					Seq: 5,
 				},
-				&Reassembly{
+				&types.Reassembly{
+					Seq: 5,
+				},
+			},
+		},
+		{
+			reassemblyInput{5, []byte{1, 2, 3, 4, 5, 6}}, []*types.Reassembly{
+				&types.Reassembly{
+					Seq: 5,
+				},
+				&types.Reassembly{
 					Seq: 10,
 				},
 			},
 		},
 		{
-			reassemblyInput{6, []byte{1, 2, 3, 4, 5}}, []*Reassembly{
-				&Reassembly{
+			reassemblyInput{6, []byte{1, 2, 3, 4, 5}}, []*types.Reassembly{
+				&types.Reassembly{
 					Seq: 5,
 				},
-				&Reassembly{
+				&types.Reassembly{
 					Seq: 10,
 				},
 			},
 		},
 		{
-			reassemblyInput{7, []byte{1, 2, 3, 4, 5}}, []*Reassembly{
-				&Reassembly{
+			reassemblyInput{7, []byte{1, 2, 3, 4, 5}}, []*types.Reassembly{
+				&types.Reassembly{
 					Seq: 5,
 				},
-				&Reassembly{
+				&types.Reassembly{
 					Seq: 10,
 				},
 			},
 		},
 		{
-			reassemblyInput{32, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}}, []*Reassembly{
-				&Reassembly{
+			reassemblyInput{32, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}}, []*types.Reassembly{
+				&types.Reassembly{
 					Seq: 30,
 				},
-				&Reassembly{
+				&types.Reassembly{
 					Seq: 35,
 				},
 			},
 		},
 		{
-			reassemblyInput{0, []byte{1, 2, 3}}, []*Reassembly{
+			reassemblyInput{0, []byte{1, 2, 3}}, []*types.Reassembly{
 				nil,
 				nil,
 			},
 		},
 		{
-			reassemblyInput{0, []byte{1, 2, 3, 4, 5, 6, 7, 8}}, []*Reassembly{
-				&Reassembly{
+			reassemblyInput{0, []byte{1, 2, 3, 4, 5, 6, 7, 8}}, []*types.Reassembly{
+				&types.Reassembly{
 					Seq: 5,
 				},
-				&Reassembly{
-					Seq: 5,
-				},
-			},
-		},
-		{
-			reassemblyInput{0, []byte{1, 2, 3, 4, 5, 6}}, []*Reassembly{
-				&Reassembly{
-					Seq: 5,
-				},
-				&Reassembly{
+				&types.Reassembly{
 					Seq: 5,
 				},
 			},
 		},
 		{
-			reassemblyInput{0, []byte{1, 2, 3}}, []*Reassembly{
-				nil,
-				nil,
-			},
-		},
-		{
-			reassemblyInput{0, []byte{1, 2, 3, 4, 5}}, []*Reassembly{
-				nil,
-				nil,
-			},
-		},
-		{
-			reassemblyInput{0, []byte{1, 2, 3, 4, 5, 6}}, []*Reassembly{
-				&Reassembly{
+			reassemblyInput{0, []byte{1, 2, 3, 4, 5, 6}}, []*types.Reassembly{
+				&types.Reassembly{
 					Seq: 5,
 				},
-				&Reassembly{
+				&types.Reassembly{
 					Seq: 5,
 				},
 			},
 		},
 		{
-			reassemblyInput{40, []byte{1}}, []*Reassembly{
+			reassemblyInput{0, []byte{1, 2, 3}}, []*types.Reassembly{
 				nil,
 				nil,
 			},
 		},
 		{
-			reassemblyInput{42, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}}, []*Reassembly{
+			reassemblyInput{0, []byte{1, 2, 3, 4, 5}}, []*types.Reassembly{
 				nil,
 				nil,
 			},
 		},
 		{
-			reassemblyInput{38, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}}, []*Reassembly{
-				&Reassembly{
+			reassemblyInput{0, []byte{1, 2, 3, 4, 5, 6}}, []*types.Reassembly{
+				&types.Reassembly{
+					Seq: 5,
+				},
+				&types.Reassembly{
+					Seq: 5,
+				},
+			},
+		},
+		{
+			reassemblyInput{40, []byte{1}}, []*types.Reassembly{
+				nil,
+				nil,
+			},
+		},
+		{
+			reassemblyInput{42, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}}, []*types.Reassembly{
+				nil,
+				nil,
+			},
+		},
+		{
+			reassemblyInput{38, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}}, []*types.Reassembly{
+				&types.Reassembly{
 					Seq: 35,
 				},
-				&Reassembly{
+				&types.Reassembly{
 					Seq: 35,
 				},
 			},
@@ -875,8 +883,8 @@ func TestGetOverlapRings(t *testing.T) {
 	}
 	conn := NewConnection(&options)
 	for j := 5; j < 40; j += 5 {
-		conn.ClientStreamRing.Value = Reassembly{
-			Seq:   Sequence(j),
+		conn.ClientStreamRing.Value = types.Reassembly{
+			Seq:   types.Sequence(j),
 			Bytes: []byte{1, 2, 3, 4, 5},
 		}
 		conn.ClientStreamRing = conn.ClientStreamRing.Next()
@@ -889,13 +897,18 @@ func TestGetOverlapRings(t *testing.T) {
 			SrcPort: 1,
 			DstPort: 2,
 		}
-		flow := NewTcpIpFlowFromLayers(ip, tcp)
 		p := PacketManifest{
 			IP:      ip,
 			TCP:     tcp,
 			Payload: overlapTests[i].in.Payload,
 		}
-		head, tail := conn.getOverlapRings(p, flow)
+
+		ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
+		tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
+		conn.serverFlow = types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
+		conn.clientFlow = conn.serverFlow.Reverse()
+
+		head, tail := conn.getOverlapRings(p, conn.serverFlow)
 
 		if overlapTests[i].want[0] == nil {
 			if head != nil {
@@ -912,7 +925,7 @@ func TestGetOverlapRings(t *testing.T) {
 			t.Error("head or tail is nil\n")
 			t.Fail()
 		}
-		reassembly, ok := head.Value.(Reassembly)
+		reassembly, ok := head.Value.(types.Reassembly)
 		if overlapTests[i].want[0] != nil {
 			if ok {
 				if reassembly.Seq.Difference(overlapTests[i].want[0].Seq) != 0 {
@@ -920,11 +933,11 @@ func TestGetOverlapRings(t *testing.T) {
 					t.Fail()
 				}
 			} else {
-				t.Error("head.Value is not a Reassembly\n")
+				t.Error("head.Value is not a types.Reassembly\n")
 				t.Fail()
 			}
 		}
-		reassembly, ok = tail.Value.(Reassembly)
+		reassembly, ok = tail.Value.(types.Reassembly)
 		if overlapTests[i].want[1] != nil {
 			if ok {
 				if reassembly.Seq.Difference(overlapTests[i].want[1].Seq) != 0 {
@@ -932,7 +945,7 @@ func TestGetOverlapRings(t *testing.T) {
 					t.Fail()
 				}
 			} else {
-				t.Error("tail.Value is not a Reassembly\n")
+				t.Error("tail.Value is not a types.Reassembly\n")
 				t.Fail()
 			}
 		}

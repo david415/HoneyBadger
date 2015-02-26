@@ -4,6 +4,7 @@ import (
 	"code.google.com/p/gopacket"
 	"code.google.com/p/gopacket/layers"
 	"container/ring"
+	"github.com/david415/HoneyBadger/types"
 	"net"
 	"testing"
 	"time"
@@ -17,11 +18,11 @@ func TestOrderedCoalesce(t *testing.T) {
 
 	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
-	flow := NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
+	flow := types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 
-	var nextSeq Sequence = Sequence(1)
-	ret := []Reassembly{}
-	coalesce := NewOrderedCoalesce(ret, &flow, pager, streamRing, maxBufferedPagesTotal, maxBufferedPagesPerFlow)
+	var nextSeq types.Sequence = types.Sequence(1)
+	ret := []types.Reassembly{}
+	coalesce := NewOrderedCoalesce(nil, ret, flow, pager, streamRing, maxBufferedPagesTotal, maxBufferedPagesPerFlow)
 
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},

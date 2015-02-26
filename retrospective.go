@@ -24,26 +24,28 @@ import (
 	"container/ring"
 	"fmt"
 	"log"
+
+	"github.com/david415/HoneyBadger/types"
 )
 
 // getHeadFromRing returns a pointer to the oldest ring element that
 // contains the beginning of our sequence range (start - end)
-func getHeadFromRing(ringPtr *ring.Ring, start, end Sequence) *ring.Ring {
+func getHeadFromRing(ringPtr *ring.Ring, start, end types.Sequence) *ring.Ring {
 	var head, prev *ring.Ring
 	current := ringPtr.Prev()
-	_, ok := current.Value.(Reassembly)
+	//current := ringPtr
+	_, ok := current.Value.(types.Reassembly)
 	if !ok { // do we NOT have any data in our ring buffer?
 		return nil
 	}
-	if start.Difference(current.Value.(Reassembly).Seq.Add(len(current.Value.(Reassembly).Bytes)-1)) < 0 {
+	if start.Difference(current.Value.(types.Reassembly).Seq.Add(len(current.Value.(types.Reassembly).Bytes)-1)) < 0 {
 		log.Print("latest ring buffer entry is before start of segment\n")
-		log.Printf("lastestSeq %d < newStartSeq %d\n", current.Value.(Reassembly).Seq.Add(len(current.Value.(Reassembly).Bytes)-1), start)
-		log.Printf("lastest ring payload:%s\n", string(current.Value.(Reassembly).Bytes))
+		log.Printf("lastestSeq %d < newStartSeq %d\n", current.Value.(types.Reassembly).Seq.Add(len(current.Value.(types.Reassembly).Bytes)-1), start)
 		return nil
 	}
 	for current != ringPtr {
 		if !ok {
-			if prev.Value.(Reassembly).Seq.Difference(end) < 0 {
+			if prev.Value.(types.Reassembly).Seq.Difference(end) < 0 {
 				log.Print("end of segment is before oldest ring buffer entry\n")
 				head = nil
 				break
@@ -51,12 +53,12 @@ func getHeadFromRing(ringPtr *ring.Ring, start, end Sequence) *ring.Ring {
 			head = prev
 			break
 		}
-		diff := current.Value.(Reassembly).Seq.Difference(start)
+		diff := current.Value.(types.Reassembly).Seq.Difference(start)
 		if diff == 0 {
 			head = current
 			break
 		} else if diff > 0 {
-			diff = start.Difference(current.Value.(Reassembly).Seq.Add(len(current.Value.(Reassembly).Bytes) - 1))
+			diff = start.Difference(current.Value.(types.Reassembly).Seq.Add(len(current.Value.(types.Reassembly).Bytes) - 1))
 			if diff == 0 {
 				head = current
 				break
@@ -67,25 +69,25 @@ func getHeadFromRing(ringPtr *ring.Ring, start, end Sequence) *ring.Ring {
 		}
 		prev = current
 		current = current.Prev()
-		_, ok = current.Value.(Reassembly)
+		_, ok = current.Value.(types.Reassembly)
 	}
 	return head
 }
 
-// getHeadFromRing returns the oldest ring element that contains the beginning of
+// getTailFromRing returns the oldest ring element that contains the beginning of
 // our sequence range (start - end)
-func getTailFromRing(head *ring.Ring, end Sequence) *ring.Ring {
+func getTailFromRing(head *ring.Ring, end types.Sequence) *ring.Ring {
 	var current, prev, tail *ring.Ring
 	current = head
 	for {
-		diff := current.Value.(Reassembly).Seq.Add(len(current.Value.(Reassembly).Bytes) - 1).Difference(end)
+		diff := current.Value.(types.Reassembly).Seq.Add(len(current.Value.(types.Reassembly).Bytes) - 1).Difference(end)
 		if diff <= 0 {
 			tail = current
 			break
 		}
 		prev = current
 		current = current.Next()
-		_, ok := current.Value.(Reassembly)
+		_, ok := current.Value.(types.Reassembly)
 		if !ok {
 			tail = prev
 			break
@@ -96,26 +98,26 @@ func getTailFromRing(head *ring.Ring, end Sequence) *ring.Ring {
 
 // getStartSequence receives a ring pointer and a starting sequence number
 // and returns the closest available starting sequence number that is available from the ring.
-func getStartSequence(head *ring.Ring, start Sequence) Sequence {
-	var startSeq Sequence
-	diff := head.Value.(Reassembly).Seq.Difference(start)
+func getStartSequence(head *ring.Ring, start types.Sequence) types.Sequence {
+	var startSeq types.Sequence
+	diff := head.Value.(types.Reassembly).Seq.Difference(start)
 	if diff >= 0 {
 		startSeq = start
 	} else {
-		startSeq = head.Value.(Reassembly).Seq
+		startSeq = head.Value.(types.Reassembly).Seq
 	}
 	return startSeq
 }
 
 // getEndSequence receives a ring pointer and an ending sequence number
 // and returns the closest available ending sequence number that is available from the ring.
-func getEndSequence(tail *ring.Ring, end Sequence) Sequence {
-	var seqEnd Sequence
-	diff := tail.Value.(Reassembly).Seq.Add(len(tail.Value.(Reassembly).Bytes) - 1).Difference(end)
+func getEndSequence(tail *ring.Ring, end types.Sequence) types.Sequence {
+	var seqEnd types.Sequence
+	diff := tail.Value.(types.Reassembly).Seq.Add(len(tail.Value.(types.Reassembly).Bytes) - 1).Difference(end)
 	if diff <= 0 {
 		seqEnd = end
 	} else {
-		seqEnd = tail.Value.(Reassembly).Seq.Add(len(tail.Value.(Reassembly).Bytes) - 1)
+		seqEnd = tail.Value.(types.Reassembly).Seq.Add(len(tail.Value.(types.Reassembly).Bytes) - 1)
 	}
 	return seqEnd
 }
@@ -129,37 +131,37 @@ func getRingSlice(head, tail *ring.Ring, sliceStart, sliceEnd int) []byte {
 	if sliceStart < 0 || sliceEnd < 0 {
 		panic("sliceStart < 0 || sliceEnd < 0")
 	}
-	if sliceStart >= len(head.Value.(Reassembly).Bytes) {
-		panic(fmt.Sprintf("getRingSlice: sliceStart %d >= head len %d", sliceStart, len(head.Value.(Reassembly).Bytes)))
+	if sliceStart >= len(head.Value.(types.Reassembly).Bytes) {
+		panic(fmt.Sprintf("getRingSlice: sliceStart %d >= head len %d", sliceStart, len(head.Value.(types.Reassembly).Bytes)))
 	}
-	if sliceEnd > len(tail.Value.(Reassembly).Bytes) {
+	if sliceEnd > len(tail.Value.(types.Reassembly).Bytes) {
 		panic("impossible; sliceEnd is greater than ring segment")
 	}
 	if head == tail {
 		panic("head == tail")
 	}
 
-	overlapBytes = append(overlapBytes, head.Value.(Reassembly).Bytes[sliceStart:]...)
+	overlapBytes = append(overlapBytes, head.Value.(types.Reassembly).Bytes[sliceStart:]...)
 	current := head
 	current = current.Next()
-	for current.Value.(Reassembly).Seq != tail.Value.(Reassembly).Seq {
-		overlapBytes = append(overlapBytes, current.Value.(Reassembly).Bytes...)
+	for current.Value.(types.Reassembly).Seq != tail.Value.(types.Reassembly).Seq {
+		overlapBytes = append(overlapBytes, current.Value.(types.Reassembly).Bytes...)
 		current = current.Next()
 	}
-	overlapBytes = append(overlapBytes, tail.Value.(Reassembly).Bytes[:sliceEnd]...)
+	overlapBytes = append(overlapBytes, tail.Value.(types.Reassembly).Bytes[:sliceEnd]...)
 	return overlapBytes
 }
 
 // getHeadRingOffset receives a given ring element and starting sequence number
 // and returns the offset into the ring element where the start sequence is found
-func getHeadRingOffset(head *ring.Ring, start Sequence) int {
-	return head.Value.(Reassembly).Seq.Difference(start)
+func getHeadRingOffset(head *ring.Ring, start types.Sequence) int {
+	return head.Value.(types.Reassembly).Seq.Difference(start)
 }
 
 // getStartOverlapSequenceAndOffset takes a ring element and start sequence and
 // returns the closest sequence number available in the element... and the offset
 // from the beginning of that element
-func getStartOverlapSequenceAndOffset(head *ring.Ring, start Sequence) (Sequence, int) {
+func getStartOverlapSequenceAndOffset(head *ring.Ring, start types.Sequence) (types.Sequence, int) {
 	seqStart := getStartSequence(head, start)
 	offset := int(start.Difference(seqStart))
 	return seqStart, offset
@@ -167,20 +169,20 @@ func getStartOverlapSequenceAndOffset(head *ring.Ring, start Sequence) (Sequence
 
 // getRingSegmentLastSequence returns the last sequence number represented by
 // a given ring elements stream segment
-func getRingSegmentLastSequence(segment *ring.Ring) Sequence {
-	return segment.Value.(Reassembly).Seq.Add(len(segment.Value.(Reassembly).Bytes) - 1)
+func getRingSegmentLastSequence(segment *ring.Ring) types.Sequence {
+	return segment.Value.(types.Reassembly).Seq.Add(len(segment.Value.(types.Reassembly).Bytes) - 1)
 }
 
 // getTailRingOffset returns the number of bytes the from end of the
 // ring element's stream segment that the end sequence is found
-func getTailRingOffset(tail *ring.Ring, end Sequence) int {
+func getTailRingOffset(tail *ring.Ring, end types.Sequence) int {
 	tailEndSequence := getRingSegmentLastSequence(tail)
 	return end.Difference(tailEndSequence)
 }
 
 // getEndOverlapSequenceAndOffset receives a ring element and end sequence.
 // It returns the last sequence number represented by that ring element and the offset from the end.
-func getEndOverlapSequenceAndOffset(tail *ring.Ring, end Sequence) (Sequence, int) {
+func getEndOverlapSequenceAndOffset(tail *ring.Ring, end types.Sequence) (types.Sequence, int) {
 	seqEnd := getEndSequence(tail, end)
 	offset := int(seqEnd.Difference(end))
 	return seqEnd, offset

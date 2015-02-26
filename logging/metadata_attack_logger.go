@@ -18,11 +18,12 @@
  *    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package HoneyBadger
+package logging
 
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/david415/HoneyBadger/types"
 	"io"
 	"log"
 	"os"
@@ -36,7 +37,7 @@ type AttackMetadataJsonLogger struct {
 	writer           io.WriteCloser
 	LogDir           string
 	stopChan         chan bool
-	attackReportChan chan UnserializedAttackReport
+	attackReportChan chan types.Event
 }
 
 // NewAttackMetadataJsonLogger returns a pointer to a AttackMetadataJsonLogger struct
@@ -44,7 +45,7 @@ func NewAttackMetadataJsonLogger(logDir string) *AttackMetadataJsonLogger {
 	a := AttackMetadataJsonLogger{
 		LogDir:           logDir,
 		stopChan:         make(chan bool),
-		attackReportChan: make(chan UnserializedAttackReport),
+		attackReportChan: make(chan types.Event),
 	}
 	return &a
 }
@@ -62,69 +63,60 @@ func (a *AttackMetadataJsonLogger) receiveReports() {
 		select {
 		case <-a.stopChan:
 			return
-		case unserializedReport := <-a.attackReportChan:
-			a.SerializeAndWrite(unserializedReport)
+		case event := <-a.attackReportChan:
+			a.SerializeAndWrite(event)
 		}
 	}
 }
 
 // ReportHijackAttack method is called to record a TCP handshake hijack attack
-func (a *AttackMetadataJsonLogger) ReportHijackAttack(instant time.Time, flow TcpIpFlow, Seq, Ack uint32) {
+func (a *AttackMetadataJsonLogger) ReportHijackAttack(instant time.Time, flow *types.TcpIpFlow, Seq, Ack uint32) {
 	log.Print("ReportHijackAttack\n")
-	unserializedAttackReport := UnserializedAttackReport{
+	event := types.Event{
 		Type:      "hijack",
 		Time:      instant,
 		Flow:      flow,
 		HijackSeq: Seq,
 		HijackAck: Ack,
 	}
-	a.attackReportChan <- unserializedAttackReport
+	a.attackReportChan <- event
 }
 
 // ReportInjectionAttack takes the details of an injection attack and writes
 // an attack report to the attack log file
-func (a *AttackMetadataJsonLogger) ReportInjectionAttack(attackType string, instant time.Time, flow TcpIpFlow, attemptPayload []byte, overlap []byte, start, end Sequence, overlapStart, overlapEnd int) {
+func (a *AttackMetadataJsonLogger) ReportInjectionAttack(attackType string, instant time.Time, flow *types.TcpIpFlow, attemptPayload []byte, overlap []byte, start, end types.Sequence, overlapStart, overlapEnd int) {
 	log.Print("ReportInjectionAttack\n")
-	unserializedAttackReport := UnserializedAttackReport{
-		Type:           attackType,
-		Time:           instant,
-		Flow:           flow,
-		AttemptPayload: []byte{},
-		OverlapPayload: []byte{},
-		Start:          start,
-		End:            end,
-		OverlapStart:   overlapStart,
-		OverlapEnd:     overlapEnd,
+	event := types.Event{
+		Type:          attackType,
+		Time:          instant,
+		Flow:          flow,
+		StartSequence: start,
+		EndSequence:   end,
+		OverlapStart:  overlapStart,
+		OverlapEnd:    overlapEnd,
 	}
-	a.attackReportChan <- unserializedAttackReport
+	a.attackReportChan <- event
 }
 
-func (a *AttackMetadataJsonLogger) SerializeAndWrite(unserializedAttackReport UnserializedAttackReport) {
-	timeText, err := unserializedAttackReport.Time.MarshalText()
-	if err != nil {
-		panic(err)
+func (a *AttackMetadataJsonLogger) SerializeAndWrite(event types.Event) {
+	publishableEvent := &types.Event{
+		Type:          event.Type,
+		Flow:          event.Flow,
+		HijackSeq:     event.HijackSeq,
+		HijackAck:     event.HijackAck,
+		Time:          event.Time,
+		StartSequence: event.StartSequence,
+		EndSequence:   event.EndSequence,
+		OverlapStart:  event.OverlapStart,
+		OverlapEnd:    event.OverlapEnd,
 	}
-
-	report := &AttackReport{
-		Type:          unserializedAttackReport.Type,
-		Flow:          unserializedAttackReport.Flow.String(),
-		HijackSeq:     unserializedAttackReport.HijackSeq,
-		HijackAck:     unserializedAttackReport.HijackAck,
-		Time:          string(timeText),
-		Payload:       "",
-		Overlap:       "",
-		StartSequence: uint32(unserializedAttackReport.Start),
-		EndSequence:   uint32(unserializedAttackReport.End),
-		OverlapStart:  unserializedAttackReport.OverlapStart,
-		OverlapEnd:    unserializedAttackReport.OverlapEnd,
-	}
-	a.Publish(report)
+	a.Publish(publishableEvent)
 }
 
 // Publish writes a JSON report to the attack-report file for that flow.
-func (a *AttackMetadataJsonLogger) Publish(report *AttackReport) {
-	b, err := json.Marshal(*report)
-	a.writer, err = os.OpenFile(filepath.Join(a.LogDir, fmt.Sprintf("%s.metadata-attackreport.json", report.Flow)), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+func (a *AttackMetadataJsonLogger) Publish(event *types.Event) {
+	b, err := json.Marshal(*event)
+	a.writer, err = os.OpenFile(filepath.Join(a.LogDir, fmt.Sprintf("%s.metadata-attackreport.json", event.Flow)), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		panic(fmt.Sprintf("error opening file: %v", err))
 	}

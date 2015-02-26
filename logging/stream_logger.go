@@ -18,10 +18,11 @@
  *    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package HoneyBadger
+package logging
 
 import (
 	"fmt"
+	"github.com/david415/HoneyBadger/types"
 	"io"
 	"log"
 	"os"
@@ -32,19 +33,19 @@ import (
 // It implements the Stream interface.
 type StreamLogger struct {
 	dir         string
-	flow        TcpIpFlow
+	flow        *types.TcpIpFlow
 	stopChan    chan bool
-	receiveChan chan []Reassembly
+	receiveChan chan []types.Reassembly
 	byteCount   int64 // total bytes seen on this stream.
 	writer      io.WriteCloser
 }
 
-func NewStreamLogger(dir string, flow TcpIpFlow) *StreamLogger {
+func NewStreamLogger(dir string, flow *types.TcpIpFlow) *StreamLogger {
 	return &StreamLogger{
 		dir:         dir,
 		flow:        flow,
 		stopChan:    make(chan bool),
-		receiveChan: make(chan []Reassembly),
+		receiveChan: make(chan []types.Reassembly),
 	}
 }
 
@@ -75,11 +76,11 @@ func (s *StreamLogger) receiveReassembly() {
 	}
 }
 
-func (s *StreamLogger) Reassembled(r []Reassembly) {
+func (s *StreamLogger) Reassembled(r []types.Reassembly) {
 	s.receiveChan <- r
 }
 
-func (s *StreamLogger) persistStreamReassembly(rs []Reassembly) {
+func (s *StreamLogger) persistStreamReassembly(rs []types.Reassembly) {
 	for _, r := range rs {
 		// For now, we'll simply count the bytes on each side of the TCP stream.
 		s.byteCount += int64(len(r.Bytes))

@@ -17,7 +17,7 @@ package HoneyBadger
 import (
 	"bytes"
 	"container/ring"
-	"fmt"
+	"github.com/david415/HoneyBadger/types"
 	"log"
 	"time"
 )
@@ -25,33 +25,6 @@ import (
 const pageBytes = 1900
 
 const memLog = true // XXX get rid of me later...
-
-// Reassembly objects are passed by an Assembler into Streams using the
-// Reassembled call.  Callers should not need to create these structs themselves
-// except for testing.
-type Reassembly struct {
-	// Seq is the TCP sequence number for this segment
-	Seq Sequence
-
-	// Bytes is the next set of bytes in the stream.  May be empty.
-	Bytes []byte
-	// Skip is set to non-zero if bytes were skipped between this and the
-	// last Reassembly.  If this is the first packet in a connection and we
-	// didn't see the start, we have no idea how many bytes we skipped, so
-	// we set it to -1.  Otherwise, it's set to the number of bytes skipped.
-	Skip int
-	// Start is set if this set of bytes has a TCP SYN accompanying it.
-	Start bool
-	// End is set if this set of bytes has a TCP FIN or RST accompanying it.
-	End bool
-	// Seen is the timestamp this set of bytes was pulled off the wire.
-	Seen time.Time
-}
-
-// String returns a string representation of Reassembly
-func (r *Reassembly) String() string {
-	return fmt.Sprintf("Reassembly: Seq %d Bytes len %d data %s\n", r.Seq, len(r.Bytes), string(r.Bytes))
-}
 
 // Stream is implemented by the caller to handle incoming reassembled
 // TCP data.  Callers create a StreamFactory, then StreamPool uses
@@ -69,7 +42,7 @@ type Stream interface {
 	// so it's important to copy anything you need out of them
 	// (specifically out of Reassembly.Bytes) that you need to stay
 	// around after you return from the Reassembled call.
-	Reassembled([]Reassembly)
+	Reassembled([]types.Reassembly)
 	// ReassemblyComplete is called when assembly decides there is
 	// no more data for this Stream, either because a FIN or RST packet
 	// was seen, or because the stream has timed out without any new
@@ -82,7 +55,7 @@ type Stream interface {
 // avoids memory allocation.  Used pages are stored in a doubly-linked list in
 // an OrderedCoalesce.
 type page struct {
-	Reassembly
+	types.Reassembly
 	index      int
 	prev, next *page
 	buf        [pageBytes]byte
@@ -157,8 +130,8 @@ func min(a, b int) int {
 	return b
 }
 
-func byteSpan(expected, received Sequence, bytes []byte) (toSend []byte, next Sequence) {
-	if expected == invalidSequence {
+func byteSpan(expected, received types.Sequence, bytes []byte) (toSend []byte, next types.Sequence) {
+	if expected == types.InvalidSequence {
 		return bytes, received.Add(len(bytes))
 	}
 	span := int(received.Difference(expected))
@@ -170,9 +143,7 @@ func byteSpan(expected, received Sequence, bytes []byte) (toSend []byte, next Se
 	return bytes[span:], expected.Add(len(bytes) - span)
 }
 
-// OrderedCoalesceOptions controls the behavior of each assembler.  Modify the
-// options of each assembler you create to change their behavior.
-type OrderedCoalesceOptions struct {
+type OrderedCoalesce struct {
 	// MaxBufferedPagesTotal is an upper limit on the total number of pages to
 	// buffer while waiting for out-of-order packets.  Once this limit is
 	// reached, the assembler will degrade to flushing every connection it
@@ -183,31 +154,26 @@ type OrderedCoalesceOptions struct {
 	// particular flow, the smallest sequence number will be flushed, along
 	// with any contiguous data.  If <= 0, this is ignored.
 	MaxBufferedPagesPerFlow int
+
+	Flow        *types.TcpIpFlow
+	StreamRing  *ring.Ring
+	log         types.Logger
+	pageCount   int
+	pager       *Pager
+	first, last *page
+	ret         []types.Reassembly
 }
 
-type OrderedCoalesce struct {
-	OrderedCoalesceOptions
-
-	Flow         *TcpIpFlow
-	StreamRing   *ring.Ring
-	AttackLogger AttackLogger
-	pageCount    int
-	pager        *Pager
-	first, last  *page
-	ret          []Reassembly
-}
-
-func NewOrderedCoalesce(ret []Reassembly, flow *TcpIpFlow, pager *Pager, streamRing *ring.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int) *OrderedCoalesce {
+func NewOrderedCoalesce(log types.Logger, ret []types.Reassembly, flow *types.TcpIpFlow, pager *Pager, streamRing *ring.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int) *OrderedCoalesce {
 	return &OrderedCoalesce{
+		log:        log,
 		ret:        ret,
 		Flow:       flow,
 		pager:      pager,
 		StreamRing: streamRing,
 
-		OrderedCoalesceOptions: OrderedCoalesceOptions{
-			MaxBufferedPagesTotal:   maxBufferedPagesTotal,
-			MaxBufferedPagesPerFlow: maxBufferedPagesPerFlow,
-		},
+		MaxBufferedPagesTotal:   maxBufferedPagesTotal,
+		MaxBufferedPagesPerFlow: maxBufferedPagesPerFlow,
 	}
 }
 
@@ -219,18 +185,18 @@ func (o *OrderedCoalesce) Close() {
 	}
 }
 
-func (o *OrderedCoalesce) insert(packetManifest PacketManifest, nextSeq Sequence) Sequence {
+func (o *OrderedCoalesce) insert(packetManifest PacketManifest, nextSeq types.Sequence) types.Sequence {
 	if o.first != nil && o.first.Seq == nextSeq {
 		panic("wtf")
 	}
 
 	p, p2 := o.pagesFromTcp(packetManifest)
-	prev, current := o.traverse(Sequence(packetManifest.TCP.Seq))
+	prev, current := o.traverse(types.Sequence(packetManifest.TCP.Seq))
 	o.pushBetween(prev, current, p, p2)
 	o.pageCount++
 	if (o.MaxBufferedPagesPerFlow > 0 && o.pageCount >= o.MaxBufferedPagesPerFlow) ||
 		(o.MaxBufferedPagesTotal > 0 && o.pager.Used() >= o.MaxBufferedPagesTotal) {
-		log.Printf("%v hit max buffer size: %+v, %v, %v", packetManifest.Flow.String(), o.OrderedCoalesceOptions, o.pageCount, o.pager.Used())
+		log.Printf("%v hit max buffer size: %d %d, %v, %v", packetManifest.Flow.String(), o.MaxBufferedPagesTotal, o.MaxBufferedPagesPerFlow, o.pageCount, o.pager.Used())
 		nextSeq = o.addNext(nextSeq)
 		nextSeq = o.addContiguous(nextSeq)
 		//log.Printf("insert -> addNext; first.Seq %d nextSeq %d\n", o.first.Seq, nextSeq)
@@ -246,7 +212,7 @@ func (o *OrderedCoalesce) insert(packetManifest PacketManifest, nextSeq Sequence
 func (o *OrderedCoalesce) pagesFromTcp(p PacketManifest) (*page, *page) {
 	first := o.pager.Next(p.Timestamp)
 	current := first
-	seq, bytes := Sequence(p.TCP.Seq), p.Payload
+	seq, bytes := types.Sequence(p.TCP.Seq), p.Payload
 	for {
 		length := min(len(bytes), pageBytes)
 		current.Bytes = current.buf[:length]
@@ -270,7 +236,7 @@ func (o *OrderedCoalesce) pagesFromTcp(p PacketManifest) (*page, *page) {
 // starting at the highest sequence number and going down, since we assume the
 // common case is that TCP packets for a stream will appear in-order, with
 // minimal loss or packet reordering.
-func (o *OrderedCoalesce) traverse(seq Sequence) (*page, *page) {
+func (o *OrderedCoalesce) traverse(seq types.Sequence) (*page, *page) {
 	var prev, current *page
 	prev = o.last
 	for prev != nil && prev.Seq.Difference(seq) < 0 {
@@ -302,16 +268,16 @@ func (o *OrderedCoalesce) pushBetween(prev, next, first, last *page) {
 
 // addNext pops the first page off our doubly-linked-list and
 // appends it to the return array AND appends it to the reassembly-ring.
-func (o *OrderedCoalesce) addNext(nextSeq Sequence) Sequence {
+func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 	diff := nextSeq.Difference(o.first.Seq)
-	if nextSeq == Sequence(invalidSequence) {
+	if nextSeq == types.InvalidSequence {
 		o.first.Skip = -1
 	} else if diff > 0 {
 		o.first.Skip = int(diff)
 	}
 	// XXX stream segment overlap condition
 	if diff < 0 {
-		current, ok := o.StreamRing.Prev().Value.(Reassembly)
+		current, ok := o.StreamRing.Prev().Value.(types.Reassembly)
 		if !ok {
 			return nextSeq // XXX
 		}
@@ -321,7 +287,18 @@ func (o *OrderedCoalesce) addNext(nextSeq Sequence) Sequence {
 			// XXX is this info useful for reporting coalesce injection attacks?
 			start := nextSeq.Add(diff).Add(1)
 			end := o.first.Seq.Add(-diff)
-			o.AttackLogger.ReportInjectionAttack("coalesce injection", time.Now(), *o.Flow, unorderedOverlap, orderedOverlap, start, end, 0, 0)
+			event := &types.Event{
+				Type:          "coalesce injection",
+				Flow:          o.Flow,
+				Time:          time.Now(),
+				Overlap:       orderedOverlap,
+				Payload:       unorderedOverlap,
+				StartSequence: start,
+				EndSequence:   end,
+				OverlapStart:  0,
+				OverlapEnd:    0,
+			}
+			o.log.Log(event)
 		} else {
 			log.Print("not an attack attempt; a normal TCP unordered stream segment coalesce\n")
 		}
@@ -347,7 +324,7 @@ func (o *OrderedCoalesce) addNext(nextSeq Sequence) Sequence {
 }
 
 // addContiguous adds contiguous byte-sets to a connection.
-func (o *OrderedCoalesce) addContiguous(nextSeq Sequence) Sequence {
+func (o *OrderedCoalesce) addContiguous(nextSeq types.Sequence) types.Sequence {
 	for o.first != nil && nextSeq.Difference(o.first.Seq) <= 0 {
 		nextSeq = o.addNext(nextSeq)
 	}

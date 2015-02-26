@@ -3,6 +3,7 @@ package HoneyBadger
 import (
 	"code.google.com/p/gopacket"
 	"code.google.com/p/gopacket/layers"
+	"github.com/david415/HoneyBadger/types"
 	"log"
 	"net"
 	"testing"
@@ -25,7 +26,7 @@ func TestConnectionPool(t *testing.T) {
 
 	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
-	flow := NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
+	flow := types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 
 	connPool.Put(flow, conn)
 
@@ -54,10 +55,12 @@ func TestConnectionPool(t *testing.T) {
 
 	ipFlow, _ = gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 9, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 9, 4, 5)))
 	tcpFlow, _ = gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
-	flow = NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
+	flow = types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
+
 	conn = NewConnection(&options)
 	conn.Start(false)
 	conn.clientFlow = flow
+	conn.serverFlow = flow.Reverse()
 
 	connPool.Put(flow, conn)
 	closed := connPool.CloseAllConnections()

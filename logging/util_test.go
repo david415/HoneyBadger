@@ -1,6 +1,4 @@
-package HoneyBadger
-
-import ()
+package logging
 
 type TestSignalWriter struct {
 	lastWrite  []byte

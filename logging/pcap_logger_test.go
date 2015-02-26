@@ -1,9 +1,10 @@
-package HoneyBadger
+package logging
 
 import (
 	"bytes"
 	"code.google.com/p/gopacket"
 	"code.google.com/p/gopacket/layers"
+	"github.com/david415/HoneyBadger/types"
 	"net"
 	"testing"
 	"time"
@@ -60,7 +61,7 @@ func (w *TestPcapWriter) Close() error {
 func TestPcapLogger(t *testing.T) {
 	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
-	flow := NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
+	flow := types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 
 	pcapLogger := NewPcapLogger("fake-dir", flow)
 	testWriter := NewTestPcapWriter()

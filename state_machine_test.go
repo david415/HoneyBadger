@@ -3,6 +3,7 @@ package HoneyBadger
 import (
 	"code.google.com/p/gopacket"
 	"code.google.com/p/gopacket/layers"
+	"github.com/david415/HoneyBadger/types"
 	"net"
 	"testing"
 	"time"
@@ -15,7 +16,7 @@ func NewDummyStreamLogger() DummyStreamLogger {
 	return DummyStreamLogger{}
 }
 
-func (d DummyStreamLogger) Reassembled(r []Reassembly) {
+func (d DummyStreamLogger) Reassembled(r []types.Reassembly) {
 
 }
 
@@ -53,7 +54,7 @@ func TestStateDataTransfer(t *testing.T) {
 		SrcPort: 1,
 		DstPort: 2,
 	}
-	flow := NewTcpIpFlowFromLayers(ip, tcp)
+	flow := types.NewTcpIpFlowFromLayers(ip, tcp)
 	p := PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flow,
@@ -72,7 +73,7 @@ func TestStateDataTransfer(t *testing.T) {
 		t.Fail()
 	}
 	conn.ClientStreamRing.Do(func(x interface{}) {
-		_, ok := x.(Reassembly)
+		_, ok := x.(types.Reassembly)
 		if ok {
 			clientRingCount += 1
 		}
@@ -104,7 +105,7 @@ func TestStateDataTransfer(t *testing.T) {
 	}
 	clientRingCount = 0
 	conn.ClientStreamRing.Do(func(x interface{}) {
-		_, ok := x.(Reassembly)
+		_, ok := x.(types.Reassembly)
 		if ok {
 			clientRingCount += 1
 		}
@@ -135,7 +136,7 @@ func TestStateDataTransfer(t *testing.T) {
 	}
 	clientRingCount = 0
 	conn.ClientStreamRing.Do(func(x interface{}) {
-		_, ok := x.(Reassembly)
+		_, ok := x.(types.Reassembly)
 		if ok {
 			clientRingCount += 1
 		}
@@ -175,7 +176,7 @@ func TestTCPConnect(t *testing.T) {
 
 	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
-	flow := NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
+	flow := types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 
 	p := PacketManifest{
 		Timestamp: time.Now(),
@@ -314,7 +315,7 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		DstPort: 2,
 	}
 
-	flow := NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
+	flow := types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 	p := PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flow,
@@ -443,7 +444,7 @@ func TestTCPHijack(t *testing.T) {
 
 	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
-	flow := NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
+	flow := types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 
 	p := PacketManifest{
 		Timestamp: time.Now(),
