@@ -79,8 +79,8 @@ type ConnectionOptions struct {
 	MaxBufferedPagesTotal         int
 	MaxBufferedPagesPerConnection int
 	MaxRingPackets                int
-	closeRequestChan              chan CloseRequest
-	pager                         *Pager
+	CloseRequestChan              chan CloseRequest
+	Pager                         *Pager
 	LogDir                        string
 }
 
@@ -134,8 +134,8 @@ func NewConnection(options *ConnectionOptions) *Connection {
 		ServerReassembly:  make([]types.Reassembly, 0),
 	}
 
-	conn.ClientCoalesce = NewOrderedCoalesce(conn.AttackLogger, conn.ClientReassembly, conn.clientFlow, conn.pager, conn.ClientStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2)
-	conn.ServerCoalesce = NewOrderedCoalesce(conn.AttackLogger, conn.ServerReassembly, conn.serverFlow, conn.pager, conn.ServerStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2)
+	conn.ClientCoalesce = NewOrderedCoalesce(conn.AttackLogger, conn.ClientReassembly, conn.clientFlow, conn.Pager, conn.ClientStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2)
+	conn.ServerCoalesce = NewOrderedCoalesce(conn.AttackLogger, conn.ServerReassembly, conn.serverFlow, conn.Pager, conn.ServerStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2)
 
 	return &conn
 }
@@ -158,7 +158,7 @@ func (c *Connection) updateLastSeen(timestamp time.Time) {
 
 // Close is used by the Connection to shutdown itself.
 // Firstly it removes it's entry from the connection pool...
-// if closeRequestChanListening is set to true.
+// if CloseRequestChanListening is set to true.
 // After that Stop is called.
 func (c *Connection) Close() {
 	log.Printf("close detected for %s\n", c.clientFlow.String())
@@ -166,7 +166,7 @@ func (c *Connection) Close() {
 	if c.closeRequestChanListening {
 		closeReadyChan := make(chan bool)
 		// remove Connection from ConnectionPool
-		c.closeRequestChan <- CloseRequest{
+		c.CloseRequestChan <- CloseRequest{
 			Flow:           c.clientFlow,
 			CloseReadyChan: closeReadyChan,
 		}
@@ -596,7 +596,7 @@ func (c *Connection) stateConnectionClosing(p PacketManifest) {
 	}
 }
 
-func (c *Connection) receivePacket(p *PacketManifest) {
+func (c *Connection) ReceivePacket(p *PacketManifest) {
 	c.receiveChan <- p
 }
 

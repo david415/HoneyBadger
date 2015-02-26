@@ -22,7 +22,9 @@ package main
 
 import (
 	"flag"
-	"github.com/david415/HoneyBadger"
+	"github.com/david415/HoneyBadger/logging"
+	"github.com/david415/HoneyBadger/packetSource"
+	"github.com/david415/HoneyBadger/types"
 	"log"
 	"os"
 	"os/signal"
@@ -56,7 +58,21 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		log.Fatal("invalid wire timeout duration: ", *wireTimeout)
 	}
 
-	options := HoneyBadger.InquisitorOptions{
+	var logger types.Logger
+
+	if *metadataAttackLog {
+		loggerInstance := logging.NewAttackMetadataJsonLogger(*logDir)
+		loggerInstance.Start()
+		defer func() { loggerInstance.Stop() }()
+		logger = loggerInstance
+	} else {
+		loggerInstance := logging.NewAttackJsonLogger(*logDir)
+		loggerInstance.Start()
+		defer func() { loggerInstance.Stop() }()
+		logger = loggerInstance
+	}
+
+	options := packetSource.InquisitorOptions{
 		Interface:             *iface,
 		WireDuration:          wireDuration,
 		BufferedPerConnection: *bufferedPerConnection,
@@ -68,10 +84,10 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		StreamLog:             *streamLog,
 		TcpIdleTimeout:        *tcpTimeout,
 		MaxRingPackets:        *maxRingPackets,
-		MetaDataAttackLog:     *metadataAttackLog,
+		Logger:                logger,
 	}
 
-	service := HoneyBadger.NewInquisitor(&options)
+	service := packetSource.NewInquisitor(&options)
 	log.Println("HoneyBadger: comprehensive TCP injection attack detection.")
 	service.Start()
 

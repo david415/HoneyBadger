@@ -26,7 +26,6 @@ import (
 	"fmt"
 	"github.com/david415/HoneyBadger/types"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -49,7 +48,7 @@ type AttackJsonLogger struct {
 	writer           io.WriteCloser
 	LogDir           string
 	stopChan         chan bool
-	attackReportChan chan types.Event
+	attackReportChan chan *types.Event
 }
 
 // NewAttackJsonLogger returns a pointer to a AttackJsonLogger struct
@@ -57,7 +56,7 @@ func NewAttackJsonLogger(logDir string) *AttackJsonLogger {
 	a := AttackJsonLogger{
 		LogDir:           logDir,
 		stopChan:         make(chan bool),
-		attackReportChan: make(chan types.Event),
+		attackReportChan: make(chan *types.Event),
 	}
 	return &a
 }
@@ -81,38 +80,11 @@ func (a *AttackJsonLogger) receiveReports() {
 	}
 }
 
-// ReportHijackAttack method is called to record a TCP handshake hijack attack
-func (a *AttackJsonLogger) ReportHijackAttack(instant time.Time, flow *types.TcpIpFlow, Seq, Ack uint32) {
-	log.Print("ReportHijackAttack\n")
-	event := types.Event{
-		Type:      "hijack",
-		Time:      instant,
-		Flow:      flow,
-		HijackSeq: Seq,
-		HijackAck: Ack,
-	}
+func (a *AttackJsonLogger) Log(event *types.Event) {
 	a.attackReportChan <- event
 }
 
-// ReportInjectionAttack takes the details of an injection attack and writes
-// an attack report to the attack log file
-func (a *AttackJsonLogger) ReportInjectionAttack(attackType string, instant time.Time, flow *types.TcpIpFlow, attemptPayload []byte, overlap []byte, start, end types.Sequence, overlapStart, overlapEnd int) {
-	log.Print("ReportInjectionAttack\n")
-	event := types.Event{
-		Type:          attackType,
-		Time:          instant,
-		Flow:          flow,
-		Payload:       attemptPayload,
-		Overlap:       overlap,
-		StartSequence: start,
-		EndSequence:   end,
-		OverlapStart:  overlapStart,
-		OverlapEnd:    overlapEnd,
-	}
-	a.attackReportChan <- event
-}
-
-func (a *AttackJsonLogger) SerializeAndWrite(event types.Event) {
+func (a *AttackJsonLogger) SerializeAndWrite(event *types.Event) {
 	serialized := &serializedEvent{
 		Type:         event.Type,
 		Flow:         event.Flow,

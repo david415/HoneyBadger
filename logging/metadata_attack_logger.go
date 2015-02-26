@@ -25,10 +25,8 @@ import (
 	"fmt"
 	"github.com/david415/HoneyBadger/types"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
-	"time"
 )
 
 // AttackMetadataJsonLogger is responsible for recording all attack reports as JSON objects in a file.
@@ -37,7 +35,7 @@ type AttackMetadataJsonLogger struct {
 	writer           io.WriteCloser
 	LogDir           string
 	stopChan         chan bool
-	attackReportChan chan types.Event
+	attackReportChan chan *types.Event
 }
 
 // NewAttackMetadataJsonLogger returns a pointer to a AttackMetadataJsonLogger struct
@@ -45,7 +43,7 @@ func NewAttackMetadataJsonLogger(logDir string) *AttackMetadataJsonLogger {
 	a := AttackMetadataJsonLogger{
 		LogDir:           logDir,
 		stopChan:         make(chan bool),
-		attackReportChan: make(chan types.Event),
+		attackReportChan: make(chan *types.Event),
 	}
 	return &a
 }
@@ -69,36 +67,11 @@ func (a *AttackMetadataJsonLogger) receiveReports() {
 	}
 }
 
-// ReportHijackAttack method is called to record a TCP handshake hijack attack
-func (a *AttackMetadataJsonLogger) ReportHijackAttack(instant time.Time, flow *types.TcpIpFlow, Seq, Ack uint32) {
-	log.Print("ReportHijackAttack\n")
-	event := types.Event{
-		Type:      "hijack",
-		Time:      instant,
-		Flow:      flow,
-		HijackSeq: Seq,
-		HijackAck: Ack,
-	}
+func (a *AttackMetadataJsonLogger) Log(event *types.Event) {
 	a.attackReportChan <- event
 }
 
-// ReportInjectionAttack takes the details of an injection attack and writes
-// an attack report to the attack log file
-func (a *AttackMetadataJsonLogger) ReportInjectionAttack(attackType string, instant time.Time, flow *types.TcpIpFlow, attemptPayload []byte, overlap []byte, start, end types.Sequence, overlapStart, overlapEnd int) {
-	log.Print("ReportInjectionAttack\n")
-	event := types.Event{
-		Type:          attackType,
-		Time:          instant,
-		Flow:          flow,
-		StartSequence: start,
-		EndSequence:   end,
-		OverlapStart:  overlapStart,
-		OverlapEnd:    overlapEnd,
-	}
-	a.attackReportChan <- event
-}
-
-func (a *AttackMetadataJsonLogger) SerializeAndWrite(event types.Event) {
+func (a *AttackMetadataJsonLogger) SerializeAndWrite(event *types.Event) {
 	publishableEvent := &types.Event{
 		Type:          event.Type,
 		Flow:          event.Flow,

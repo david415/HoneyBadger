@@ -18,12 +18,15 @@
  *    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package HoneyBadger
+package packetSource
 
 import (
 	"code.google.com/p/gopacket"
 	"code.google.com/p/gopacket/layers"
 	"code.google.com/p/gopacket/pcap"
+	"github.com/david415/HoneyBadger"
+	"github.com/david415/HoneyBadger/logging"
+	"github.com/david415/HoneyBadger/types"
 	"io"
 	"log"
 	"time"
@@ -50,7 +53,7 @@ type InquisitorOptions struct {
 	StreamLog             bool
 	TcpIdleTimeout        time.Duration
 	MaxRingPackets        int
-	MetaDataAttackLog     bool
+	Logger                types.Logger
 }
 
 // Inquisitor sets up the connection pool and is an abstraction layer for dealing
@@ -60,13 +63,12 @@ type Inquisitor struct {
 	stopCaptureChan     chan bool
 	decodePacketChan    chan TimedRawPacket
 	stopDecodeChan      chan bool
-	dispatchPacketChan  chan PacketManifest
+	dispatchPacketChan  chan HoneyBadger.PacketManifest
 	stopDispatchChan    chan bool
-	closeConnectionChan chan CloseRequest
-	connPool            *ConnectionPool
+	closeConnectionChan chan HoneyBadger.CloseRequest
+	connPool            *HoneyBadger.ConnectionPool
 	handle              *pcap.Handle
-	pager               *Pager
-	AttackLogger        AttackLogger
+	pager               *HoneyBadger.Pager
 }
 
 // NewInquisitor creates a new Inquisitor struct
@@ -76,16 +78,11 @@ func NewInquisitor(options *InquisitorOptions) *Inquisitor {
 		stopCaptureChan:     make(chan bool),
 		decodePacketChan:    make(chan TimedRawPacket),
 		stopDecodeChan:      make(chan bool),
-		dispatchPacketChan:  make(chan PacketManifest),
+		dispatchPacketChan:  make(chan HoneyBadger.PacketManifest),
 		stopDispatchChan:    make(chan bool),
-		closeConnectionChan: make(chan CloseRequest),
-		pager:               NewPager(),
-		connPool:            NewConnectionPool(),
-	}
-	if options.MetaDataAttackLog == true {
-		i.AttackLogger = NewAttackMetadataJsonLogger(options.LogDir)
-	} else {
-		i.AttackLogger = NewAttackJsonLogger(options.LogDir)
+		closeConnectionChan: make(chan HoneyBadger.CloseRequest),
+		pager:               HoneyBadger.NewPager(),
+		connPool:            HoneyBadger.NewConnectionPool(),
 	}
 	return &i
 }
@@ -99,7 +96,6 @@ func (i *Inquisitor) Start() {
 	go i.decodePackets()
 	go i.dispatchPackets()
 	i.pager.Start()
-	i.AttackLogger.Start()
 }
 
 // Stop... stops the TCP attack inquisition!
@@ -108,7 +104,6 @@ func (i *Inquisitor) Stop() {
 	i.stopDecodeChan <- true
 	i.stopCaptureChan <- true
 	i.connPool.CloseAllConnections()
-	i.AttackLogger.Stop()
 	i.handle.Close()
 	i.pager.Stop()
 }
@@ -173,8 +168,8 @@ func (i *Inquisitor) decodePackets() {
 			if err != nil {
 				continue
 			}
-			flow := NewTcpIpFlowFromFlows(ip.NetworkFlow(), tcp.TransportFlow())
-			packetManifest := PacketManifest{
+			flow := types.NewTcpIpFlowFromFlows(ip.NetworkFlow(), tcp.TransportFlow())
+			packetManifest := HoneyBadger.PacketManifest{
 				Timestamp: timedRawPacket.Timestamp,
 				Flow:      flow,
 				RawPacket: timedRawPacket.RawPacket,
@@ -187,27 +182,26 @@ func (i *Inquisitor) decodePackets() {
 	}
 }
 
-func (i *Inquisitor) setupNewConnection(flow TcpIpFlow) *Connection {
-	options := ConnectionOptions{
+func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) *HoneyBadger.Connection {
+	options := HoneyBadger.ConnectionOptions{
 		MaxBufferedPagesTotal:         i.InquisitorOptions.BufferedTotal,
 		MaxBufferedPagesPerConnection: i.InquisitorOptions.BufferedPerConnection,
 		MaxRingPackets:                i.InquisitorOptions.MaxRingPackets,
-		closeRequestChan:              i.closeConnectionChan,
-		pager:                         i.pager,
+		CloseRequestChan:              i.closeConnectionChan,
+		Pager:                         i.pager,
 		LogDir:                        i.LogDir,
 	}
-	conn := NewConnection(&options)
-	conn.AttackLogger = i.AttackLogger
+	conn := HoneyBadger.NewConnection(&options)
 
 	if i.PacketLog {
-		conn.PacketLogger = NewPcapLogger(i.LogDir, flow)
+		conn.PacketLogger = logging.NewPcapLogger(i.LogDir, flow)
 		conn.PacketLogger.Start()
 	}
 	if i.StreamLog {
-		clientStream := NewStreamLogger(i.LogDir, flow)
+		clientStream := logging.NewStreamLogger(i.LogDir, flow)
 		clientStream.Start()
 		conn.ClientStream = clientStream
-		serverStream := NewStreamLogger(i.LogDir, flow.Reverse())
+		serverStream := logging.NewStreamLogger(i.LogDir, flow.Reverse())
 		serverStream.Start()
 		conn.ServerStream = serverStream
 	}
@@ -217,7 +211,7 @@ func (i *Inquisitor) setupNewConnection(flow TcpIpFlow) *Connection {
 }
 
 func (i *Inquisitor) dispatchPackets() {
-	var conn *Connection
+	var conn *HoneyBadger.Connection
 	var err error
 	timeout := i.InquisitorOptions.TcpIdleTimeout
 	ticker := time.Tick(timeout)
@@ -232,7 +226,7 @@ func (i *Inquisitor) dispatchPackets() {
 			return
 		case closeRequest := <-i.closeConnectionChan:
 			log.Print("closeRequest received\n")
-			i.connPool.Delete(*closeRequest.Flow)
+			i.connPool.Delete(closeRequest.Flow)
 			closeRequest.CloseReadyChan <- true
 			log.Print("closeRequest ready\n")
 		case packetManifest := <-i.dispatchPacketChan:
@@ -244,7 +238,7 @@ func (i *Inquisitor) dispatchPackets() {
 			} else {
 				conn = i.setupNewConnection(packetManifest.Flow)
 			}
-			conn.receivePacket(&packetManifest)
+			conn.ReceivePacket(&packetManifest)
 		}
 	}
 }
