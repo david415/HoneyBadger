@@ -45,8 +45,8 @@ func TestInjectionDetector(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		closeRequestChan:              nil,
-		pager:                         nil,
+		CloseRequestChan:              nil,
+		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 	}
 	conn := NewConnection(&options)
@@ -130,8 +130,8 @@ func TestGetRingSlice(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		closeRequestChan:              nil,
-		pager:                         nil,
+		CloseRequestChan:              nil,
+		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 	}
 	conn := NewConnection(&options)
@@ -619,8 +619,8 @@ func TestGetOverlapBytes(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		closeRequestChan:              nil,
-		pager:                         nil,
+		CloseRequestChan:              nil,
+		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 	}
 	conn := NewConnection(&options)
@@ -709,8 +709,8 @@ func TestGetOverlapRingsWithZeroRings(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		closeRequestChan:              nil,
-		pager:                         nil,
+		CloseRequestChan:              nil,
+		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 	}
 	conn := NewConnection(&options)
@@ -877,8 +877,8 @@ func TestGetOverlapRings(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		closeRequestChan:              nil,
-		pager:                         nil,
+		CloseRequestChan:              nil,
+		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 	}
 	conn := NewConnection(&options)

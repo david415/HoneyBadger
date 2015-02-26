@@ -29,8 +29,8 @@ func TestStateDataTransfer(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		closeRequestChan:              nil,
-		pager:                         nil,
+		CloseRequestChan:              nil,
+		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 	}
 	conn := NewConnection(&options)
@@ -153,8 +153,8 @@ func TestTCPConnect(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		closeRequestChan:              nil,
-		pager:                         nil,
+		CloseRequestChan:              nil,
+		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 	}
 	conn := NewConnection(&options)
@@ -273,8 +273,8 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		closeRequestChan:              nil,
-		pager:                         nil,
+		CloseRequestChan:              nil,
+		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 	}
 	conn := NewConnection(&options)
@@ -419,8 +419,8 @@ func TestTCPHijack(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		closeRequestChan:              nil,
-		pager:                         nil,
+		CloseRequestChan:              nil,
+		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 	}
 	conn := NewConnection(&options)

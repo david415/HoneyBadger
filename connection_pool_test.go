@@ -17,8 +17,8 @@ func TestConnectionPool(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		closeRequestChan:              nil,
-		pager:                         nil,
+		CloseRequestChan:              nil,
+		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 	}
 	conn := NewConnection(&options)
@@ -136,7 +136,7 @@ func TestConnectionPool(t *testing.T) {
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
 	log.Printf("before receivePacket flow %s\n", flow.String())
-	conn.receivePacket(&packetManifest)
+	conn.ReceivePacket(&packetManifest)
 	log.Print("before 3rd CloseOlderThan\n")
 
 	count = connPool.CloseOlderThan(time.Now())
@@ -159,7 +159,7 @@ func TestConnectionPool(t *testing.T) {
 		TCP:       tcp,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
-	conn.receivePacket(&packetManifest)
+	conn.ReceivePacket(&packetManifest)
 	log.Print("before last CloseOlderThan\n")
 	count = connPool.CloseOlderThan(timestamp1)
 	if count != 0 {
@@ -206,7 +206,7 @@ func TestConnectionPool(t *testing.T) {
 		TCP:       tcp,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
-	conn.receivePacket(&packetManifest)
+	conn.ReceivePacket(&packetManifest)
 	conn2, err = connPool.Get(flow)
 	if conn2 == nil && err != nil {
 		t.Error("Get method fail")
