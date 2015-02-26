@@ -16,11 +16,12 @@
  *    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package HoneyBadger
+package main
 
 import (
 	"code.google.com/p/gopacket"
 	"code.google.com/p/gopacket/layers"
+	"github.com/david415/HoneyBadger/types"
 	"golang.org/x/net/ipv4"
 	"net"
 )
@@ -71,7 +72,7 @@ func (i *TCPStreamInjector) SetTCPLayer(tcpLayer layers.TCP) {
 func (i *TCPStreamInjector) SpraySequenceRangePackets(start uint32, count int) error {
 	var err error
 
-	currentSeq := Sequence(start)
+	currentSeq := types.Sequence(start)
 	stopSeq := currentSeq.Add(count)
 
 	for ; currentSeq.Difference(stopSeq) != 0; currentSeq = currentSeq.Add(1) {
