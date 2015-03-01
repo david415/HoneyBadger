@@ -37,10 +37,9 @@ func main() {
 		snaplen               = flag.Int("s", 65536, "SnapLen for pcap packet capture")
 		filter                = flag.String("f", "tcp", "BPF filter for pcap")
 		logDir                = flag.String("l", "honeyBadger-logs", "log directory")
-		wireTimeout           = flag.String("w", "10s", "timeout for reading packets off the wire")
+		wireTimeout           = flag.String("w", "3s", "timeout for reading packets off the wire")
 		metadataAttackLog     = flag.Bool("metadata_attack_log", true, "if set to true then attack reports will only include metadata")
 		packetLog             = flag.Bool("packet_log", false, "if set to true then log all packets for each tracked TCP connection")
-		streamLog             = flag.Bool("stream_log", false, "if set to true then log both reassembled TCP streams for each tracked TCP connection")
 		tcpTimeout            = flag.Duration("tcp_idle_timeout", time.Minute*5, "tcp idle timeout duration")
 		maxRingPackets        = flag.Int("max_ring_packets", 40, "Max packets per connection stream ring buffer")
 		bufferedPerConnection = flag.Int("connection_max_buffer", 0, `
@@ -81,7 +80,6 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		LogDir:                *logDir,
 		Snaplen:               *snaplen,
 		PacketLog:             *packetLog,
-		StreamLog:             *streamLog,
 		TcpIdleTimeout:        *tcpTimeout,
 		MaxRingPackets:        *maxRingPackets,
 		Logger:                logger,

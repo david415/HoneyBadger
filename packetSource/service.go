@@ -50,7 +50,6 @@ type InquisitorOptions struct {
 	LogDir                string
 	Snaplen               int
 	PacketLog             bool
-	StreamLog             bool
 	TcpIdleTimeout        time.Duration
 	MaxRingPackets        int
 	Logger                types.Logger
@@ -196,14 +195,6 @@ func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) *HoneyBadger.Conn
 	if i.PacketLog {
 		conn.PacketLogger = logging.NewPcapLogger(i.LogDir, flow)
 		conn.PacketLogger.Start()
-	}
-	if i.StreamLog {
-		clientStream := logging.NewStreamLogger(i.LogDir, flow)
-		clientStream.Start()
-		conn.ClientStream = clientStream
-		serverStream := logging.NewStreamLogger(i.LogDir, flow.Reverse())
-		serverStream.Start()
-		conn.ServerStream = serverStream
 	}
 	i.connPool.Put(flow, conn)
 	conn.Start(true)

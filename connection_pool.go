@@ -31,7 +31,6 @@ import (
 // This is inspired by gopacket.tcpassembly's StreamPool.
 type ConnectionPool struct {
 	connectionMap map[types.ConnectionHash]*Connection
-	size          int
 }
 
 // NewConnectionPool returns a new ConnectionPool struct

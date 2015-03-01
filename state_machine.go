@@ -114,8 +114,6 @@ type Connection struct {
 	ServerReassembly          []types.Reassembly
 	PacketLogger              *logging.PcapLogger
 	AttackLogger              types.Logger
-	ClientStream              Stream
-	ServerStream              Stream
 }
 
 // NewConnection returns a new Connection struct
@@ -186,10 +184,6 @@ func (c *Connection) Start(closeRequestChanListening bool) {
 // Stop frees up all resources used by the connection
 func (c *Connection) Stop() {
 	log.Print("Connection.Stop() called.\n")
-	if c.ClientStream != nil {
-		c.ClientStream.ReassemblyComplete()
-		c.ServerStream.ReassemblyComplete()
-	}
 	log.Printf("stopped tracking %s\n", c.clientFlow.String())
 	c.stopChan <- true
 	log.Print("checking attack detection status\n")
@@ -205,8 +199,6 @@ func (c *Connection) Stop() {
 // removeAllLogs removes all the logs associated with this Connection instance
 func (c *Connection) removeAllLogs() {
 	log.Printf("removeAllLogs %s\n", c.clientFlow.String())
-	os.Remove(filepath.Join(c.LogDir, fmt.Sprintf("%s.stream", c.clientFlow)))
-	os.Remove(filepath.Join(c.LogDir, fmt.Sprintf("%s.stream", c.serverFlow)))
 	os.Remove(filepath.Join(c.LogDir, fmt.Sprintf("%s.pcap", c.clientFlow)))
 	os.Remove(filepath.Join(c.LogDir, fmt.Sprintf("%s.pcap", c.serverFlow)))
 	os.Remove(filepath.Join(c.LogDir, fmt.Sprintf("%s.attackreport.json", c.clientFlow)))
@@ -537,7 +529,7 @@ func (c *Connection) stateLastAck(p PacketManifest, flow *types.TcpIpFlow, nextS
 				End:   true,
 			}
 			if p.Flow == c.clientFlow {
-				c.ServerReassembly = append(c.ClientReassembly, reassembly)
+				c.ServerReassembly = append(c.ServerReassembly, reassembly)
 			} else {
 				c.ClientReassembly = append(c.ClientReassembly, reassembly)
 			}
@@ -627,11 +619,11 @@ func (c *Connection) receivePacketState(p *PacketManifest) {
 
 	if p.Flow.Equal(c.serverFlow) {
 		if len(c.ClientReassembly) > 0 {
-			c.serverNextSeq = c.sendToStream(c.ClientReassembly, c.serverNextSeq, c.ClientStream, c.ClientCoalesce)
+			c.serverNextSeq = c.sendToStream(c.ClientReassembly, c.serverNextSeq, c.ClientCoalesce)
 		}
 	} else {
 		if len(c.ServerReassembly) > 0 {
-			c.clientNextSeq = c.sendToStream(c.ServerReassembly, c.clientNextSeq, c.ServerStream, c.ServerCoalesce)
+			c.clientNextSeq = c.sendToStream(c.ServerReassembly, c.clientNextSeq, c.ServerCoalesce)
 		}
 	}
 	c.ClientReassembly = make([]types.Reassembly, 0)
@@ -650,13 +642,10 @@ func (c *Connection) startReceivingPackets() {
 	}
 }
 
-// sendToStream send the current values in ret to the stream-ring buffer and the stream-logger
+// sendToStream send the current values in ret to the stream-ring-buffer
 // closing the connection if the last thing sent had End set.
-func (c *Connection) sendToStream(ret []types.Reassembly, nextSeq types.Sequence, stream Stream, coalesce *OrderedCoalesce) types.Sequence {
+func (c *Connection) sendToStream(ret []types.Reassembly, nextSeq types.Sequence, coalesce *OrderedCoalesce) types.Sequence {
 	nextSeq = coalesce.addContiguous(nextSeq)
-	if stream != nil {
-		stream.Reassembled(ret)
-	}
 	if ret[len(ret)-1].End {
 		go c.Close()
 	}

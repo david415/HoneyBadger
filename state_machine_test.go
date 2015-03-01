@@ -9,21 +9,6 @@ import (
 	"time"
 )
 
-type DummyStreamLogger struct {
-}
-
-func NewDummyStreamLogger() DummyStreamLogger {
-	return DummyStreamLogger{}
-}
-
-func (d DummyStreamLogger) Reassembled(r []types.Reassembly) {
-
-}
-
-func (d DummyStreamLogger) ReassemblyComplete() {
-
-}
-
 func TestStateDataTransfer(t *testing.T) {
 	options := ConnectionOptions{
 		MaxBufferedPagesTotal:         0,
@@ -35,8 +20,6 @@ func TestStateDataTransfer(t *testing.T) {
 	}
 	conn := NewConnection(&options)
 	conn.AttackLogger = NewDummyAttackLogger()
-	conn.ClientStream = NewDummyStreamLogger()
-	conn.ServerStream = NewDummyStreamLogger()
 	conn.Start(false)
 
 	conn.state = TCP_DATA_TRANSFER
@@ -279,8 +262,6 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 	}
 	conn := NewConnection(&options)
 	conn.AttackLogger = attackLogger
-	conn.ClientStream = NewDummyStreamLogger()
-	conn.ServerStream = NewDummyStreamLogger()
 	conn.Start(false)
 
 	conn.state = TCP_DATA_TRANSFER
