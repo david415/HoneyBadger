@@ -284,6 +284,7 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 		orderedOverlap := current.Bytes[len(current.Bytes)+diff+1:]
 		unorderedOverlap := o.first.Bytes[:(-diff)+1] // XXX
 		if !bytes.Equal(orderedOverlap, unorderedOverlap) {
+			log.Print("coalesce injection attack detected\n")
 			// XXX is this info useful for reporting coalesce injection attacks?
 			start := nextSeq.Add(diff).Add(1)
 			end := o.first.Seq.Add(-diff)

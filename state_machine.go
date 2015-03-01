@@ -215,6 +215,7 @@ func (c *Connection) detectHijack(p PacketManifest, flow *types.TcpIpFlow) {
 	if p.TCP.ACK && p.TCP.SYN {
 		if types.Sequence(p.TCP.Ack).Difference(c.hijackNextAck) == 0 {
 			if p.TCP.Seq != c.firstSynAckSeq {
+				log.Print("handshake hijack detected\n")
 				c.AttackLogger.Log(&types.Event{Time: time.Now(), Flow: flow, HijackSeq: p.TCP.Seq, HijackAck: p.TCP.Ack})
 				c.attackDetected = true
 			} else {
@@ -285,6 +286,7 @@ func (c *Connection) detectInjection(p PacketManifest, flow *types.TcpIpFlow) {
 	end := start.Add(len(p.Payload) - 1)
 	overlapBytes, startOffset, endOffset := c.getOverlapBytes(head, tail, start, end)
 	if !bytes.Equal(overlapBytes, p.Payload[startOffset:endOffset]) {
+		log.Print("injection attack detected\n")
 		e := &types.Event{
 			Type:          "injection",
 			Time:          time.Now(),
