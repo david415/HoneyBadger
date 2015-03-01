@@ -429,7 +429,7 @@ func (c *Connection) stateDataTransfer(p PacketManifest) {
 				End:   p.TCP.RST,
 			}
 
-			if p.Flow == c.clientFlow {
+			if p.Flow.Equal(c.clientFlow) {
 				c.ServerReassembly = append(c.ServerReassembly, reassembly)
 				c.ServerStreamRing.Value = reassembly
 				c.ServerStreamRing = c.ServerStreamRing.Next()
@@ -444,7 +444,7 @@ func (c *Connection) stateDataTransfer(p PacketManifest) {
 		// p.TCP.Seq comes after *nextSeqPtr
 		// future-out-of-order packet case
 		if len(p.Payload) > 0 {
-			if p.Flow == c.clientFlow {
+			if p.Flow.Equal(c.clientFlow) {
 				c.clientNextSeq = c.ServerCoalesce.insert(p, c.clientNextSeq)
 			} else {
 				c.serverNextSeq = c.ClientCoalesce.insert(p, c.serverNextSeq)
@@ -528,7 +528,7 @@ func (c *Connection) stateLastAck(p PacketManifest, flow *types.TcpIpFlow, nextS
 				Seen:  p.Timestamp,
 				End:   true,
 			}
-			if p.Flow == c.clientFlow {
+			if p.Flow.Equal(c.clientFlow) {
 				c.ServerReassembly = append(c.ServerReassembly, reassembly)
 			} else {
 				c.ClientReassembly = append(c.ClientReassembly, reassembly)
