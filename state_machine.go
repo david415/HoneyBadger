@@ -82,6 +82,7 @@ type ConnectionOptions struct {
 	CloseRequestChan              chan CloseRequest
 	Pager                         *Pager
 	LogDir                        string
+	AttackLogger                  types.Logger
 }
 
 // Connection is used to track client and server flows for a given TCP connection.
@@ -113,7 +114,6 @@ type Connection struct {
 	ClientReassembly          []types.Reassembly
 	ServerReassembly          []types.Reassembly
 	PacketLogger              *logging.PcapLogger
-	AttackLogger              types.Logger
 }
 
 // NewConnection returns a new Connection struct

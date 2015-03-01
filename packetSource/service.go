@@ -189,6 +189,7 @@ func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) *HoneyBadger.Conn
 		CloseRequestChan:              i.closeConnectionChan,
 		Pager:                         i.pager,
 		LogDir:                        i.LogDir,
+		AttackLogger:                  i.Logger,
 	}
 	conn := HoneyBadger.NewConnection(&options)
 
