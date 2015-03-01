@@ -1,5 +1,5 @@
 /*
- *    spray_injector.go - TCP stream injector API - integration test for HoneyBadger
+ *    injector.go - TCP stream injector API - integration test for HoneyBadger
  *    Copyright (C) 2014  David Stainton
  *
  *    This program is free software: you can redistribute it and/or modify
@@ -16,7 +16,7 @@
  *    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package main
+package attack
 
 import (
 	"code.google.com/p/gopacket"

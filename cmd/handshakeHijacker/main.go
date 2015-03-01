@@ -25,7 +25,7 @@ import (
 	"code.google.com/p/gopacket/pcap"
 	"code.google.com/p/gopacket/tcpassembly"
 	"flag"
-	inject "github.com/david415/HoneyBadger"
+	"github.com/david415/HoneyBadger/attack"
 	"log"
 	"math/rand"
 	"time"
@@ -51,7 +51,7 @@ func main() {
 
 	decoded := make([]gopacket.LayerType, 0, 4)
 
-	streamInjector := inject.TCPStreamInjector{}
+	streamInjector := attack.TCPStreamInjector{}
 	err := streamInjector.Init("0.0.0.0")
 	if err != nil {
 		panic(err)

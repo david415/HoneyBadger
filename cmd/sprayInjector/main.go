@@ -27,6 +27,7 @@ import (
 	"code.google.com/p/gopacket/pcap"
 	"flag"
 	"fmt"
+	"github.com/david415/HoneyBadger/attack"
 	"github.com/david415/HoneyBadger/types"
 	"log"
 	"net"
@@ -61,7 +62,7 @@ func main() {
 		panic(fmt.Sprintf("non-ipv4 target: %q\n", serviceIPstr))
 	}
 
-	streamInjector := TCPStreamInjector{}
+	streamInjector := attack.TCPStreamInjector{}
 	err := streamInjector.Init("0.0.0.0")
 	if err != nil {
 		panic(err)
