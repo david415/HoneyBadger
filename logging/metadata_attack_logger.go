@@ -72,22 +72,22 @@ func (a *AttackMetadataJsonLogger) Log(event *types.Event) {
 }
 
 func (a *AttackMetadataJsonLogger) SerializeAndWrite(event *types.Event) {
-	publishableEvent := &types.Event{
-		Type:          event.Type,
-		Flow:          event.Flow,
-		HijackSeq:     event.HijackSeq,
-		HijackAck:     event.HijackAck,
-		Time:          event.Time,
-		StartSequence: event.StartSequence,
-		EndSequence:   event.EndSequence,
-		OverlapStart:  event.OverlapStart,
-		OverlapEnd:    event.OverlapEnd,
+	publishableEvent := &serializedEvent{
+		Type:         event.Type,
+		Flow:         event.Flow.String(),
+		HijackSeq:    event.HijackSeq,
+		HijackAck:    event.HijackAck,
+		Time:         event.Time,
+		Start:        event.StartSequence,
+		End:          event.EndSequence,
+		OverlapStart: event.OverlapStart,
+		OverlapEnd:   event.OverlapEnd,
 	}
 	a.Publish(publishableEvent)
 }
 
 // Publish writes a JSON report to the attack-report file for that flow.
-func (a *AttackMetadataJsonLogger) Publish(event *types.Event) {
+func (a *AttackMetadataJsonLogger) Publish(event *serializedEvent) {
 	b, err := json.Marshal(*event)
 	a.writer, err = os.OpenFile(filepath.Join(a.LogDir, fmt.Sprintf("%s.metadata-attackreport.json", event.Flow)), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {

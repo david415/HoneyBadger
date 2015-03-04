@@ -34,7 +34,7 @@ import (
 type serializedEvent struct {
 	Type                     string
 	Time                     time.Time
-	Flow                     *types.TcpIpFlow
+	Flow                     string
 	HijackSeq                uint32
 	HijackAck                uint32
 	Payload                  string
@@ -87,7 +87,7 @@ func (a *AttackJsonLogger) Log(event *types.Event) {
 func (a *AttackJsonLogger) SerializeAndWrite(event *types.Event) {
 	serialized := &serializedEvent{
 		Type:         event.Type,
-		Flow:         event.Flow,
+		Flow:         event.Flow.String(),
 		HijackSeq:    event.HijackSeq,
 		HijackAck:    event.HijackAck,
 		Time:         event.Time,
