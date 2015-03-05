@@ -21,12 +21,92 @@
 package HoneyBadger
 
 import (
+	"bytes"
 	"container/ring"
 	"fmt"
-	"log"
-
 	"github.com/david415/HoneyBadger/types"
+	"log"
+	"time"
 )
+
+func injectionInStreamRing(p PacketManifest, flow *types.TcpIpFlow, ringPtr *ring.Ring, eventType string) *types.Event {
+	start := types.Sequence(p.TCP.Seq)
+	end := start.Add(len(p.Payload) - 1)
+	head, tail := getOverlapRings(p, flow, ringPtr)
+	if head == nil || tail == nil {
+		return nil
+	}
+	overlapBytes, startOffset, endOffset := getOverlapBytes(head, tail, start, end)
+	if overlapBytes == nil {
+		return nil
+	}
+	log.Printf("payload len %d offset start %d end %d\n", len(p.Payload), startOffset, endOffset)
+	if !bytes.Equal(overlapBytes, p.Payload[startOffset:endOffset]) {
+		log.Print("injection attack detected\n")
+		e := &types.Event{
+			Type:          eventType,
+			Time:          time.Now(),
+			Flow:          flow,
+			Payload:       p.Payload,
+			Overlap:       overlapBytes,
+			StartSequence: start,
+			EndSequence:   end,
+			OverlapStart:  startOffset,
+			OverlapEnd:    endOffset,
+		}
+		return e
+	} else {
+		return nil
+	}
+}
+
+// getOverlapBytes returns the overlap byte array; that is the contiguous data stored in our ring buffer
+// that overlaps with the stream segment specified by the start and end Sequence boundaries.
+// The other return values are the slice offsets of the original packet payload that can be used to derive
+// the new overlapping portion of the stream segment.
+func getOverlapBytes(head, tail *ring.Ring, start, end types.Sequence) ([]byte, int, int) {
+	var overlapStartSlice, overlapEndSlice int
+	var overlapBytes []byte
+	if head == nil || tail == nil {
+		panic("wtf; head or tail is nil\n")
+	}
+	sequenceStart, overlapStartSlice := getStartOverlapSequenceAndOffset(head, start)
+	headOffset := getHeadRingOffset(head, sequenceStart)
+
+	sequenceEnd, overlapEndOffset := getEndOverlapSequenceAndOffset(tail, end)
+	tailOffset := getTailRingOffset(tail, sequenceEnd)
+
+	if int(head.Value.(types.Reassembly).Seq) == int(tail.Value.(types.Reassembly).Seq) {
+		log.Print("head == tail\n")
+		endOffset := len(head.Value.(types.Reassembly).Bytes) - tailOffset
+		overlapEndSlice = len(head.Value.(types.Reassembly).Bytes) - tailOffset + overlapStartSlice - headOffset
+		overlapBytes = head.Value.(types.Reassembly).Bytes[headOffset:endOffset]
+	} else {
+		log.Print("head != tail\n")
+		totalLen := start.Difference(end) + 1
+		overlapEndSlice = totalLen - overlapEndOffset
+		tailSlice := len(tail.Value.(types.Reassembly).Bytes) - tailOffset
+		overlapBytes = getRingSlice(head, tail, headOffset, tailSlice)
+		if overlapBytes == nil {
+			return nil, 0, 0
+		}
+	}
+	return overlapBytes, overlapStartSlice, overlapEndSlice
+}
+
+// getOverlapRings returns the head and tail ring elements corresponding to the first and last
+// overlapping ring segments... that overlap with the given packet (PacketManifest).
+func getOverlapRings(p PacketManifest, flow *types.TcpIpFlow, ringPtr *ring.Ring) (*ring.Ring, *ring.Ring) {
+	var head, tail *ring.Ring
+	start := types.Sequence(p.TCP.Seq)
+	end := start.Add(len(p.Payload) - 1)
+	head = getHeadFromRing(ringPtr, start, end)
+	if head == nil {
+		return nil, nil
+	}
+	tail = getTailFromRing(head, end)
+	return head, tail
+}
 
 // getHeadFromRing returns a pointer to the oldest ring element that
 // contains the beginning of our sequence range (start - end)
@@ -129,7 +209,7 @@ func getEndSequence(tail *ring.Ring, end types.Sequence) types.Sequence {
 func getRingSlice(head, tail *ring.Ring, sliceStart, sliceEnd int) []byte {
 	var overlapBytes []byte
 	if sliceStart < 0 || sliceEnd < 0 {
-		panic("sliceStart < 0 || sliceEnd < 0")
+		return nil
 	}
 	if sliceStart >= len(head.Value.(types.Reassembly).Bytes) {
 		panic(fmt.Sprintf("getRingSlice: sliceStart %d >= head len %d", sliceStart, len(head.Value.(types.Reassembly).Bytes)))

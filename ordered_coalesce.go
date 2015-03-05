@@ -15,7 +15,7 @@
 package HoneyBadger
 
 import (
-	"bytes"
+	"code.google.com/p/gopacket/layers"
 	"container/ring"
 	"github.com/david415/HoneyBadger/types"
 	"log"
@@ -25,30 +25,6 @@ import (
 const pageBytes = 1900
 
 const memLog = true // XXX get rid of me later...
-
-// Stream is implemented by the caller to handle incoming reassembled
-// TCP data.  Callers create a StreamFactory, then StreamPool uses
-// it to create a new Stream for every TCP stream.
-//
-// assembly will, in order:
-//    1) Create the stream via StreamFactory.New
-//    2) Call Reassembled 0 or more times, passing in reassembled TCP data in order
-//    3) Call ReassemblyComplete one time, after which the stream is dereferenced by assembly.
-type Stream interface {
-	// Reassembled is called zero or more times.  assembly guarantees
-	// that the set of all Reassembly objects passed in during all
-	// calls are presented in the order they appear in the TCP stream.
-	// Reassembly objects are reused after each Reassembled call,
-	// so it's important to copy anything you need out of them
-	// (specifically out of Reassembly.Bytes) that you need to stay
-	// around after you return from the Reassembled call.
-	Reassembled([]types.Reassembly)
-	// ReassemblyComplete is called when assembly decides there is
-	// no more data for this Stream, either because a FIN or RST packet
-	// was seen, or because the stream has timed out without any new
-	// packet data (due to a call to FlushOlderThan).
-	ReassemblyComplete()
-}
 
 // page is used to store TCP data we're not ready for yet (out-of-order
 // packets).  Unused pages are stored in and returned from a pageCache, which
@@ -199,7 +175,6 @@ func (o *OrderedCoalesce) insert(packetManifest PacketManifest, nextSeq types.Se
 		log.Printf("%v hit max buffer size: %d %d, %v, %v", packetManifest.Flow.String(), o.MaxBufferedPagesTotal, o.MaxBufferedPagesPerFlow, o.pageCount, o.pager.Used())
 		nextSeq = o.addNext(nextSeq)
 		nextSeq = o.addContiguous(nextSeq)
-		//log.Printf("insert -> addNext; first.Seq %d nextSeq %d\n", o.first.Seq, nextSeq)
 	}
 	return nextSeq
 }
@@ -277,35 +252,21 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 	}
 	// XXX stream segment overlap condition
 	if diff < 0 {
-		current, ok := o.StreamRing.Prev().Value.(types.Reassembly)
-		if !ok {
-			return nextSeq // XXX
+		p := PacketManifest{
+			Timestamp: o.first.Seen,
+			Payload:   o.first.Bytes,
+			TCP: layers.TCP{
+				Seq: uint32(o.first.Seq),
+			},
 		}
-		orderedOverlap := current.Bytes[len(current.Bytes)+diff+1:]
-		unorderedOverlap := o.first.Bytes[:(-diff)+1] // XXX
-		if !bytes.Equal(orderedOverlap, unorderedOverlap) {
-			log.Print("coalesce injection attack detected\n")
-			// XXX is this info useful for reporting coalesce injection attacks?
-			start := nextSeq.Add(diff).Add(1)
-			end := o.first.Seq.Add(-diff)
-			event := &types.Event{
-				Type:          "coalesce injection",
-				Flow:          o.Flow,
-				Time:          time.Now(),
-				Overlap:       orderedOverlap,
-				Payload:       unorderedOverlap,
-				StartSequence: start,
-				EndSequence:   end,
-				OverlapStart:  0,
-				OverlapEnd:    0,
-			}
+		event := injectionInStreamRing(p, o.Flow, o.StreamRing, "coalesce injection")
+		if event != nil {
 			o.log.Log(event)
 		} else {
 			log.Print("not an attack attempt; a normal TCP unordered stream segment coalesce\n")
 		}
 	}
 	o.first.Bytes, nextSeq = byteSpan(nextSeq, o.first.Seq, o.first.Bytes) // XXX injection happens here
-	log.Printf("%s   adding from r (%v, %v)", o.Flow.String(), o.first.Seq, nextSeq)
 
 	// append reassembly to the reassembly ring buffer
 	o.StreamRing.Value = o.first.Reassembly

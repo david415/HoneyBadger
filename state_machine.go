@@ -21,7 +21,6 @@
 package HoneyBadger
 
 import (
-	"bytes"
 	"code.google.com/p/gopacket"
 	"code.google.com/p/gopacket/layers"
 	"container/ring"
@@ -130,6 +129,8 @@ func NewConnection(options *ConnectionOptions) *Connection {
 		ServerStreamRing:  ring.New(options.MaxRingPackets),
 		ClientReassembly:  make([]types.Reassembly, 0),
 		ServerReassembly:  make([]types.Reassembly, 0),
+		clientFlow:        &types.TcpIpFlow{},
+		serverFlow:        &types.TcpIpFlow{},
 	}
 
 	conn.ClientCoalesce = NewOrderedCoalesce(conn.AttackLogger, conn.ClientReassembly, conn.clientFlow, conn.Pager, conn.ClientStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2)
@@ -225,81 +226,18 @@ func (c *Connection) detectHijack(p PacketManifest, flow *types.TcpIpFlow) {
 	}
 }
 
-// getOverlapRings returns the head and tail ring elements corresponding to the first and last
-// overlapping ring segments... that overlap with the given packet (PacketManifest).
-func (c *Connection) getOverlapRings(p PacketManifest, flow *types.TcpIpFlow) (*ring.Ring, *ring.Ring) {
-	var ringPtr, head, tail *ring.Ring
-	start := types.Sequence(p.TCP.Seq)
-	end := start.Add(len(p.Payload) - 1)
-
+// detectInjection write an attack report if the given packet indicates a TCP injection attack
+// such as segment veto.
+func (c *Connection) detectInjection(p PacketManifest, flow *types.TcpIpFlow) {
+	var ringPtr *ring.Ring
 	if flow.Equal(c.clientFlow) {
 		ringPtr = c.ServerStreamRing
 	} else {
 		ringPtr = c.ClientStreamRing
 	}
-
-	head = getHeadFromRing(ringPtr, start, end)
-	if head == nil {
-		return nil, nil
-	}
-	tail = getTailFromRing(head, end)
-	return head, tail
-}
-
-// getOverlapBytes returns the overlap byte array; that is the contiguous data stored in our ring buffer
-// that overlaps with the stream segment specified by the start and end Sequence boundaries.
-// The other return values are the slice offsets of the original packet payload that can be used to derive
-// the new overlapping portion of the stream segment.
-func (c *Connection) getOverlapBytes(head, tail *ring.Ring, start, end types.Sequence) ([]byte, int, int) {
-	var overlapStartSlice, overlapEndSlice int
-	var overlapBytes []byte
-	if head == nil || tail == nil {
-		panic("wtf; head or tail is nil\n")
-	}
-	sequenceStart, overlapStartSlice := getStartOverlapSequenceAndOffset(head, start)
-	headOffset := getHeadRingOffset(head, sequenceStart)
-
-	sequenceEnd, overlapEndOffset := getEndOverlapSequenceAndOffset(tail, end)
-	tailOffset := getTailRingOffset(tail, sequenceEnd)
-
-	if int(head.Value.(types.Reassembly).Seq) == int(tail.Value.(types.Reassembly).Seq) {
-		endOffset := len(head.Value.(types.Reassembly).Bytes) - tailOffset
-		overlapEndSlice = len(head.Value.(types.Reassembly).Bytes) - tailOffset + overlapStartSlice - headOffset
-		overlapBytes = head.Value.(types.Reassembly).Bytes[headOffset:endOffset]
-	} else {
-		totalLen := start.Difference(end) + 1
-		overlapEndSlice = totalLen - overlapEndOffset
-		tailSlice := len(tail.Value.(types.Reassembly).Bytes) - tailOffset
-		overlapBytes = getRingSlice(head, tail, headOffset, tailSlice)
-	}
-	return overlapBytes, overlapStartSlice, overlapEndSlice
-}
-
-// detectInjection write an attack report if the given packet indicates a TCP injection attack
-// such as segment veto.
-func (c *Connection) detectInjection(p PacketManifest, flow *types.TcpIpFlow) {
-	head, tail := c.getOverlapRings(p, flow)
-	if head == nil || tail == nil {
-		return
-	}
-	start := types.Sequence(p.TCP.Seq)
-	end := start.Add(len(p.Payload) - 1)
-	overlapBytes, startOffset, endOffset := c.getOverlapBytes(head, tail, start, end)
-	if !bytes.Equal(overlapBytes, p.Payload[startOffset:endOffset]) {
-		log.Print("injection attack detected\n")
-		e := &types.Event{
-			Type:          "injection",
-			Time:          time.Now(),
-			Flow:          flow,
-			Payload:       p.Payload,
-			Overlap:       overlapBytes,
-			StartSequence: start,
-			EndSequence:   end,
-			OverlapStart:  startOffset,
-			OverlapEnd:    endOffset,
-		}
-
-		c.AttackLogger.Log(e)
+	event := injectionInStreamRing(p, flow, ringPtr, "ordered injection")
+	if event != nil {
+		c.AttackLogger.Log(event)
 		c.attackDetected = true
 	} else {
 		log.Print("not an attack attempt; a normal TCP retransmission.\n")
@@ -312,8 +250,8 @@ func (c *Connection) detectInjection(p PacketManifest, flow *types.TcpIpFlow) {
 func (c *Connection) stateUnknown(p PacketManifest) {
 	if p.TCP.SYN && !p.TCP.ACK {
 		c.state = TCP_CONNECTION_REQUEST
-		c.clientFlow = p.Flow
-		c.serverFlow = p.Flow.Reverse()
+		*c.clientFlow = *p.Flow
+		*c.serverFlow = *p.Flow.Reverse()
 
 		// Note that TCP SYN and SYN/ACK packets may contain payload data if
 		// a TCP extension is used...

@@ -163,7 +163,8 @@ func TestGetRingSlice(t *testing.T) {
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
 	conn.serverFlow = types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 	conn.clientFlow = conn.serverFlow.Reverse()
-	head, tail := conn.getOverlapRings(p, conn.serverFlow)
+
+	head, tail := getOverlapRings(p, conn.serverFlow, conn.ClientStreamRing)
 
 	ringSlice := getRingSlice(head, tail, 0, 1)
 	if !bytes.Equal(ringSlice, []byte{1, 2, 3, 4, 5, 1}) {
@@ -223,7 +224,7 @@ func TestGetRingSlice(t *testing.T) {
 		Payload: []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
 	}
 
-	head, tail = conn.getOverlapRings(p, conn.serverFlow)
+	head, tail = getOverlapRings(p, conn.serverFlow, conn.ClientStreamRing)
 	ringSlice = getRingSlice(head, tail, 0, 2)
 
 	if !bytes.Equal(ringSlice, []byte{1, 2, 3, 4, 5, 1, 2}) {
@@ -239,16 +240,6 @@ func TestGetRingSlice(t *testing.T) {
 }
 
 func TestGetRingSlicePanic1(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("failed to panic")
-			t.Fail()
-		}
-	}()
-	_ = getRingSlice(nil, nil, -1, -1)
-}
-
-func TestGetRingSlicePanic2(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
 			t.Error("failed to panic")
@@ -657,14 +648,14 @@ func TestGetOverlapBytes(t *testing.T) {
 		conn.serverFlow = types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 		conn.clientFlow = conn.serverFlow.Reverse()
 
-		head, tail := conn.getOverlapRings(p, conn.serverFlow)
+		head, tail := getOverlapRings(p, conn.serverFlow, conn.ClientStreamRing)
 		if head == nil || tail == nil {
 			t.Errorf("%d getOverlapRings returned a nil\n", i)
 			t.Fail()
 			continue
 		}
 
-		overlapBytes, startOffset, endOffset := conn.getOverlapBytes(head, tail, start, end)
+		overlapBytes, startOffset, endOffset := getOverlapBytes(head, tail, start, end)
 
 		if startOffset != overlapBytesTests[i].want.startOffset {
 			t.Errorf("test %d startOffset %d does not match want.startOffset %d\n", i, startOffset, overlapBytesTests[i].want.startOffset)
@@ -720,7 +711,7 @@ func TestGetOverlapRingsWithZeroRings(t *testing.T) {
 	conn.serverFlow = types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 	conn.clientFlow = conn.serverFlow.Reverse()
 
-	head, tail := conn.getOverlapRings(p, conn.serverFlow)
+	head, tail := getOverlapRings(p, conn.serverFlow, conn.ClientStreamRing)
 	if head == nil || tail == nil {
 		return
 	} else {
@@ -908,7 +899,7 @@ func TestGetOverlapRings(t *testing.T) {
 		conn.serverFlow = types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 		conn.clientFlow = conn.serverFlow.Reverse()
 
-		head, tail := conn.getOverlapRings(p, conn.serverFlow)
+		head, tail := getOverlapRings(p, conn.serverFlow, conn.ClientStreamRing)
 
 		if overlapTests[i].want[0] == nil {
 			if head != nil {
