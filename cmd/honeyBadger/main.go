@@ -33,16 +33,19 @@ import (
 
 func main() {
 	var (
-		iface                 = flag.String("i", "eth0", "Interface to get packets from")
-		snaplen               = flag.Int("s", 65536, "SnapLen for pcap packet capture")
-		filter                = flag.String("f", "tcp", "BPF filter for pcap")
-		logDir                = flag.String("l", "honeyBadger-logs", "log directory")
-		wireTimeout           = flag.String("w", "3s", "timeout for reading packets off the wire")
-		metadataAttackLog     = flag.Bool("metadata_attack_log", true, "if set to true then attack reports will only include metadata")
-		packetLog             = flag.Bool("packet_log", false, "if set to true then log all packets for each tracked TCP connection")
-		tcpTimeout            = flag.Duration("tcp_idle_timeout", time.Minute*5, "tcp idle timeout duration")
-		maxRingPackets        = flag.Int("max_ring_packets", 40, "Max packets per connection stream ring buffer")
-		bufferedPerConnection = flag.Int("connection_max_buffer", 0, `
+		iface                   = flag.String("i", "eth0", "Interface to get packets from")
+		snaplen                 = flag.Int("s", 65536, "SnapLen for pcap packet capture")
+		filter                  = flag.String("f", "tcp", "BPF filter for pcap")
+		logDir                  = flag.String("l", "honeyBadger-logs", "log directory")
+		wireTimeout             = flag.String("w", "3s", "timeout for reading packets off the wire")
+		metadataAttackLog       = flag.Bool("metadata_attack_log", true, "if set to true then attack reports will only include metadata")
+		packetLog               = flag.Bool("packet_log", false, "if set to true then log all packets for each tracked TCP connection")
+		tcpTimeout              = flag.Duration("tcp_idle_timeout", time.Minute*5, "tcp idle timeout duration")
+		maxRingPackets          = flag.Int("max_ring_packets", 40, "Max packets per connection stream ring buffer")
+		detectHijack            = flag.Bool("detect_hijack", true, "Detect handshake hijack attacks")
+		detectInjection         = flag.Bool("detect_injection", true, "Detect injection attacks")
+		detectCoalesceInjection = flag.Bool("detect_coalesce_injection", true, "Detect coalesce injection attacks")
+		bufferedPerConnection   = flag.Int("connection_max_buffer", 0, `
 Max packets to buffer for a single connection before skipping over a gap in data
 and continuing to stream the connection after the buffer.  If zero or less, this
 is infinite.`)
@@ -72,17 +75,20 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 	}
 
 	options := packetSource.InquisitorOptions{
-		Interface:             *iface,
-		WireDuration:          wireDuration,
-		BufferedPerConnection: *bufferedPerConnection,
-		BufferedTotal:         *bufferedTotal,
-		Filter:                *filter,
-		LogDir:                *logDir,
-		Snaplen:               *snaplen,
-		PacketLog:             *packetLog,
-		TcpIdleTimeout:        *tcpTimeout,
-		MaxRingPackets:        *maxRingPackets,
-		Logger:                logger,
+		Interface:               *iface,
+		WireDuration:            wireDuration,
+		BufferedPerConnection:   *bufferedPerConnection,
+		BufferedTotal:           *bufferedTotal,
+		Filter:                  *filter,
+		LogDir:                  *logDir,
+		Snaplen:                 *snaplen,
+		PacketLog:               *packetLog,
+		TcpIdleTimeout:          *tcpTimeout,
+		MaxRingPackets:          *maxRingPackets,
+		Logger:                  logger,
+		DetectHijack:            *detectHijack,
+		DetectInjection:         *detectInjection,
+		DetectCoalesceInjection: *detectCoalesceInjection,
 	}
 
 	service := packetSource.NewInquisitor(&options)

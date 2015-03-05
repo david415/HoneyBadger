@@ -82,6 +82,9 @@ type ConnectionOptions struct {
 	Pager                         *Pager
 	LogDir                        string
 	AttackLogger                  types.Logger
+	DetectHijack                  bool
+	DetectInjection               bool
+	DetectCoalesceInjection       bool
 }
 
 // Connection is used to track client and server flows for a given TCP connection.
@@ -133,8 +136,8 @@ func NewConnection(options *ConnectionOptions) *Connection {
 		serverFlow:        &types.TcpIpFlow{},
 	}
 
-	conn.ClientCoalesce = NewOrderedCoalesce(conn.AttackLogger, conn.ClientReassembly, conn.clientFlow, conn.Pager, conn.ClientStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2)
-	conn.ServerCoalesce = NewOrderedCoalesce(conn.AttackLogger, conn.ServerReassembly, conn.serverFlow, conn.Pager, conn.ServerStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2)
+	conn.ClientCoalesce = NewOrderedCoalesce(conn.AttackLogger, conn.ClientReassembly, conn.clientFlow, conn.Pager, conn.ClientStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection)
+	conn.ServerCoalesce = NewOrderedCoalesce(conn.AttackLogger, conn.ServerReassembly, conn.serverFlow, conn.Pager, conn.ServerStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection)
 
 	return &conn
 }
@@ -295,7 +298,9 @@ func (c *Connection) stateConnectionRequest(p PacketManifest) {
 // changes our state to TCP_DATA_TRANSFER if we receive a valid final
 // handshake ACK packet.
 func (c *Connection) stateConnectionEstablished(p PacketManifest) {
-	c.detectHijack(p, p.Flow)
+	if c.DetectHijack {
+		c.detectHijack(p, p.Flow)
+	}
 	if !p.Flow.Equal(c.clientFlow) {
 		// handshake anomaly
 		return
@@ -331,7 +336,9 @@ func (c *Connection) stateDataTransfer(p PacketManifest) {
 	}
 
 	if c.packetCount < FIRST_FEW_PACKETS {
-		c.detectHijack(p, p.Flow)
+		if c.DetectHijack {
+			c.detectHijack(p, p.Flow)
+		}
 	}
 	if p.Flow.Equal(c.clientFlow) {
 		nextSeqPtr = &c.clientNextSeq
@@ -346,7 +353,9 @@ func (c *Connection) stateDataTransfer(p PacketManifest) {
 	if diff > 0 {
 		// *nextSeqPtr comes after p.TCP.Seq
 		// stream overlap case
-		c.detectInjection(p, p.Flow)
+		if c.DetectInjection {
+			c.detectInjection(p, p.Flow)
+		}
 	} else if diff == 0 {
 		// contiguous!
 		if p.TCP.FIN {

@@ -131,16 +131,17 @@ type OrderedCoalesce struct {
 	// with any contiguous data.  If <= 0, this is ignored.
 	MaxBufferedPagesPerFlow int
 
-	Flow        *types.TcpIpFlow
-	StreamRing  *ring.Ring
-	log         types.Logger
-	pageCount   int
-	pager       *Pager
-	first, last *page
-	ret         []types.Reassembly
+	Flow                    *types.TcpIpFlow
+	StreamRing              *ring.Ring
+	log                     types.Logger
+	pageCount               int
+	pager                   *Pager
+	first, last             *page
+	ret                     []types.Reassembly
+	DetectCoalesceInjection bool
 }
 
-func NewOrderedCoalesce(log types.Logger, ret []types.Reassembly, flow *types.TcpIpFlow, pager *Pager, streamRing *ring.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int) *OrderedCoalesce {
+func NewOrderedCoalesce(log types.Logger, ret []types.Reassembly, flow *types.TcpIpFlow, pager *Pager, streamRing *ring.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int, DetectCoalesceInjection bool) *OrderedCoalesce {
 	return &OrderedCoalesce{
 		log:        log,
 		ret:        ret,
@@ -250,20 +251,23 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 	} else if diff > 0 {
 		o.first.Skip = int(diff)
 	}
-	// XXX stream segment overlap condition
-	if diff < 0 {
-		p := PacketManifest{
-			Timestamp: o.first.Seen,
-			Payload:   o.first.Bytes,
-			TCP: layers.TCP{
-				Seq: uint32(o.first.Seq),
-			},
-		}
-		event := injectionInStreamRing(p, o.Flow, o.StreamRing, "coalesce injection")
-		if event != nil {
-			o.log.Log(event)
-		} else {
-			log.Print("not an attack attempt; a normal TCP unordered stream segment coalesce\n")
+
+	if o.DetectCoalesceInjection {
+		// XXX stream segment overlap condition
+		if diff < 0 {
+			p := PacketManifest{
+				Timestamp: o.first.Seen,
+				Payload:   o.first.Bytes,
+				TCP: layers.TCP{
+					Seq: uint32(o.first.Seq),
+				},
+			}
+			event := injectionInStreamRing(p, o.Flow, o.StreamRing, "coalesce injection")
+			if event != nil {
+				o.log.Log(event)
+			} else {
+				log.Print("not an attack attempt; a normal TCP unordered stream segment coalesce\n")
+			}
 		}
 	}
 	o.first.Bytes, nextSeq = byteSpan(nextSeq, o.first.Seq, o.first.Bytes) // XXX injection happens here

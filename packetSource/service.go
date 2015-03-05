@@ -41,18 +41,21 @@ type TimedRawPacket struct {
 // details of how to proceed with honey_bager's TCP connection monitoring.
 // More parameters should soon be added here!
 type InquisitorOptions struct {
-	Interface             string
-	Filename              string
-	WireDuration          time.Duration
-	BufferedPerConnection int
-	BufferedTotal         int
-	Filter                string
-	LogDir                string
-	Snaplen               int
-	PacketLog             bool
-	TcpIdleTimeout        time.Duration
-	MaxRingPackets        int
-	Logger                types.Logger
+	Interface               string
+	Filename                string
+	WireDuration            time.Duration
+	BufferedPerConnection   int
+	BufferedTotal           int
+	Filter                  string
+	LogDir                  string
+	Snaplen                 int
+	PacketLog               bool
+	TcpIdleTimeout          time.Duration
+	MaxRingPackets          int
+	Logger                  types.Logger
+	DetectHijack            bool
+	DetectInjection         bool
+	DetectCoalesceInjection bool
 }
 
 // Inquisitor sets up the connection pool and is an abstraction layer for dealing
@@ -190,6 +193,9 @@ func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) *HoneyBadger.Conn
 		Pager:                         i.pager,
 		LogDir:                        i.LogDir,
 		AttackLogger:                  i.Logger,
+		DetectHijack:                  i.DetectHijack,
+		DetectInjection:               i.DetectInjection,
+		DetectCoalesceInjection:       i.DetectCoalesceInjection,
 	}
 	conn := HoneyBadger.NewConnection(&options)
 
