@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func TestOrderedCoalesce(t *testing.T) {
+func TestOrderedCoalesceUsedPages(t *testing.T) {
 	maxBufferedPagesTotal := 1024
 	maxBufferedPagesPerFlow := 1024
 	streamRing := ring.New(40)
@@ -22,7 +22,7 @@ func TestOrderedCoalesce(t *testing.T) {
 
 	var nextSeq types.Sequence = types.Sequence(1)
 	ret := []types.Reassembly{}
-	coalesce := NewOrderedCoalesce(nil, ret, flow, pager, streamRing, maxBufferedPagesTotal, maxBufferedPagesPerFlow)
+	coalesce := NewOrderedCoalesce(nil, ret, flow, pager, streamRing, maxBufferedPagesTotal, maxBufferedPagesPerFlow, false)
 
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},

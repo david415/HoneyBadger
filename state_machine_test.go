@@ -403,6 +403,7 @@ func TestTCPHijack(t *testing.T) {
 		CloseRequestChan:              nil,
 		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
+		DetectHijack:                  true,
 	}
 	conn := NewConnection(&options)
 	conn.AttackLogger = attackLogger
