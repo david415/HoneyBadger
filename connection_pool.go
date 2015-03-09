@@ -24,8 +24,37 @@ import (
 	"fmt"
 	"github.com/david415/HoneyBadger/types"
 	"log"
+	"sync"
 	"time"
 )
+
+type ClosedList struct {
+	sync.Mutex
+	connectionMap map[types.ConnectionHash]bool
+}
+
+func NewClosedList() *ClosedList {
+	return &ClosedList{
+		connectionMap: make(map[types.ConnectionHash]bool),
+	}
+}
+
+func (c *ClosedList) Has(flow *types.TcpIpFlow) bool {
+	c.Lock()
+	defer c.Unlock()
+
+	connectionHash := flow.ConnectionHash()
+	_, ok := c.connectionMap[connectionHash]
+	return ok
+}
+
+func (c *ClosedList) Put(flow *types.TcpIpFlow) {
+	c.Lock()
+	defer c.Unlock()
+
+	connectionHash := flow.ConnectionHash()
+	c.connectionMap[connectionHash] = true
+}
 
 // ConnectionPool is used to track TCP connections.
 // This is inspired by gopacket.tcpassembly's StreamPool.

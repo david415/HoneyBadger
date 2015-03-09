@@ -137,14 +137,12 @@ type OrderedCoalesce struct {
 	pageCount               int
 	pager                   *Pager
 	first, last             *page
-	ret                     []types.Reassembly
 	DetectCoalesceInjection bool
 }
 
-func NewOrderedCoalesce(log types.Logger, ret []types.Reassembly, flow *types.TcpIpFlow, pager *Pager, streamRing *ring.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int, DetectCoalesceInjection bool) *OrderedCoalesce {
+func NewOrderedCoalesce(log types.Logger, flow *types.TcpIpFlow, pager *Pager, streamRing *ring.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int, DetectCoalesceInjection bool) *OrderedCoalesce {
 	return &OrderedCoalesce{
 		log:        log,
-		ret:        ret,
 		Flow:       flow,
 		pager:      pager,
 		StreamRing: streamRing,
@@ -166,7 +164,6 @@ func (o *OrderedCoalesce) insert(packetManifest PacketManifest, nextSeq types.Se
 	if o.first != nil && o.first.Seq == nextSeq {
 		panic("wtf")
 	}
-
 	p, p2 := o.pagesFromTcp(packetManifest)
 	prev, current := o.traverse(types.Sequence(packetManifest.TCP.Seq))
 	o.pushBetween(prev, current, p, p2)
@@ -251,7 +248,6 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 	} else if diff > 0 {
 		o.first.Skip = int(diff)
 	}
-
 	if o.DetectCoalesceInjection {
 		// XXX stream segment overlap condition
 		if diff < 0 {
@@ -271,12 +267,9 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 		}
 	}
 	o.first.Bytes, nextSeq = byteSpan(nextSeq, o.first.Seq, o.first.Bytes) // XXX injection happens here
-
 	// append reassembly to the reassembly ring buffer
 	o.StreamRing.Value = o.first.Reassembly
 	o.StreamRing = o.StreamRing.Next()
-
-	o.ret = append(o.ret, o.first.Reassembly)
 	o.pager.Replace(o.first)
 	if o.first == o.last {
 		o.first = nil

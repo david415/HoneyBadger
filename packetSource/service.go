@@ -69,6 +69,7 @@ type Inquisitor struct {
 	stopDispatchChan    chan bool
 	closeConnectionChan chan HoneyBadger.CloseRequest
 	connPool            *HoneyBadger.ConnectionPool
+	ClosedList          *HoneyBadger.ClosedList
 	handle              *pcap.Handle
 	pager               *HoneyBadger.Pager
 }
@@ -85,6 +86,7 @@ func NewInquisitor(options *InquisitorOptions) *Inquisitor {
 		closeConnectionChan: make(chan HoneyBadger.CloseRequest),
 		pager:               HoneyBadger.NewPager(),
 		connPool:            HoneyBadger.NewConnectionPool(),
+		ClosedList:          HoneyBadger.NewClosedList(),
 	}
 	return &i
 }
@@ -196,6 +198,7 @@ func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) *HoneyBadger.Conn
 		DetectHijack:                  i.DetectHijack,
 		DetectInjection:               i.DetectInjection,
 		DetectCoalesceInjection:       i.DetectCoalesceInjection,
+		ClosedList:                    i.ClosedList,
 	}
 	conn := HoneyBadger.NewConnection(&options)
 
@@ -228,15 +231,19 @@ func (i *Inquisitor) dispatchPackets() {
 			closeRequest.CloseReadyChan <- true
 			log.Print("closeRequest ready\n")
 		case packetManifest := <-i.dispatchPacketChan:
-			if i.connPool.Has(packetManifest.Flow) {
-				conn, err = i.connPool.Get(packetManifest.Flow)
-				if err != nil {
-					panic(err) // wtf
-				}
+			if i.ClosedList.Has(packetManifest.Flow) {
+				log.Print("ignoring closed connection\n")
 			} else {
-				conn = i.setupNewConnection(packetManifest.Flow)
+				if i.connPool.Has(packetManifest.Flow) {
+					conn, err = i.connPool.Get(packetManifest.Flow)
+					if err != nil {
+						panic(err) // wtf
+					}
+				} else {
+					conn = i.setupNewConnection(packetManifest.Flow)
+				}
+				conn.ReceivePacket(&packetManifest)
 			}
-			conn.ReceivePacket(&packetManifest)
-		}
-	}
+		} // end of select {
+	} // end of for {
 }

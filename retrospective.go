@@ -40,7 +40,6 @@ func injectionInStreamRing(p PacketManifest, flow *types.TcpIpFlow, ringPtr *rin
 	if overlapBytes == nil {
 		return nil
 	}
-	log.Printf("payload len %d offset start %d end %d\n", len(p.Payload), startOffset, endOffset)
 	if !bytes.Equal(overlapBytes, p.Payload[startOffset:endOffset]) {
 		log.Print("injection attack detected\n")
 		e := &types.Event{
