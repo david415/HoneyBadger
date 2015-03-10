@@ -37,6 +37,6 @@ type Reassembly struct {
 }
 
 // String returns a string representation of Reassembly
-func (r *Reassembly) String() string {
-	return fmt.Sprintf("Reassembly: Seq %d Bytes len %d data %s\n", r.Seq, len(r.Bytes), string(r.Bytes))
+func (r Reassembly) String() string {
+	return fmt.Sprintf("Reassembly: Seq %d Bytes len %d Skip %d Start %v End %v Seen %s", r.Seq, len(r.Bytes), r.Skip, r.Start, r.End, r.Seen)
 }

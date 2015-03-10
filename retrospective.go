@@ -132,6 +132,11 @@ func getHeadFromRing(ringPtr *ring.Ring, start, end types.Sequence) *ring.Ring {
 			head = prev
 			break
 		}
+
+		if len(current.Value.(types.Reassembly).Bytes) == 0 {
+			panic("zero length payload in ring. wtf.")
+		}
+
 		diff := current.Value.(types.Reassembly).Seq.Difference(start)
 		if diff == 0 {
 			head = current
