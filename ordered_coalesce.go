@@ -270,7 +270,7 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 	// append reassembly to the reassembly ring buffer
 	o.StreamRing.Value = o.first.Reassembly
 	o.StreamRing = o.StreamRing.Next()
-	o.pager.Replace(o.first)
+	reclaim := o.first
 	if o.first == o.last {
 		o.first = nil
 		o.last = nil
@@ -278,6 +278,7 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 		o.first = o.first.next
 		o.first.prev = nil
 	}
+	o.pager.Replace(reclaim)
 	o.pageCount--
 	return nextSeq
 }
