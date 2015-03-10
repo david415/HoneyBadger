@@ -920,7 +920,7 @@ func TestGetOverlapRings(t *testing.T) {
 		if overlapTests[i].want[0] != nil {
 			if ok {
 				if reassembly.Seq.Difference(overlapTests[i].want[0].Seq) != 0 {
-					t.Errorf("in.Seq %d != want.Seq %d\n", reassembly.Seq, overlapTests[i].want[0].Seq)
+					t.Errorf("test %d: reassembly.Seq %d != want.Seq %d\n", i, reassembly.Seq, overlapTests[i].want[0].Seq)
 					t.Fail()
 				}
 			} else {

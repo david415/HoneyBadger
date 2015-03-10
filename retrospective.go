@@ -122,7 +122,7 @@ func getHeadFromRing(ringPtr *ring.Ring, start, end types.Sequence) *ring.Ring {
 		log.Printf("lastestSeq %d < newStartSeq %d\n", current.Value.(types.Reassembly).Seq.Add(len(current.Value.(types.Reassembly).Bytes)-1), start)
 		return nil
 	}
-	for current != ringPtr {
+	for {
 		if !ok {
 			if prev.Value.(types.Reassembly).Seq.Difference(end) < 0 {
 				log.Print("end of segment is before oldest ring buffer entry\n")
