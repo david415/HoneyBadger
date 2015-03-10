@@ -44,6 +44,7 @@ type Pager struct {
 	stopChan        chan bool
 	requestPageChan chan *PageRequest
 	replacePageChan chan *PageReplaceRequest
+	usedRequestChan chan chan int
 }
 
 // NewPager creates a new Pager struct with an initialized pagecache and
@@ -54,6 +55,7 @@ func NewPager() *Pager {
 		requestPageChan: make(chan *PageRequest),
 		replacePageChan: make(chan *PageReplaceRequest),
 		stopChan:        make(chan bool),
+		usedRequestChan: make(chan chan int),
 	}
 }
 
@@ -91,7 +93,10 @@ func (p *Pager) Replace(pagePtr *page) {
 }
 
 func (p *Pager) Used() int {
-	return p.pageCache.used
+	responseChan := make(chan int)
+	p.usedRequestChan <- responseChan
+	used := <-responseChan
+	return used
 }
 
 // receivePageRequests is the event loop of Pager.
@@ -106,6 +111,8 @@ func (p *Pager) receivePageRequests() {
 		case pageReplaceRequest := <-p.replacePageChan:
 			p.pageCache.replace(pageReplaceRequest.Page)
 			pageReplaceRequest.DoneChan <- true
+		case responseChan := <-p.usedRequestChan:
+			responseChan <- p.pageCache.used
 		}
 	}
 }
