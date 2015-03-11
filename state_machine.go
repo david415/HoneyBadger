@@ -196,14 +196,10 @@ func (c *Connection) Start(closeRequestChanListening bool) {
 	go c.startReceivingPackets()
 }
 
-func (c *Connection) StopReceiving() {
-	c.stopChan <- true
-}
-
 // Stop frees up all resources used by the connection
 func (c *Connection) Stop() {
 	log.Printf("stopped tracking %s\n", c.clientFlow.String())
-	go c.StopReceiving()
+	close(c.receiveChan)
 	if c.getAttackDetectedStatus() == false {
 		c.removeAllLogs()
 	} else {
@@ -580,12 +576,7 @@ func (c *Connection) receivePacketState(p *PacketManifest) {
 }
 
 func (c *Connection) startReceivingPackets() {
-	for {
-		select {
-		case <-c.stopChan:
-			return
-		case p := <-c.receiveChan:
-			c.receivePacketState(p)
-		}
+	for p := range c.receiveChan {
+		c.receivePacketState(p)
 	}
 }
