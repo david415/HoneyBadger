@@ -49,7 +49,7 @@ type InquisitorOptions struct {
 	Filter                  string
 	LogDir                  string
 	Snaplen                 int
-	PacketLog               bool
+	LogPackets              bool
 	TcpIdleTimeout          time.Duration
 	MaxRingPackets          int
 	Logger                  types.Logger
@@ -195,6 +195,7 @@ func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) *HoneyBadger.Conn
 		Pager:                         i.pager,
 		LogDir:                        i.LogDir,
 		AttackLogger:                  i.Logger,
+		LogPackets:                    i.LogPackets,
 		DetectHijack:                  i.DetectHijack,
 		DetectInjection:               i.DetectInjection,
 		DetectCoalesceInjection:       i.DetectCoalesceInjection,
@@ -202,7 +203,7 @@ func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) *HoneyBadger.Conn
 	}
 	conn := HoneyBadger.NewConnection(&options)
 
-	if i.PacketLog {
+	if i.LogPackets {
 		conn.PacketLogger = logging.NewPcapLogger(i.LogDir, flow)
 		conn.PacketLogger.Start()
 	}

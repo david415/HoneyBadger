@@ -42,7 +42,7 @@ func main() {
 		logDir                  = flag.String("l", "honeyBadger-logs", "log directory")
 		wireTimeout             = flag.String("w", "3s", "timeout for reading packets off the wire")
 		metadataAttackLog       = flag.Bool("metadata_attack_log", true, "if set to true then attack reports will only include metadata")
-		packetLog               = flag.Bool("packet_log", false, "if set to true then log all packets for each tracked TCP connection")
+		logPackets              = flag.Bool("log_packets", false, "if set to true then log all packets for each tracked TCP connection")
 		tcpTimeout              = flag.Duration("tcp_idle_timeout", time.Minute*5, "tcp idle timeout duration")
 		maxRingPackets          = flag.Int("max_ring_packets", 40, "Max packets per connection stream ring buffer")
 		detectHijack            = flag.Bool("detect_hijack", true, "Detect handshake hijack attacks")
@@ -89,7 +89,7 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		Filter:                  *filter,
 		LogDir:                  *logDir,
 		Snaplen:                 *snaplen,
-		PacketLog:               *packetLog,
+		LogPackets:              *logPackets,
 		TcpIdleTimeout:          *tcpTimeout,
 		MaxRingPackets:          *maxRingPackets,
 		Logger:                  logger,
