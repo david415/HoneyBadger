@@ -81,6 +81,7 @@ type ConnectionOptions struct {
 	CloseRequestChan              chan CloseRequest
 	Pager                         *Pager
 	LogDir                        string
+	LogPackets                    bool
 	AttackLogger                  types.Logger
 	DetectHijack                  bool
 	DetectInjection               bool
@@ -207,7 +208,9 @@ func (c *Connection) Stop() {
 	}
 	c.ClientCoalesce.Close()
 	c.ServerCoalesce.Close()
-	c.PacketLogger.Stop()
+	if c.LogPackets {
+		c.PacketLogger.Stop()
+	}
 	log.Print("end of Stop()\n")
 }
 
