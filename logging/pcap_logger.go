@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"github.com/david415/HoneyBadger/types"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -83,8 +84,10 @@ func (p *PcapLogger) Start() {
 
 // Close causes the file to be closed.
 func (p *PcapLogger) Stop() {
+	log.Print("PcapLogger Stop called.\n")
 	p.stopChan <- true
 	p.fileWriter.Close()
+	log.Print("PcapLogger Stopped.\n")
 }
 
 func (p *PcapLogger) logPackets() {
