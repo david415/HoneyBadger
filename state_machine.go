@@ -134,8 +134,8 @@ func NewConnection(options *ConnectionOptions) *Connection {
 		serverFlow:        &types.TcpIpFlow{},
 	}
 
-	conn.ClientCoalesce = NewOrderedCoalesce(conn.AttackLogger, conn.clientFlow, conn.Pager, conn.ClientStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection)
-	conn.ServerCoalesce = NewOrderedCoalesce(conn.AttackLogger, conn.serverFlow, conn.Pager, conn.ServerStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection)
+	conn.ClientCoalesce = NewOrderedCoalesce(conn.Close, conn.AttackLogger, conn.clientFlow, conn.Pager, conn.ClientStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection)
+	conn.ServerCoalesce = NewOrderedCoalesce(conn.Close, conn.AttackLogger, conn.serverFlow, conn.Pager, conn.ServerStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection)
 
 	return &conn
 }
@@ -384,6 +384,7 @@ func (c *Connection) stateDataTransfer(p PacketManifest) {
 		if p.TCP.RST {
 			log.Print("got RST!\n")
 			c.Close()
+			return
 		}
 		if len(p.Payload) > 0 {
 			reassembly := types.Reassembly{
@@ -404,12 +405,10 @@ func (c *Connection) stateDataTransfer(p PacketManifest) {
 			}
 		}
 	} else if diff < 0 { // future-out-of-order packet case
-		if len(p.Payload) > 0 {
-			if p.Flow.Equal(c.clientFlow) {
-				c.clientNextSeq = c.ServerCoalesce.insert(p, c.clientNextSeq)
-			} else {
-				c.serverNextSeq = c.ClientCoalesce.insert(p, c.serverNextSeq)
-			}
+		if p.Flow.Equal(c.clientFlow) {
+			c.clientNextSeq = c.ServerCoalesce.insert(p, c.clientNextSeq)
+		} else {
+			c.serverNextSeq = c.ClientCoalesce.insert(p, c.serverNextSeq)
 		}
 	}
 }
