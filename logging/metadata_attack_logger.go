@@ -27,6 +27,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 )
 
 // AttackMetadataJsonLogger is responsible for recording all attack reports as JSON objects in a file.
@@ -35,7 +36,7 @@ type AttackMetadataJsonLogger struct {
 	writer           io.WriteCloser
 	LogDir           string
 	stopChan         chan bool
-	attackReportChan chan *types.Event
+	attackReportChan chan types.EventWithMutex
 }
 
 // NewAttackMetadataJsonLogger returns a pointer to a AttackMetadataJsonLogger struct
@@ -43,7 +44,7 @@ func NewAttackMetadataJsonLogger(logDir string) *AttackMetadataJsonLogger {
 	a := AttackMetadataJsonLogger{
 		LogDir:           logDir,
 		stopChan:         make(chan bool),
-		attackReportChan: make(chan *types.Event),
+		attackReportChan: make(chan types.EventWithMutex),
 	}
 	return &a
 }
@@ -61,14 +62,19 @@ func (a *AttackMetadataJsonLogger) receiveReports() {
 		select {
 		case <-a.stopChan:
 			return
-		case event := <-a.attackReportChan:
-			a.SerializeAndWrite(event)
+		case eventWithMutex := <-a.attackReportChan:
+			a.SerializeAndWrite(eventWithMutex.Event)
+			eventWithMutex.Mutex.Unlock()
 		}
 	}
 }
 
-func (a *AttackMetadataJsonLogger) Log(event *types.Event) {
-	a.attackReportChan <- event
+func (a *AttackMetadataJsonLogger) Log(event *types.Event, mutex sync.Mutex) {
+	eventWithMutex := types.EventWithMutex{
+		Event: event,
+		Mutex: mutex,
+	}
+	a.attackReportChan <- eventWithMutex
 }
 
 func (a *AttackMetadataJsonLogger) SerializeAndWrite(event *types.Event) {
