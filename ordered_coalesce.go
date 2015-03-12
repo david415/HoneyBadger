@@ -131,6 +131,8 @@ type OrderedCoalesce struct {
 	// with any contiguous data.  If <= 0, this is ignored.
 	MaxBufferedPagesPerFlow int
 
+	ConnectionClose func()
+
 	Flow                    *types.TcpIpFlow
 	StreamRing              *ring.Ring
 	log                     types.Logger
@@ -140,8 +142,10 @@ type OrderedCoalesce struct {
 	DetectCoalesceInjection bool
 }
 
-func NewOrderedCoalesce(log types.Logger, flow *types.TcpIpFlow, pager *Pager, streamRing *ring.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int, DetectCoalesceInjection bool) *OrderedCoalesce {
+func NewOrderedCoalesce(ConnectionClose func(), log types.Logger, flow *types.TcpIpFlow, pager *Pager, streamRing *ring.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int, DetectCoalesceInjection bool) *OrderedCoalesce {
 	return &OrderedCoalesce{
+		ConnectionClose: ConnectionClose,
+
 		log:        log,
 		Flow:       flow,
 		pager:      pager,
@@ -164,6 +168,12 @@ func (o *OrderedCoalesce) insert(packetManifest PacketManifest, nextSeq types.Se
 	if o.first != nil && o.first.Seq == nextSeq {
 		panic("wtf")
 	}
+
+	// ignore useless packets
+	if len(packetManifest.Payload) == 0 && (!packetManifest.TCP.FIN && !packetManifest.TCP.RST) {
+		return nextSeq
+	}
+
 	p, p2 := o.pagesFromTcp(packetManifest)
 	prev, current := o.traverse(types.Sequence(packetManifest.TCP.Seq))
 	o.pushBetween(prev, current, p, p2)
@@ -248,6 +258,17 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 	} else if diff > 0 {
 		o.first.Skip = int(diff)
 	}
+
+	if o.first.End {
+		o.ConnectionClose()
+		return 0 // after closing the connection our return value doesn't matter
+	}
+
+	if len(o.first.Bytes) == 0 {
+		log.Print("zero length ordered coalesce packet not added to ring buffer\n")
+		return nextSeq
+	}
+
 	if o.DetectCoalesceInjection {
 		// XXX stream segment overlap condition
 		if diff < 0 {
