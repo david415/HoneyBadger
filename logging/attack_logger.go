@@ -28,6 +28,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -48,7 +49,7 @@ type AttackJsonLogger struct {
 	writer           io.WriteCloser
 	LogDir           string
 	stopChan         chan bool
-	attackReportChan chan *types.Event
+	attackReportChan chan types.EventWithMutex
 }
 
 // NewAttackJsonLogger returns a pointer to a AttackJsonLogger struct
@@ -56,7 +57,7 @@ func NewAttackJsonLogger(logDir string) *AttackJsonLogger {
 	a := AttackJsonLogger{
 		LogDir:           logDir,
 		stopChan:         make(chan bool),
-		attackReportChan: make(chan *types.Event),
+		attackReportChan: make(chan types.EventWithMutex),
 	}
 	return &a
 }
@@ -74,14 +75,19 @@ func (a *AttackJsonLogger) receiveReports() {
 		select {
 		case <-a.stopChan:
 			return
-		case unserializedReport := <-a.attackReportChan:
-			a.SerializeAndWrite(unserializedReport)
+		case eventWithMutex := <-a.attackReportChan:
+			a.SerializeAndWrite(eventWithMutex.Event)
+			eventWithMutex.Mutex.Unlock()
 		}
 	}
 }
 
-func (a *AttackJsonLogger) Log(event *types.Event) {
-	a.attackReportChan <- event
+func (a *AttackJsonLogger) Log(event *types.Event, mutex sync.Mutex) {
+	eventWithMutex := types.EventWithMutex{
+		Event: event,
+		Mutex: mutex,
+	}
+	a.attackReportChan <- eventWithMutex
 }
 
 func (a *AttackJsonLogger) SerializeAndWrite(event *types.Event) {
