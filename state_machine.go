@@ -207,6 +207,7 @@ func (c *Connection) Stop() {
 	}
 	c.ClientCoalesce.Close()
 	c.ServerCoalesce.Close()
+	c.PacketLogger.Stop()
 	log.Print("end of Stop()\n")
 }
 
