@@ -29,7 +29,10 @@ import (
 	"os"
 	"os/signal"
 	"time"
+
+	"net/http"
 )
+import _ "net/http/pprof"
 
 func main() {
 	var (
@@ -54,6 +57,10 @@ Max packets to buffer total before skipping over gaps in connections and
 continuing to stream connection data.  If zero or less, this is infinite`)
 	)
 	flag.Parse()
+
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 
 	wireDuration, err := time.ParseDuration(*wireTimeout)
 	if err != nil {
