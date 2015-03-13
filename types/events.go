@@ -20,7 +20,6 @@
 package types
 
 import (
-	"sync"
 	"time"
 )
 
@@ -38,11 +37,6 @@ type Event struct {
 	OverlapEnd    int
 }
 
-type EventWithMutex struct {
-	Event *Event
-	Mutex sync.Mutex
-}
-
 type Logger interface {
-	Log(r *Event, l sync.Mutex)
+	Log(r *Event)
 }

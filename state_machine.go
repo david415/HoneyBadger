@@ -94,8 +94,6 @@ type ConnectionOptions struct {
 // hanshake hijack and other TCP attacks such as segment veto and sloppy injection.
 type Connection struct {
 	ConnectionOptions
-	eventMutex                sync.Mutex
-	receivePacketMutex        sync.Mutex
 	attackDetected            bool
 	attackDetectionMutex      sync.Mutex
 	closeRequestChanListening bool
@@ -234,8 +232,7 @@ func (c *Connection) detectHijack(p PacketManifest, flow *types.TcpIpFlow) {
 		if types.Sequence(p.TCP.Ack).Difference(c.hijackNextAck) == 0 {
 			if p.TCP.Seq != c.firstSynAckSeq {
 				log.Print("handshake hijack detected\n")
-				c.eventMutex.Lock()
-				c.AttackLogger.Log(&types.Event{Time: time.Now(), Flow: flow, HijackSeq: p.TCP.Seq, HijackAck: p.TCP.Ack}, c.eventMutex)
+				c.AttackLogger.Log(&types.Event{Time: time.Now(), Flow: flow, HijackSeq: p.TCP.Seq, HijackAck: p.TCP.Ack})
 				c.setAttackDetectedStatus()
 			} else {
 				log.Print("SYN/ACK retransmission\n")
@@ -255,8 +252,7 @@ func (c *Connection) detectInjection(p PacketManifest, flow *types.TcpIpFlow) {
 	}
 	event := injectionInStreamRing(p, flow, ringPtr, "ordered injection")
 	if event != nil {
-		c.eventMutex.Lock()
-		c.AttackLogger.Log(event, c.eventMutex)
+		c.AttackLogger.Log(event)
 		c.setAttackDetectedStatus()
 	} else {
 		log.Print("not an attack attempt; a normal TCP retransmission.\n")
@@ -563,9 +559,6 @@ func (c *Connection) ReceivePacket(p *PacketManifest) {
 // http://ants.iis.sinica.edu.tw/3bkmj9ltewxtsrrvnoknfdxrm3zfwrr/17/p520460.pdf
 // The goal is to detect all manner of content injection.
 func (c *Connection) receivePacketState(p *PacketManifest) {
-	c.receivePacketMutex.Lock()
-	defer c.receivePacketMutex.Unlock()
-
 	c.updateLastSeen(p.Timestamp)
 	if c.PacketLogger != nil {
 		c.PacketLogger.WritePacket(p.RawPacket, p.Timestamp)
@@ -587,7 +580,6 @@ func (c *Connection) receivePacketState(p *PacketManifest) {
 
 func (c *Connection) startReceivingPackets() {
 	for p := range c.receiveChan {
-
 		c.receivePacketState(p)
 	}
 }
