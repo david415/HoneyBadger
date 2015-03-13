@@ -95,7 +95,6 @@ type ConnectionOptions struct {
 type Connection struct {
 	ConnectionOptions
 	attackDetected            bool
-	attackDetectionMutex      sync.Mutex
 	closeRequestChanListening bool
 	stopChan                  chan bool
 	receiveChan               chan *PacketManifest
@@ -142,14 +141,10 @@ func NewConnection(options *ConnectionOptions) *Connection {
 }
 
 func (c *Connection) setAttackDetectedStatus() {
-	c.attackDetectionMutex.Lock()
-	defer c.attackDetectionMutex.Unlock()
 	c.attackDetected = true
 }
 
 func (c *Connection) getAttackDetectedStatus() bool {
-	c.attackDetectionMutex.Lock()
-	defer c.attackDetectionMutex.Unlock()
 	return c.attackDetected
 }
 
