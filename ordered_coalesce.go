@@ -19,7 +19,6 @@ import (
 	"container/ring"
 	"github.com/david415/HoneyBadger/types"
 	"log"
-	"sync"
 	"time"
 )
 
@@ -132,8 +131,8 @@ type OrderedCoalesce struct {
 	// with any contiguous data.  If <= 0, this is ignored.
 	MaxBufferedPagesPerFlow int
 
-	EventMutex              sync.Mutex
-	ConnectionClose         func()
+	ConnectionClose func()
+
 	Flow                    *types.TcpIpFlow
 	StreamRing              *ring.Ring
 	log                     types.Logger
@@ -282,8 +281,7 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 			}
 			event := injectionInStreamRing(p, o.Flow, o.StreamRing, "coalesce injection")
 			if event != nil {
-				o.EventMutex.Lock()
-				o.log.Log(event, o.EventMutex)
+				o.log.Log(event)
 			} else {
 				log.Print("not an attack attempt; a normal TCP unordered stream segment coalesce\n")
 			}
