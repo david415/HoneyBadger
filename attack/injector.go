@@ -19,8 +19,8 @@
 package attack
 
 import (
-	"code.google.com/p/gopacket"
-	"code.google.com/p/gopacket/layers"
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"github.com/david415/HoneyBadger/types"
 	"golang.org/x/net/ipv4"
 	"net"

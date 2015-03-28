@@ -1,8 +1,8 @@
 package HoneyBadger
 
 import (
-	"code.google.com/p/gopacket"
-	"code.google.com/p/gopacket/layers"
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"container/ring"
 	"github.com/david415/HoneyBadger/types"
 	"log"
