@@ -2,8 +2,8 @@ package HoneyBadger
 
 import (
 	"bytes"
-	"code.google.com/p/gopacket"
-	"code.google.com/p/gopacket/layers"
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"container/ring"
 	//	"fmt"
 	"github.com/david415/HoneyBadger/types"

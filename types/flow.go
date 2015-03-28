@@ -21,8 +21,8 @@
 package types
 
 import (
-	"code.google.com/p/gopacket"
-	"code.google.com/p/gopacket/layers"
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"fmt"
 )
 
@@ -44,7 +44,7 @@ func SequenceFromPacket(packet []byte) (uint32, error) {
 // gopacket's variant of Fowler-Noll-Vo hashing
 // which guarantees collisions of a flow's reverse:
 // A->B == B->A
-// https://code.google.com/p/gopacket/source/browse/flows.go#
+// https://github.com/google/gopacket/blob/master/flows.go
 type ConnectionHash struct {
 	IpFlowHash, TcpFlowHash uint64
 }

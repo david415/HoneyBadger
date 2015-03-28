@@ -21,9 +21,9 @@
 package packetSource
 
 import (
-	"code.google.com/p/gopacket"
-	"code.google.com/p/gopacket/layers"
-	"code.google.com/p/gopacket/pcap"
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap"
 	"github.com/david415/HoneyBadger"
 	"github.com/david415/HoneyBadger/logging"
 	"github.com/david415/HoneyBadger/types"
