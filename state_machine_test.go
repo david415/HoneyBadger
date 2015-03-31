@@ -55,12 +55,7 @@ func TestStateDataTransfer(t *testing.T) {
 		t.Error("invalid state transition\n")
 		t.Fail()
 	}
-	conn.ClientStreamRing.Do(func(x interface{}) {
-		_, ok := x.(types.Reassembly)
-		if ok {
-			clientRingCount += 1
-		}
-	})
+	clientRingCount = conn.ClientStreamRing.Prev().Count()
 	if clientRingCount != 1 {
 		t.Errorf("clientRingCount %d not correct", clientRingCount)
 		t.Fail()
@@ -86,13 +81,7 @@ func TestStateDataTransfer(t *testing.T) {
 		t.Error("invalid state transition\n")
 		t.Fail()
 	}
-	clientRingCount = 0
-	conn.ClientStreamRing.Do(func(x interface{}) {
-		_, ok := x.(types.Reassembly)
-		if ok {
-			clientRingCount += 1
-		}
-	})
+	clientRingCount = conn.ClientStreamRing.Prev().Count()
 	if clientRingCount != 2 {
 		t.Errorf("clientRingCount %d not correct", clientRingCount)
 		t.Fail()
@@ -117,13 +106,7 @@ func TestStateDataTransfer(t *testing.T) {
 		t.Error("invalid state transition\n")
 		t.Fail()
 	}
-	clientRingCount = 0
-	conn.ClientStreamRing.Do(func(x interface{}) {
-		_, ok := x.(types.Reassembly)
-		if ok {
-			clientRingCount += 1
-		}
-	})
+	clientRingCount = conn.ClientStreamRing.Prev().Count()
 	if clientRingCount != 2 {
 		t.Errorf("clientRingCount %d not correct", clientRingCount)
 		t.Fail()

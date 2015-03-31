@@ -16,7 +16,6 @@ package HoneyBadger
 
 import (
 	"code.google.com/p/gopacket/layers"
-	"container/ring"
 	"github.com/david415/HoneyBadger/types"
 	"log"
 	"time"
@@ -134,7 +133,7 @@ type OrderedCoalesce struct {
 	ConnectionClose func()
 
 	Flow                    *types.TcpIpFlow
-	StreamRing              *ring.Ring
+	StreamRing              *types.Ring
 	log                     types.Logger
 	pageCount               int
 	pager                   *Pager
@@ -142,7 +141,7 @@ type OrderedCoalesce struct {
 	DetectCoalesceInjection bool
 }
 
-func NewOrderedCoalesce(ConnectionClose func(), log types.Logger, flow *types.TcpIpFlow, pager *Pager, streamRing *ring.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int, DetectCoalesceInjection bool) *OrderedCoalesce {
+func NewOrderedCoalesce(ConnectionClose func(), log types.Logger, flow *types.TcpIpFlow, pager *Pager, streamRing *types.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int, DetectCoalesceInjection bool) *OrderedCoalesce {
 	return &OrderedCoalesce{
 		ConnectionClose: ConnectionClose,
 
@@ -289,7 +288,7 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 	}
 	o.first.Bytes, nextSeq = byteSpan(nextSeq, o.first.Seq, o.first.Bytes) // XXX injection happens here
 	// append reassembly to the reassembly ring buffer
-	o.StreamRing.Value = o.first.Reassembly
+	o.StreamRing.Reassembly = &o.first.Reassembly
 	o.StreamRing = o.StreamRing.Next()
 	reclaim := o.first
 	if o.first == o.last {

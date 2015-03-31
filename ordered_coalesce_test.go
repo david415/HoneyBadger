@@ -3,7 +3,6 @@ package HoneyBadger
 import (
 	"code.google.com/p/gopacket"
 	"code.google.com/p/gopacket/layers"
-	"container/ring"
 	"github.com/david415/HoneyBadger/types"
 	"log"
 	"net"
@@ -14,7 +13,7 @@ import (
 func TestOrderedCoalesceUsedPages(t *testing.T) {
 	maxBufferedPagesTotal := 1024
 	maxBufferedPagesPerFlow := 1024
-	streamRing := ring.New(40)
+	streamRing := types.NewRing(40)
 	pager := NewPager()
 
 	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))

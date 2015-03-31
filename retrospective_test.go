@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"code.google.com/p/gopacket"
 	"code.google.com/p/gopacket/layers"
-	"container/ring"
-	//	"fmt"
 	"github.com/david415/HoneyBadger/types"
 	"log"
 	"net"
@@ -50,7 +48,7 @@ func TestInjectionDetector(t *testing.T) {
 		LogDir:                        "fake-log-dir",
 	}
 	conn := NewConnection(&options)
-	conn.ClientStreamRing.Value = types.Reassembly{
+	conn.ClientStreamRing.Reassembly = &types.Reassembly{
 		Seq:   types.Sequence(5),
 		Bytes: []byte{1, 2, 3, 4, 5},
 	}
@@ -78,7 +76,7 @@ func TestInjectionDetector(t *testing.T) {
 	conn.clientFlow = conn.serverFlow.Reverse()
 	conn.detectInjection(p, conn.serverFlow)
 
-	if attackLogger.Count == 0 {
+	if attackLogger.Count != 1 {
 		t.Errorf("detectInjection failed; count == %d\n", attackLogger.Count)
 		t.Fail()
 	}
@@ -136,7 +134,7 @@ func TestGetRingSlice(t *testing.T) {
 	}
 	conn := NewConnection(&options)
 	for j := 5; j < 40; j += 5 {
-		conn.ClientStreamRing.Value = types.Reassembly{
+		conn.ClientStreamRing.Reassembly = &types.Reassembly{
 			Seq:   types.Sequence(j),
 			Bytes: []byte{1, 2, 3, 4, 5},
 		}
@@ -165,6 +163,13 @@ func TestGetRingSlice(t *testing.T) {
 	conn.clientFlow = conn.serverFlow.Reverse()
 
 	head, tail := getOverlapRings(p, conn.serverFlow, conn.ClientStreamRing)
+
+	if head == nil {
+		t.Fatal()
+	}
+	if tail == nil {
+		t.Fatal()
+	}
 
 	ringSlice := getRingSlice(head, tail, 0, 1)
 	if !bytes.Equal(ringSlice, []byte{1, 2, 3, 4, 5, 1}) {
@@ -247,8 +252,8 @@ func TestGetRingSlicePanic1(t *testing.T) {
 		}
 	}()
 
-	head := ring.New(3)
-	head.Value = types.Reassembly{
+	head := types.NewRing(3)
+	head.Reassembly = &types.Reassembly{
 		Seq:   types.Sequence(2),
 		Bytes: []byte{1, 2, 3, 4, 5},
 	}
@@ -263,14 +268,14 @@ func TestGetRingSlicePanic3(t *testing.T) {
 		}
 	}()
 
-	head := ring.New(3)
-	head.Value = types.Reassembly{
+	head := types.NewRing(3)
+	head.Reassembly = &types.Reassembly{
 		Seq:   types.Sequence(2),
 		Bytes: []byte{1, 2, 3, 4, 5},
 	}
 
-	tail := ring.New(3)
-	tail.Value = types.Reassembly{
+	tail := types.NewRing(3)
+	tail.Reassembly = &types.Reassembly{
 		Seq:   types.Sequence(2),
 		Bytes: []byte{1, 2, 3, 4, 5},
 	}
@@ -285,8 +290,8 @@ func TestGetRingSlicePanic4(t *testing.T) {
 		}
 	}()
 
-	head := ring.New(3)
-	head.Value = types.Reassembly{
+	head := types.NewRing(3)
+	head.Reassembly = &types.Reassembly{
 		Seq:   types.Sequence(2),
 		Bytes: []byte{1, 2, 3, 4, 5},
 	}
@@ -294,11 +299,11 @@ func TestGetRingSlicePanic4(t *testing.T) {
 }
 
 func TestGetEndSequence(t *testing.T) {
-	var tail *ring.Ring = ring.New(10)
+	var tail *types.Ring = types.NewRing(10)
 	var end types.Sequence
 
 	end = 9
-	tail.Value = types.Reassembly{
+	tail.Reassembly = &types.Reassembly{
 		Seq:   5,
 		Bytes: []byte{1, 2, 3, 4, 5},
 	}
@@ -309,7 +314,7 @@ func TestGetEndSequence(t *testing.T) {
 	}
 
 	end = 9
-	tail.Value = types.Reassembly{
+	tail.Reassembly = &types.Reassembly{
 		Seq:   5,
 		Bytes: []byte{1, 2, 3, 4, 5},
 	}
@@ -322,8 +327,8 @@ func TestGetEndSequence(t *testing.T) {
 
 func TestGetStartSequence(t *testing.T) {
 	var start types.Sequence = 4
-	var head *ring.Ring = ring.New(10)
-	head.Value = types.Reassembly{
+	var head *types.Ring = types.NewRing(10)
+	head.Reassembly = &types.Reassembly{
 		Seq:   3,
 		Bytes: []byte{1, 2, 3, 4, 5, 6, 7},
 	}
@@ -342,8 +347,8 @@ func TestGetStartSequence(t *testing.T) {
 }
 
 func TestGetHeadRingOffset(t *testing.T) {
-	head := ring.New(3)
-	head.Value = types.Reassembly{
+	head := types.NewRing(3)
+	head.Reassembly = &types.Reassembly{
 		Seq:   3,
 		Bytes: []byte{1, 2, 3, 4, 5, 6, 7},
 	}
@@ -370,8 +375,8 @@ func TestGetHeadRingOffset(t *testing.T) {
 }
 
 func TestGetTailRingOffset(t *testing.T) {
-	tail := ring.New(3)
-	tail.Value = types.Reassembly{
+	tail := types.NewRing(3)
+	tail.Reassembly = &types.Reassembly{
 		Seq:   3,
 		Bytes: []byte{1, 2, 3, 4, 5, 6, 7},
 	}
@@ -397,8 +402,8 @@ func TestGetTailRingOffset(t *testing.T) {
 
 func TestGetStartOverlapSequenceAndOffset(t *testing.T) {
 	var start types.Sequence = 3
-	head := ring.New(3)
-	head.Value = types.Reassembly{
+	head := types.NewRing(3)
+	head.Reassembly = &types.Reassembly{
 		Seq:   3,
 		Bytes: []byte{1, 2, 3, 4, 5, 6, 7},
 	}
@@ -448,8 +453,8 @@ func TestGetStartOverlapSequenceAndOffset(t *testing.T) {
 
 func TestGetEndOverlapSequenceAndOffset(t *testing.T) {
 	var end types.Sequence = 3
-	tail := ring.New(3)
-	tail.Value = types.Reassembly{
+	tail := types.NewRing(3)
+	tail.Reassembly = &types.Reassembly{
 		Seq:   3,
 		Bytes: []byte{1, 2, 3, 4, 5, 6, 7},
 	}
@@ -617,7 +622,7 @@ func TestGetOverlapBytes(t *testing.T) {
 	conn := NewConnection(&options)
 
 	for j := 5; j < 40; j += 5 {
-		conn.ClientStreamRing.Value = types.Reassembly{
+		conn.ClientStreamRing.Reassembly = &types.Reassembly{
 			Seq:   types.Sequence(j),
 			Bytes: []byte{byte(j + 1), byte(j + 2), byte(j + 3), byte(j + 4), byte(j + 5)},
 		}
@@ -874,7 +879,7 @@ func TestGetOverlapRings(t *testing.T) {
 	}
 	conn := NewConnection(&options)
 	for j := 5; j < 40; j += 5 {
-		conn.ClientStreamRing.Value = types.Reassembly{
+		conn.ClientStreamRing.Reassembly = &types.Reassembly{
 			Seq:   types.Sequence(j),
 			Bytes: []byte{1, 2, 3, 4, 5},
 		}
@@ -916,27 +921,15 @@ func TestGetOverlapRings(t *testing.T) {
 			t.Error("head or tail is nil\n")
 			t.Fail()
 		}
-		reassembly, ok := head.Value.(types.Reassembly)
 		if overlapTests[i].want[0] != nil {
-			if ok {
-				if reassembly.Seq.Difference(overlapTests[i].want[0].Seq) != 0 {
-					t.Errorf("test %d: reassembly.Seq %d != want.Seq %d\n", i, reassembly.Seq, overlapTests[i].want[0].Seq)
-					t.Fail()
-				}
-			} else {
-				t.Error("head.Value is not a types.Reassembly\n")
+			if head.Reassembly.Seq.Difference(overlapTests[i].want[0].Seq) != 0 {
+				t.Errorf("test %d: reassembly.Seq %d != want.Seq %d\n", i, head.Reassembly.Seq, overlapTests[i].want[0].Seq)
 				t.Fail()
 			}
 		}
-		reassembly, ok = tail.Value.(types.Reassembly)
 		if overlapTests[i].want[1] != nil {
-			if ok {
-				if reassembly.Seq.Difference(overlapTests[i].want[1].Seq) != 0 {
-					t.Errorf("test num %d in.Seq %d != want.Seq %d\n", i, reassembly.Seq, overlapTests[i].want[1].Seq)
-					t.Fail()
-				}
-			} else {
-				t.Error("tail.Value is not a types.Reassembly\n")
+			if tail.Reassembly.Seq.Difference(overlapTests[i].want[1].Seq) != 0 {
+				t.Errorf("test num %d in.Seq %d != want.Seq %d\n", i, head.Reassembly.Seq, overlapTests[i].want[1].Seq)
 				t.Fail()
 			}
 		}

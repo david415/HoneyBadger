@@ -130,24 +130,35 @@ func (i *Inquisitor) setupHandle() {
 }
 
 func (i *Inquisitor) capturePackets() {
-	for {
-		select {
-		case <-i.stopCaptureChan:
-			return
-		default:
+
+	tchan := make(chan TimedRawPacket, 0)
+	// XXX does this need a shutdown code path?
+	go func() {
+		for {
 			rawPacket, captureInfo, err := i.handle.ReadPacketData()
 			if err == io.EOF {
 				log.Print("ReadPacketData got EOF\n")
 				i.Stop()
+				close(tchan)
 				return
 			}
 			if err != nil {
 				continue
 			}
-			i.decodePacketChan <- TimedRawPacket{
+
+			tchan <- TimedRawPacket{
 				Timestamp: captureInfo.Timestamp,
 				RawPacket: rawPacket,
 			}
+		}
+	}()
+
+	for {
+		select {
+		case <-i.stopCaptureChan:
+			return
+		case t := <-tchan:
+			i.decodePacketChan <- t
 		}
 	}
 }

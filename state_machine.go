@@ -23,7 +23,6 @@ package HoneyBadger
 import (
 	"code.google.com/p/gopacket"
 	"code.google.com/p/gopacket/layers"
-	"container/ring"
 	"fmt"
 	"github.com/david415/HoneyBadger/logging"
 	"github.com/david415/HoneyBadger/types"
@@ -111,8 +110,8 @@ type Connection struct {
 	serverNextSeq             types.Sequence
 	hijackNextAck             types.Sequence
 	firstSynAckSeq            uint32
-	ClientStreamRing          *ring.Ring
-	ServerStreamRing          *ring.Ring
+	ClientStreamRing          *types.Ring
+	ServerStreamRing          *types.Ring
 	ClientCoalesce            *OrderedCoalesce
 	ServerCoalesce            *OrderedCoalesce
 	PacketLogger              *logging.PcapLogger
@@ -128,8 +127,8 @@ func NewConnection(options *ConnectionOptions) *Connection {
 		state:             TCP_UNKNOWN,
 		clientNextSeq:     types.InvalidSequence,
 		serverNextSeq:     types.InvalidSequence,
-		ClientStreamRing:  ring.New(options.MaxRingPackets),
-		ServerStreamRing:  ring.New(options.MaxRingPackets),
+		ClientStreamRing:  types.NewRing(options.MaxRingPackets),
+		ServerStreamRing:  types.NewRing(options.MaxRingPackets),
 		clientFlow:        &types.TcpIpFlow{},
 		serverFlow:        &types.TcpIpFlow{},
 	}
@@ -239,7 +238,7 @@ func (c *Connection) detectHijack(p PacketManifest, flow *types.TcpIpFlow) {
 // detectInjection write an attack report if the given packet indicates a TCP injection attack
 // such as segment veto.
 func (c *Connection) detectInjection(p PacketManifest, flow *types.TcpIpFlow) {
-	var ringPtr *ring.Ring
+	var ringPtr *types.Ring
 	if flow.Equal(c.clientFlow) {
 		ringPtr = c.ServerStreamRing
 	} else {
@@ -392,12 +391,12 @@ func (c *Connection) stateDataTransfer(p PacketManifest) {
 				Seen:  p.Timestamp,
 			}
 			if p.Flow.Equal(c.clientFlow) {
-				c.ServerStreamRing.Value = reassembly
+				c.ServerStreamRing.Reassembly = &reassembly
 				c.ServerStreamRing = c.ServerStreamRing.Next()
 				*nextSeqPtr = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
 				*nextSeqPtr = c.ServerCoalesce.addContiguous(*nextSeqPtr)
 			} else {
-				c.ClientStreamRing.Value = reassembly
+				c.ClientStreamRing.Reassembly = &reassembly
 				c.ClientStreamRing = c.ClientStreamRing.Next()
 				*nextSeqPtr = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
 				*nextSeqPtr = c.ClientCoalesce.addContiguous(*nextSeqPtr)
