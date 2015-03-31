@@ -15,8 +15,8 @@
 package HoneyBadger
 
 import (
-	"code.google.com/p/gopacket/layers"
 	"github.com/david415/HoneyBadger/types"
+	"github.com/google/gopacket/layers"
 	"log"
 	"time"
 )

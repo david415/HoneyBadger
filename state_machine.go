@@ -21,11 +21,11 @@
 package HoneyBadger
 
 import (
-	"code.google.com/p/gopacket"
-	"code.google.com/p/gopacket/layers"
 	"fmt"
 	"github.com/david415/HoneyBadger/logging"
 	"github.com/david415/HoneyBadger/types"
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"log"
 	"os"
 	"path/filepath"
