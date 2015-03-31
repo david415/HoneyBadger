@@ -169,17 +169,28 @@ func (o *OrderedCoalesce) insert(packetManifest PacketManifest, nextSeq types.Se
 	}
 
 	// ignore useless packets
-	if len(packetManifest.Payload) == 0 && (!packetManifest.TCP.FIN && !packetManifest.TCP.RST) {
+	if len(packetManifest.Payload) == 0 {
 		return nextSeq
 	}
 
-	p, p2 := o.pagesFromTcp(packetManifest)
+	if o.pageCount < 0 {
+		panic("OrderedCoalesce.insert pageCount less than zero")
+	}
+
+	// XXX todo: handle out of order FIN and RST packets
+
+	p, p2, pcount := o.pagesFromTcp(packetManifest)
 	prev, current := o.traverse(types.Sequence(packetManifest.TCP.Seq))
 	o.pushBetween(prev, current, p, p2)
-	o.pageCount++
+	o.pageCount += pcount
 	if (o.MaxBufferedPagesPerFlow > 0 && o.pageCount >= o.MaxBufferedPagesPerFlow) ||
 		(o.MaxBufferedPagesTotal > 0 && o.pager.Used() >= o.MaxBufferedPagesTotal) {
-		log.Printf("%v hit max buffer size: %d %d, %v, %v", packetManifest.Flow.String(), o.MaxBufferedPagesTotal, o.MaxBufferedPagesPerFlow, o.pageCount, o.pager.Used())
+		log.Printf("%v hit max buffer size: %d %d, %d, %d", packetManifest.Flow.String(), o.MaxBufferedPagesTotal, o.MaxBufferedPagesPerFlow, o.pageCount, o.pager.Used())
+
+		if o.pageCount < 0 {
+			panic("OrderedCoalesce.insert pageCount less than zero")
+		}
+
 		nextSeq = o.addNext(nextSeq)
 		nextSeq = o.addContiguous(nextSeq)
 	}
@@ -191,8 +202,9 @@ func (o *OrderedCoalesce) insert(packetManifest PacketManifest, nextSeq types.Se
 // correctly.
 //
 // It returns the first and last page in its doubly-linked list of new pages.
-func (o *OrderedCoalesce) pagesFromTcp(p PacketManifest) (*page, *page) {
+func (o *OrderedCoalesce) pagesFromTcp(p PacketManifest) (*page, *page, int) {
 	first := o.pager.Next(p.Timestamp)
+	count := 1
 	current := first
 	seq, bytes := types.Sequence(p.TCP.Seq), p.Payload
 	for {
@@ -206,11 +218,12 @@ func (o *OrderedCoalesce) pagesFromTcp(p PacketManifest) (*page, *page) {
 		}
 		seq = seq.Add(length)
 		current.next = o.pager.Next(p.Timestamp)
+		count++
 		current.next.prev = current
 		current = current.next
 	}
 	current.End = p.TCP.RST || p.TCP.FIN
-	return first, current
+	return first, current, count
 }
 
 // traverse traverses our doubly-linked list of pages for the correct
@@ -257,17 +270,14 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 	} else if diff > 0 {
 		o.first.Skip = int(diff)
 	}
-
 	if o.first.End {
 		o.ConnectionClose()
 		return 0 // after closing the connection our return value doesn't matter
 	}
-
 	if len(o.first.Bytes) == 0 {
 		log.Print("zero length ordered coalesce packet not added to ring buffer\n")
 		return nextSeq
 	}
-
 	if o.DetectCoalesceInjection {
 		// XXX stream segment overlap condition
 		if diff < 0 {
@@ -290,6 +300,7 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 	// append reassembly to the reassembly ring buffer
 	o.StreamRing.Reassembly = &o.first.Reassembly
 	o.StreamRing = o.StreamRing.Next()
+
 	reclaim := o.first
 	if o.first == o.last {
 		o.first = nil
@@ -300,6 +311,10 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 	}
 	o.pager.Replace(reclaim)
 	o.pageCount--
+	if o.pageCount < 0 {
+		// XXX wtf srsly
+		panic("pageCount less than zero")
+	}
 	return nextSeq
 }
 
