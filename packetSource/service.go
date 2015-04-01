@@ -21,12 +21,12 @@
 package packetSource
 
 import (
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pcap"
 	"github.com/david415/HoneyBadger"
 	"github.com/david415/HoneyBadger/logging"
 	"github.com/david415/HoneyBadger/types"
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap"
 	"io"
 	"log"
 	"time"
@@ -211,6 +211,7 @@ func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) *HoneyBadger.Conn
 		DetectInjection:               i.DetectInjection,
 		DetectCoalesceInjection:       i.DetectCoalesceInjection,
 		ClosedList:                    i.ClosedList,
+		Pool:                          i.connPool,
 	}
 	conn := HoneyBadger.NewConnection(&options)
 
@@ -219,7 +220,7 @@ func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) *HoneyBadger.Conn
 		conn.PacketLogger.Start()
 	}
 	i.connPool.Put(flow, conn)
-	conn.Start(true)
+	conn.Start()
 	return conn
 }
 
@@ -237,11 +238,6 @@ func (i *Inquisitor) dispatchPackets() {
 			}
 		case <-i.stopDispatchChan:
 			return
-		case closeRequest := <-i.closeConnectionChan:
-			log.Print("closeRequest received\n")
-			i.connPool.Delete(closeRequest.Flow)
-			closeRequest.CloseReadyChan <- true
-			log.Print("closeRequest ready\n")
 		case packetManifest := <-i.dispatchPacketChan:
 			if i.ClosedList.Has(packetManifest.Flow) {
 				log.Print("ignoring closed connection\n")

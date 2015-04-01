@@ -46,6 +46,7 @@ const (
 	TCP_DATA_TRANSFER          = 3
 	TCP_CONNECTION_CLOSING     = 4
 	TCP_INVALID                = 5
+	TCP_CLOSED                 = 6
 
 	// initiating TCP closing finite state machine
 	TCP_FIN_WAIT1 = 0
@@ -86,6 +87,7 @@ type ConnectionOptions struct {
 	DetectInjection               bool
 	DetectCoalesceInjection       bool
 	ClosedList                    *ClosedList
+	Pool                          *ConnectionPool
 }
 
 // Connection is used to track client and server flows for a given TCP connection.
@@ -93,28 +95,27 @@ type ConnectionOptions struct {
 // hanshake hijack and other TCP attacks such as segment veto and sloppy injection.
 type Connection struct {
 	ConnectionOptions
-	attackDetected            bool
-	closeRequestChanListening bool
-	stopChan                  chan bool
-	receiveChan               chan *PacketManifest
-	packetCount               uint64
-	lastSeen                  time.Time
-	lastSeenMutex             sync.Mutex
-	state                     uint8
-	clientState               uint8
-	serverState               uint8
-	clientFlow                *types.TcpIpFlow
-	serverFlow                *types.TcpIpFlow
-	closingFlow               *types.TcpIpFlow
-	clientNextSeq             types.Sequence
-	serverNextSeq             types.Sequence
-	hijackNextAck             types.Sequence
-	firstSynAckSeq            uint32
-	ClientStreamRing          *types.Ring
-	ServerStreamRing          *types.Ring
-	ClientCoalesce            *OrderedCoalesce
-	ServerCoalesce            *OrderedCoalesce
-	PacketLogger              *logging.PcapLogger
+	attackDetected   bool
+	stopChan         chan bool
+	receiveChan      chan *PacketManifest
+	packetCount      uint64
+	lastSeen         time.Time
+	lastSeenMutex    sync.Mutex
+	state            uint8
+	clientState      uint8
+	serverState      uint8
+	clientFlow       *types.TcpIpFlow
+	serverFlow       *types.TcpIpFlow
+	closingFlow      *types.TcpIpFlow
+	clientNextSeq    types.Sequence
+	serverNextSeq    types.Sequence
+	hijackNextAck    types.Sequence
+	firstSynAckSeq   uint32
+	ClientStreamRing *types.Ring
+	ServerStreamRing *types.Ring
+	ClientCoalesce   *OrderedCoalesce
+	ServerCoalesce   *OrderedCoalesce
+	PacketLogger     *logging.PcapLogger
 }
 
 // NewConnection returns a new Connection struct
@@ -168,33 +169,27 @@ func (c *Connection) updateLastSeen(timestamp time.Time) {
 // if CloseRequestChanListening is set to true.
 // After that Stop is called.
 func (c *Connection) Close() {
+	log.Print("Close()\n")
+
+	c.state = TCP_CLOSED
+
 	log.Printf("close detected for %s\n", c.clientFlow.String())
 	c.ClosedList.Put(c.clientFlow)
-
-	if c.closeRequestChanListening {
-		closeReadyChan := make(chan bool)
-		// remove Connection from ConnectionPool
-		c.CloseRequestChan <- CloseRequest{
-			Flow:           c.clientFlow,
-			CloseReadyChan: closeReadyChan,
-		}
-		<-closeReadyChan
-	}
+	c.ConnectionOptions.Pool.Delete(c.clientFlow)
 	c.Stop()
 }
 
 // Start is used to start the packet receiving goroutine for
 // this connection... closeRequestChanListening shall be set to
 // false for many of the TCP FSM unit tests.
-func (c *Connection) Start(closeRequestChanListening bool) {
-	c.closeRequestChanListening = closeRequestChanListening
+func (c *Connection) Start() {
 	go c.startReceivingPackets()
 }
 
 // Stop frees up all resources used by the connection
 func (c *Connection) Stop() {
 	log.Printf("stopped tracking %s\n", c.clientFlow.String())
-	close(c.receiveChan)
+	// XXX must not close channel because data race; close(c.receiveChan)
 	if c.getAttackDetectedStatus() == false {
 		c.removeAllLogs()
 	} else {
@@ -307,8 +302,13 @@ func (c *Connection) stateConnectionRequest(p PacketManifest) {
 // changes our state to TCP_DATA_TRANSFER if we receive a valid final
 // handshake ACK packet.
 func (c *Connection) stateConnectionEstablished(p PacketManifest) {
-	if c.DetectHijack {
-		c.detectHijack(p, p.Flow)
+	if !c.attackDetected {
+		if c.DetectHijack {
+			c.detectHijack(p, p.Flow)
+			if c.attackDetected {
+				return
+			}
+		}
 	}
 	if !p.Flow.Equal(c.clientFlow) {
 		// handshake anomaly
@@ -569,6 +569,9 @@ func (c *Connection) receivePacketState(p *PacketManifest) {
 		c.stateDataTransfer(*p)
 	case TCP_CONNECTION_CLOSING:
 		c.stateConnectionClosing(*p)
+	case TCP_CLOSED:
+		log.Print("connection closed; ignoring received packet.")
+		return
 	}
 }
 

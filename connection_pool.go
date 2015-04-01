@@ -59,6 +59,7 @@ func (c *ClosedList) Put(flow *types.TcpIpFlow) {
 // ConnectionPool is used to track TCP connections.
 // This is inspired by gopacket.tcpassembly's StreamPool.
 type ConnectionPool struct {
+	sync.Mutex
 	connectionMap map[types.ConnectionHash]*Connection
 }
 
@@ -72,27 +73,24 @@ func NewConnectionPool() *ConnectionPool {
 // connectionsLocked returns a slice of Connection pointers.
 // connectionsLocked is meant to be used by some of the other
 // ConnectionPool methods once they've acquired a lock.
-func (c *ConnectionPool) Connections() []*Connection {
+func (c *ConnectionPool) _connections() []*Connection {
 	conns := make([]*Connection, 0, len(c.connectionMap))
-	count := 0
 	for _, conn := range c.connectionMap {
 		conns = append(conns, conn)
-		count += 1
 	}
-	if count == 0 {
-		return nil
-	} else {
-		return conns
-	}
+	return conns
 }
 
 // CloseOlderThan takes a Time argument and closes all the connections
 // that have not received packet since that specified time
 func (c *ConnectionPool) CloseOlderThan(t time.Time) int {
+	c.Lock()
+	defer c.Unlock()
+
 	log.Printf("CloseOlderThan %s", t)
 	closed := 0
 
-	conns := c.Connections()
+	conns := c._connections()
 	if conns == nil {
 		return 0
 	}
@@ -100,7 +98,7 @@ func (c *ConnectionPool) CloseOlderThan(t time.Time) int {
 		lastSeen := conn.getLastSeen()
 		if lastSeen.Equal(t) || lastSeen.Before(t) {
 			conn.Stop()
-			c.Delete(conn.clientFlow)
+			c._delete(conn.clientFlow)
 			closed += 1
 		}
 	}
@@ -112,15 +110,18 @@ func (c *ConnectionPool) CloseOlderThan(t time.Time) int {
 // Closing a Connection means freeing up any resources that a
 // honey badger's Connection struct was using; namely goroutines and memory.
 func (c *ConnectionPool) CloseAllConnections() int {
+	c.Lock()
+	defer c.Unlock()
+
 	log.Print("CloseAllConnections()\n")
-	conns := c.Connections()
+	conns := c._connections()
 	if conns == nil {
 		return 0
 	}
 	count := 0
 	for _, conn := range conns {
 		conn.Stop()
-		c.Delete(conn.clientFlow)
+		c._delete(conn.clientFlow)
 		count += 1
 	}
 	return count
@@ -129,6 +130,9 @@ func (c *ConnectionPool) CloseAllConnections() int {
 // Has returns true if the given TcpIpFlow is a key in our
 // either of flowAMap or flowBMap
 func (c *ConnectionPool) Has(flow *types.TcpIpFlow) bool {
+	c.Lock()
+	defer c.Unlock()
+
 	connectionHash := flow.ConnectionHash()
 	_, ok := c.connectionMap[connectionHash]
 	return ok
@@ -138,6 +142,9 @@ func (c *ConnectionPool) Has(flow *types.TcpIpFlow) bool {
 // to the given TcpIpFlow key in one of the flow maps
 // flowAMap or flowBMap
 func (c *ConnectionPool) Get(flow *types.TcpIpFlow) (*Connection, error) {
+	c.Lock()
+	defer c.Unlock()
+
 	connectionHash := flow.ConnectionHash()
 	val, ok := c.connectionMap[connectionHash]
 	if ok {
@@ -150,11 +157,21 @@ func (c *ConnectionPool) Get(flow *types.TcpIpFlow) (*Connection, error) {
 // Put sets the connectionMap's key/value.. where a given TcpBidirectionalFlow
 // is the key and a Connection struct pointer is the value.
 func (c *ConnectionPool) Put(flow *types.TcpIpFlow, conn *Connection) {
+	c.Lock()
+	defer c.Unlock()
+
 	connectionHash := flow.ConnectionHash()
 	c.connectionMap[connectionHash] = conn
 }
 
 // Delete removes a connection from the pool
 func (c *ConnectionPool) Delete(flow *types.TcpIpFlow) {
+	c.Lock()
+	defer c.Unlock()
+
+	delete(c.connectionMap, flow.ConnectionHash())
+}
+
+func (c *ConnectionPool) _delete(flow *types.TcpIpFlow) {
 	delete(c.connectionMap, flow.ConnectionHash())
 }

@@ -1,9 +1,9 @@
 package HoneyBadger
 
 import (
+	"github.com/david415/HoneyBadger/types"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/david415/HoneyBadger/types"
 	"log"
 	"net"
 	"testing"
@@ -22,7 +22,7 @@ func TestConnectionPool(t *testing.T) {
 		LogDir:                        "fake-log-dir",
 	}
 	conn := NewConnection(&options)
-	conn.Start(false)
+	conn.Start()
 
 	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
@@ -58,7 +58,7 @@ func TestConnectionPool(t *testing.T) {
 	flow = types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 
 	conn = NewConnection(&options)
-	conn.Start(false)
+	conn.Start()
 	conn.clientFlow = flow
 	conn.serverFlow = flow.Reverse()
 
@@ -77,7 +77,7 @@ func TestConnectionPool(t *testing.T) {
 	}
 
 	// check nil case of Connections method
-	conns := connPool.Connections()
+	conns := connPool._connections()
 	if len(conns) != 0 {
 		t.Error("connectionsLocked() should failed to return zero")
 		t.Fail()
@@ -93,7 +93,7 @@ func TestConnectionPool(t *testing.T) {
 	log.Print("before 2nd CloseOlderThan\n")
 	// test close one case of CloseOlderThan
 	conn = NewConnection(&options)
-	conn.Start(false)
+	conn.Start()
 	conn.clientFlow = flow
 	connPool.Put(flow, conn)
 	count = connPool.CloseOlderThan(time.Now())
@@ -108,7 +108,7 @@ func TestConnectionPool(t *testing.T) {
 	timestamp1 := time.Now()
 	timestamp2 := timestamp1.Add(timeDuration)
 	conn = NewConnection(&options)
-	conn.Start(false)
+	conn.Start()
 	conn.clientFlow = flow
 	conn.serverFlow = flow.Reverse()
 	conn.clientNextSeq = 3
@@ -146,7 +146,7 @@ func TestConnectionPool(t *testing.T) {
 	}
 	log.Print("after 3rd CloseOlderThan\n")
 	conn = NewConnection(&options)
-	conn.Start(false)
+	conn.Start()
 	conn.clientFlow = flow
 	conn.serverFlow = flow.Reverse()
 	conn.clientNextSeq = 3
@@ -186,7 +186,7 @@ func TestConnectionPool(t *testing.T) {
 
 	log.Print("before NewConn\n")
 	conn = NewConnection(&options)
-	conn.Start(false)
+	conn.Start()
 	conn2, err := connPool.Get(flow)
 	if err == nil {
 		t.Error("Get method fail")

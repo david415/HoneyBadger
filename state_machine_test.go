@@ -1,9 +1,9 @@
 package HoneyBadger
 
 import (
+	"github.com/david415/HoneyBadger/types"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/david415/HoneyBadger/types"
 	"net"
 	"testing"
 	"time"
@@ -20,7 +20,7 @@ func TestStateDataTransfer(t *testing.T) {
 	}
 	conn := NewConnection(&options)
 	conn.AttackLogger = NewDummyAttackLogger()
-	conn.Start(false)
+	conn.Start()
 
 	conn.state = TCP_DATA_TRANSFER
 	clientRingCount := 0
@@ -124,7 +124,7 @@ func TestTCPConnect(t *testing.T) {
 		LogDir:                        "fake-log-dir",
 	}
 	conn := NewConnection(&options)
-	conn.Start(false)
+	conn.Start()
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},
 		DstIP:    net.IP{2, 3, 4, 5},
@@ -243,10 +243,11 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 		ClosedList:                    NewClosedList(),
+		Pool:                          NewConnectionPool(),
 	}
 	conn := NewConnection(&options)
 	conn.AttackLogger = attackLogger
-	conn.Start(false)
+	conn.Start()
 
 	conn.state = TCP_DATA_TRANSFER
 	conn.serverNextSeq = 4666
@@ -368,14 +369,6 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 	}
 
 	conn.receivePacketState(&p)
-
-	/*
-		closeRequest := <-closeConnectionChan
-		closeFlow := closeRequest.Flow
-		if *closeFlow != flow {
-			t.Errorf("failed to close; current state == %d\n", conn.state)
-		}
-	*/
 }
 
 func TestTCPHijack(t *testing.T) {
@@ -389,10 +382,11 @@ func TestTCPHijack(t *testing.T) {
 		LogDir:                        "fake-log-dir",
 		DetectHijack:                  true,
 		ClosedList:                    NewClosedList(),
+		Pool:                          NewConnectionPool(),
 	}
 	conn := NewConnection(&options)
 	conn.AttackLogger = attackLogger
-	conn.Start(false)
+	conn.Start()
 
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},
@@ -519,7 +513,7 @@ func TestTCPHijack(t *testing.T) {
 	conn.receivePacketState(&p)
 
 	if conn.state != TCP_DATA_TRANSFER {
-		t.Error("invalid state transition\n")
+		t.Errorf("invalid state transition; state is %d\n", conn.state)
 		t.Fail()
 	}
 
