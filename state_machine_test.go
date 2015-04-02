@@ -233,6 +233,9 @@ func TestServerThreeWayClose(t *testing.T) {
 }
 
 func HelperTestThreeWayClose(isClient bool, t *testing.T) {
+	pager := NewPager()
+	pager.Start()
+
 	var closerState, remoteState *uint8
 	attackLogger := NewDummyAttackLogger()
 	options := ConnectionOptions{
@@ -240,7 +243,7 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
 		CloseRequestChan:              nil,
-		Pager:                         nil,
+		Pager:                         pager,
 		LogDir:                        "fake-log-dir",
 		ClosedList:                    NewClosedList(),
 		Pool:                          NewConnectionPool(),

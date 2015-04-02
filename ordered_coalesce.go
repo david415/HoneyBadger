@@ -157,10 +157,7 @@ func NewOrderedCoalesce(ConnectionClose func(), log types.Logger, flow *types.Tc
 
 // Close returns all used pages to the page cache via the Pager
 func (o *OrderedCoalesce) Close() {
-	log.Print("OrderedCoalesce.Close()\n")
-	for p := o.first; p != nil; p = p.next {
-		o.pager.Replace(p)
-	}
+	o.pager.ReplaceAllFrom(o.first)
 }
 
 func (o *OrderedCoalesce) insert(packetManifest PacketManifest, nextSeq types.Sequence) types.Sequence {

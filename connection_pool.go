@@ -113,7 +113,6 @@ func (c *ConnectionPool) CloseAllConnections() int {
 	c.Lock()
 	defer c.Unlock()
 
-	log.Print("CloseAllConnections()\n")
 	conns := c._connections()
 	if conns == nil {
 		return 0

@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func TestConnectionPool(t *testing.T) {
+func TestConnectionPoolDelete(t *testing.T) {
 
 	connPool := NewConnectionPool()
 	options := ConnectionOptions{
@@ -20,6 +20,7 @@ func TestConnectionPool(t *testing.T) {
 		CloseRequestChan:              nil,
 		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
+		Pool:                          connPool,
 	}
 	conn := NewConnection(&options)
 	conn.Start()
@@ -49,23 +50,39 @@ func TestConnectionPool(t *testing.T) {
 		t.Fail()
 	}
 
-	// test CloseAllConnections
-	conn.clientFlow = flow
-	connPool.Put(flow, conn)
+}
 
-	ipFlow, _ = gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 9, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 9, 4, 5)))
-	tcpFlow, _ = gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
-	flow = types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
+func TestConnectionPoolCloseAll(t *testing.T) {
+	pager := NewPager()
+	pager.Start()
+	connPool := NewConnectionPool()
+	options := ConnectionOptions{
+		MaxBufferedPagesTotal:         0,
+		MaxBufferedPagesPerConnection: 0,
+		MaxRingPackets:                40,
+		CloseRequestChan:              nil,
+		Pager:                         pager,
+		LogDir:                        "fake-log-dir",
+		Pool:                          connPool,
+	}
 
-	conn = NewConnection(&options)
+	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
+	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
+	flow := types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
+
+	conn := NewConnection(&options)
 	conn.Start()
 	conn.clientFlow = flow
 	conn.serverFlow = flow.Reverse()
 
 	connPool.Put(flow, conn)
+	log.Print("added new connection flow to pool")
+
+	time.Sleep(1000 * time.Millisecond)
+
 	closed := connPool.CloseAllConnections()
-	if closed != 2 || len(connPool.connectionMap) != 0 {
-		t.Errorf("failed to close all connections from pool: %d\n", len(connPool.connectionMap))
+	if closed != 1 || len(connPool.connectionMap) != 0 {
+		t.Errorf("failed to close %d all connections from pool: %d\n", closed, len(connPool.connectionMap))
 		t.Fail()
 	}
 

@@ -32,8 +32,9 @@ type PageRequest struct {
 }
 
 type PageReplaceRequest struct {
-	Page     *page
-	DoneChan chan bool
+	Page      *page
+	DoneChan  chan bool
+	Inclusive bool
 }
 
 // Pager is used to synchronize access to our pagecache among many goroutines.
@@ -82,14 +83,24 @@ func (p *Pager) Next(timestamp time.Time) *page {
 	return pagePtr
 }
 
-// Replace takes a page pointer argument and appends it to the pagecache's free list
-func (p *Pager) Replace(pagePtr *page) {
+func (p *Pager) _replace(pagePtr *page, inclusive bool) {
 	replaceRequest := PageReplaceRequest{
-		Page:     pagePtr,
-		DoneChan: make(chan bool),
+		Page:      pagePtr,
+		DoneChan:  make(chan bool),
+		Inclusive: inclusive,
 	}
 	p.replacePageChan <- &replaceRequest
 	<-replaceRequest.DoneChan
+}
+
+// Replace takes a page pointer argument and appends it to the pagecache's free list
+func (p *Pager) Replace(pagePtr *page) {
+	p._replace(pagePtr, false)
+}
+
+// ReplaceAllFrom shall perform the Replace operation for all subsequently linked pages
+func (p *Pager) ReplaceAllFrom(pagePtr *page) {
+	p._replace(pagePtr, true)
 }
 
 func (p *Pager) Used() int {
@@ -109,7 +120,13 @@ func (p *Pager) receivePageRequests() {
 		case pageRequest := <-p.requestPageChan:
 			pageRequest.ResponseChan <- p.pageCache.next(pageRequest.Timestamp)
 		case pageReplaceRequest := <-p.replacePageChan:
-			p.pageCache.replace(pageReplaceRequest.Page)
+			if pageReplaceRequest.Inclusive {
+				for c := pageReplaceRequest.Page; c != nil; c = c.next {
+					p.pageCache.replace(c)
+				}
+			} else {
+				p.pageCache.replace(pageReplaceRequest.Page)
+			}
 			pageReplaceRequest.DoneChan <- true
 		case responseChan := <-p.usedRequestChan:
 			responseChan <- p.pageCache.used
