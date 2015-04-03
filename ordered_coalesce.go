@@ -165,7 +165,7 @@ func (o *OrderedCoalesce) insert(packetManifest PacketManifest, nextSeq types.Se
 		panic("wtf")
 	}
 
-	// ignore useless packets
+	// XXX for now we ignore zero size packets
 	if len(packetManifest.Payload) == 0 {
 		return nextSeq
 	}
@@ -275,7 +275,7 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 		log.Print("zero length ordered coalesce packet not added to ring buffer\n")
 		return nextSeq
 	}
-	if o.DetectCoalesceInjection {
+	if o.DetectCoalesceInjection && len(o.first.Bytes) > 0 {
 		// XXX stream segment overlap condition
 		if diff < 0 {
 			p := PacketManifest{
@@ -294,9 +294,12 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 		}
 	}
 	o.first.Bytes, nextSeq = byteSpan(nextSeq, o.first.Seq, o.first.Bytes) // XXX injection happens here
+
 	// append reassembly to the reassembly ring buffer
-	o.StreamRing.Reassembly = &o.first.Reassembly
-	o.StreamRing = o.StreamRing.Next()
+	if len(o.first.Reassembly.Bytes) > 0 {
+		o.StreamRing.Reassembly = &o.first.Reassembly
+		o.StreamRing = o.StreamRing.Next()
+	}
 
 	reclaim := o.first
 	if o.first == o.last {
