@@ -169,11 +169,7 @@ func (c *Connection) updateLastSeen(timestamp time.Time) {
 // if CloseRequestChanListening is set to true.
 // After that Stop is called.
 func (c *Connection) Close() {
-	log.Print("Close()\n")
-
 	c.state = TCP_CLOSED
-
-	log.Printf("close detected for %s\n", c.clientFlow.String())
 	c.ClosedList.Put(c.clientFlow)
 	c.ConnectionOptions.Pool.Delete(c.clientFlow)
 	c.Stop()
@@ -188,7 +184,6 @@ func (c *Connection) Start() {
 
 // Stop frees up all resources used by the connection
 func (c *Connection) Stop() {
-	log.Printf("stopped tracking %s\n", c.clientFlow.String())
 	// XXX must not close channel because data race; close(c.receiveChan)
 	if c.getAttackDetectedStatus() == false {
 		c.removeAllLogs()
@@ -200,12 +195,10 @@ func (c *Connection) Stop() {
 	if c.LogPackets {
 		c.PacketLogger.Stop()
 	}
-	log.Print("end of Stop()\n")
 }
 
 // removeAllLogs removes pcap logs associated with this Connection instance
 func (c *Connection) removeAllLogs() {
-	log.Printf("removeAllLogs %s\n", c.clientFlow.String())
 	os.Remove(filepath.Join(c.LogDir, fmt.Sprintf("%s.pcap", c.clientFlow)))
 	os.Remove(filepath.Join(c.LogDir, fmt.Sprintf("%s.pcap", c.serverFlow)))
 }

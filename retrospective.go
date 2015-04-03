@@ -32,13 +32,17 @@ func injectionInStreamRing(p PacketManifest, flow *types.TcpIpFlow, ringPtr *typ
 	start := types.Sequence(p.TCP.Seq)
 	end := start.Add(len(p.Payload) - 1)
 	head, tail := getOverlapRings(p, flow, ringPtr)
+
 	if head == nil || tail == nil {
 		return nil
 	}
+
 	overlapBytes, startOffset, endOffset := getOverlapBytes(head, tail, start, end)
+
 	if overlapBytes == nil {
 		return nil
 	}
+
 	if !bytes.Equal(overlapBytes, p.Payload[startOffset:endOffset]) {
 		log.Print("injection attack detected\n")
 		e := &types.Event{
@@ -69,22 +73,71 @@ func getOverlapBytes(head, tail *types.Ring, start, end types.Sequence) ([]byte,
 	if head == nil || tail == nil {
 		panic("wtf; head or tail is nil\n")
 	}
+
+	if len(head.Reassembly.Bytes) == 0 {
+		panic("length of head ring element is zero")
+	}
+
+	if len(tail.Reassembly.Bytes) == 0 {
+		panic("length of tail ring element is zero")
+	}
+
+	// XXX todo : something here is broken. fix it!
 	sequenceStart, overlapStartSlice := getStartOverlapSequenceAndOffset(head, start)
 	headOffset := getHeadRingOffset(head, sequenceStart)
+
+	if headOffset > len(head.Reassembly.Bytes) {
+		log.Printf("sequenceStart %d overlapStartSlice %d headOffset %d\n", sequenceStart, overlapStartSlice, headOffset)
+		panic("getOverlapBytes headOffset > len head")
+	}
+
+	if headOffset < 0 {
+		panic("headOffset is below zero")
+	}
 
 	sequenceEnd, overlapEndOffset := getEndOverlapSequenceAndOffset(tail, end)
 	tailOffset := getTailRingOffset(tail, sequenceEnd)
 
 	if head.Reassembly.Seq == tail.Reassembly.Seq {
+		var endOffset int
+
 		log.Print("head == tail\n")
-		endOffset := len(head.Reassembly.Bytes) - tailOffset
-		overlapEndSlice = len(head.Reassembly.Bytes) - tailOffset + overlapStartSlice - headOffset
+
+		if tailOffset < 0 {
+			panic("wtf")
+		} else {
+			endOffset = len(head.Reassembly.Bytes) - tailOffset
+		}
+
+		if overlapStartSlice < 0 {
+			panic("wtf impossible")
+		} else {
+			overlapEndSlice = len(head.Reassembly.Bytes) - tailOffset + overlapStartSlice - headOffset
+		}
+
 		overlapBytes = head.Reassembly.Bytes[headOffset:endOffset]
 	} else {
 		log.Print("head != tail\n")
+
+		if tailOffset < 0 {
+			panic("wtf")
+		}
+
+		// XXX wrong
 		totalLen := start.Difference(end) + 1
-		overlapEndSlice = totalLen - overlapEndOffset
+
+		if overlapEndOffset < 0 {
+			overlapEndSlice = 0
+		} else {
+			overlapEndSlice = totalLen - overlapEndOffset
+		}
+
 		tailSlice := len(tail.Reassembly.Bytes) - tailOffset
+
+		if tailSlice < 0 {
+			panic("tailSlice is below zero")
+		}
+
 		overlapBytes = getRingSlice(head, tail, headOffset, tailSlice)
 		if overlapBytes == nil {
 			return nil, 0, 0
@@ -235,6 +288,9 @@ func getHeadRingOffset(head *types.Ring, start types.Sequence) int {
 func getStartOverlapSequenceAndOffset(head *types.Ring, start types.Sequence) (types.Sequence, int) {
 	seqStart := getStartSequence(head, start)
 	offset := int(start.Difference(seqStart))
+	if offset < 0 {
+		panic("getStartOverlapSequenceAndOffset offset < 0")
+	}
 	return seqStart, offset
 }
 
