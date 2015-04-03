@@ -245,7 +245,6 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		CloseRequestChan:              nil,
 		Pager:                         pager,
 		LogDir:                        "fake-log-dir",
-		ClosedList:                    NewClosedList(),
 		Pool:                          NewConnectionPool(),
 	}
 	conn := NewConnection(&options)
@@ -384,7 +383,6 @@ func TestTCPHijack(t *testing.T) {
 		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 		DetectHijack:                  true,
-		ClosedList:                    NewClosedList(),
 		Pool:                          NewConnectionPool(),
 	}
 	conn := NewConnection(&options)

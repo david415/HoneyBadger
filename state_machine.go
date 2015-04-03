@@ -86,7 +86,6 @@ type ConnectionOptions struct {
 	DetectHijack                  bool
 	DetectInjection               bool
 	DetectCoalesceInjection       bool
-	ClosedList                    *ClosedList
 	Pool                          *ConnectionPool
 }
 
@@ -170,8 +169,18 @@ func (c *Connection) updateLastSeen(timestamp time.Time) {
 // After that Stop is called.
 func (c *Connection) Close() {
 	c.state = TCP_CLOSED
-	c.ClosedList.Put(c.clientFlow)
+
+	// remove this connection from the pool so that
+	// further packets will not make it here anymore
 	c.ConnectionOptions.Pool.Delete(c.clientFlow)
+
+	// sloppy ensurance that if the next sniffed packet is destined for this connection
+	// then we'll sleep through it before closing the receiveChan.
+	go func() { // sloppy way to mitigate race with packet sniffer
+		time.Sleep(40 * time.Second)
+		close(c.receiveChan)
+	}()
+
 	c.Stop()
 }
 
@@ -362,6 +371,9 @@ func (c *Connection) stateDataTransfer(p PacketManifest) {
 			if c.DetectInjection {
 				c.detectInjection(p, p.Flow)
 			}
+		} else {
+			// deal with strange packets here...
+			// possibly RST or FIN
 		}
 	} else if diff == 0 { // contiguous
 		if p.TCP.FIN {
