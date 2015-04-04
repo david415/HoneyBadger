@@ -298,33 +298,6 @@ func TestGetRingSlicePanic4(t *testing.T) {
 	_ = getRingSlice(head, head, 0, 0)
 }
 
-func TestGetEndSequence(t *testing.T) {
-	var tail *types.Ring = types.NewRing(10)
-	var end types.Sequence
-
-	end = 9
-	tail.Reassembly = &types.Reassembly{
-		Seq:   5,
-		Bytes: []byte{1, 2, 3, 4, 5},
-	}
-	endSeq := getEndSequence(tail, end)
-	if endSeq.Difference(end) != 0 {
-		t.Errorf("endSeq %d != end %d\n", endSeq, end)
-		t.Fail()
-	}
-
-	end = 9
-	tail.Reassembly = &types.Reassembly{
-		Seq:   5,
-		Bytes: []byte{1, 2, 3, 4, 5},
-	}
-	endSeq = getEndSequence(tail, end.Add(1))
-	if endSeq.Difference(end) != 0 {
-		t.Errorf("endSeq %d != end %d\n", endSeq, end)
-		t.Fail()
-	}
-}
-
 func TestGetStartSequence(t *testing.T) {
 	var start types.Sequence = 4
 	var head *types.Ring = types.NewRing(10)
@@ -342,162 +315,6 @@ func TestGetStartSequence(t *testing.T) {
 	startSeq = getStartSequence(head, start)
 	if startSeq != start.Add(1) {
 		t.Errorf("startSeq %d != start %d\n", startSeq, start.Add(1))
-		t.Fail()
-	}
-}
-
-func TestGetHeadRingOffset(t *testing.T) {
-	head := types.NewRing(3)
-	head.Reassembly = &types.Reassembly{
-		Seq:   3,
-		Bytes: []byte{1, 2, 3, 4, 5, 6, 7},
-	}
-	offset := getHeadRingOffset(head, 5)
-	if offset < 0 {
-		t.Error("offset less than zero\n")
-		t.Fail()
-	}
-	if offset != 2 {
-		t.Error("offset incorrect\n")
-		t.Fail()
-	}
-	offset = getHeadRingOffset(head, 3)
-	if offset != 0 {
-		t.Error("offset incorrect\n")
-		t.Fail()
-	}
-
-	offset = getHeadRingOffset(head, 4)
-	if offset != 1 {
-		t.Error("offset incorrect\n")
-		t.Fail()
-	}
-}
-
-func TestGetTailRingOffset(t *testing.T) {
-	tail := types.NewRing(3)
-	tail.Reassembly = &types.Reassembly{
-		Seq:   3,
-		Bytes: []byte{1, 2, 3, 4, 5, 6, 7},
-	}
-
-	offset := getTailRingOffset(tail, 4)
-	if offset != 5 {
-		t.Errorf("want 5 got %d\n", offset)
-		t.Fail()
-	}
-
-	offset = getTailRingOffset(tail, 5)
-	if offset != 4 {
-		t.Errorf("want 4 got %d\n", offset)
-		t.Fail()
-	}
-
-	offset = getTailRingOffset(tail, 6)
-	if offset != 3 {
-		t.Errorf("want 3 got %d\n", offset)
-		t.Fail()
-	}
-}
-
-func TestGetStartOverlapSequenceAndOffset(t *testing.T) {
-	var start types.Sequence = 3
-	head := types.NewRing(3)
-	head.Reassembly = &types.Reassembly{
-		Seq:   3,
-		Bytes: []byte{1, 2, 3, 4, 5, 6, 7},
-	}
-	sequence, offset := getStartOverlapSequenceAndOffset(head, start)
-	if offset != 0 {
-		t.Error("offset != 0\n")
-		t.Fail()
-	}
-	if sequence != 3 {
-		t.Error("incorrect sequence")
-		t.Fail()
-	}
-
-	start = 4
-	sequence, offset = getStartOverlapSequenceAndOffset(head, start)
-	if offset != 0 {
-		t.Errorf("offset %d != 1\n", offset)
-		t.Fail()
-	}
-	if sequence != 4 {
-		t.Error("incorrect sequence")
-		t.Fail()
-	}
-
-	start = 2
-	sequence, offset = getStartOverlapSequenceAndOffset(head, start)
-	if offset != 1 {
-		t.Errorf("offset %d != 1\n", offset)
-		t.Fail()
-	}
-	if sequence != 3 {
-		t.Error("incorrect sequence")
-		t.Fail()
-	}
-
-	start = 1
-	sequence, offset = getStartOverlapSequenceAndOffset(head, start)
-	if offset != 2 {
-		t.Errorf("offset %d != 2\n", offset)
-		t.Fail()
-	}
-	if sequence != 3 {
-		t.Error("incorrect sequence")
-		t.Fail()
-	}
-}
-
-func TestGetEndOverlapSequenceAndOffset(t *testing.T) {
-	var end types.Sequence = 3
-	tail := types.NewRing(3)
-	tail.Reassembly = &types.Reassembly{
-		Seq:   3,
-		Bytes: []byte{1, 2, 3, 4, 5, 6, 7},
-	}
-	sequence, offset := getEndOverlapSequenceAndOffset(tail, end)
-	if offset != 0 {
-		t.Error("offset != 0\n")
-		t.Fail()
-	}
-	if sequence != 3 {
-		t.Error("incorrect sequence")
-		t.Fail()
-	}
-
-	end = 9
-	sequence, offset = getEndOverlapSequenceAndOffset(tail, end)
-	if offset != 0 {
-		t.Error("offset != 0\n")
-		t.Fail()
-	}
-	if sequence != end {
-		t.Error("incorrect sequence")
-		t.Fail()
-	}
-
-	end = 10
-	sequence, offset = getEndOverlapSequenceAndOffset(tail, end)
-	if offset != 1 {
-		t.Error("offset != 1\n")
-		t.Fail()
-	}
-	if sequence != end-1 {
-		t.Error("incorrect sequence")
-		t.Fail()
-	}
-
-	end = 11
-	sequence, offset = getEndOverlapSequenceAndOffset(tail, end)
-	if offset != 2 {
-		t.Error("offset != 2\n")
-		t.Fail()
-	}
-	if sequence != end-2 {
-		t.Error("incorrect sequence")
 		t.Fail()
 	}
 }
@@ -539,7 +356,7 @@ func TestGetOverlapBytes(t *testing.T) {
 			reassemblyInput{4, []byte{1, 2, 3, 4, 5, 6, 7}}, TestOverlapBytesWant{
 				bytes:       []byte{6, 7, 8, 9, 10, 11},
 				startOffset: 1,
-				endOffset:   7,
+				endOffset:   6,
 			},
 		},
 		{
@@ -660,6 +477,7 @@ func TestGetOverlapBytes(t *testing.T) {
 			continue
 		}
 
+		log.Printf("test #%d", i)
 		overlapBytes, startOffset, endOffset := getOverlapBytes(head, tail, start, end)
 
 		if startOffset != overlapBytesTests[i].want.startOffset {
