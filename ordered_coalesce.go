@@ -259,7 +259,7 @@ func (o *OrderedCoalesce) pushBetween(prev, next, first, last *page) {
 }
 
 // addNext pops the first page off our doubly-linked-list and
-// appends it to the return array AND appends it to the reassembly-ring.
+// appends it to the reassembly-ring.
 func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 	diff := nextSeq.Difference(o.first.Seq)
 	if nextSeq == types.InvalidSequence {

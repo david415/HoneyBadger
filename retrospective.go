@@ -151,6 +151,8 @@ func getOverlapBytes(head, tail *types.Ring, start, end types.Sequence) ([]byte,
 
 // getOverlapRings returns the head and tail ring elements corresponding to the first and last
 // overlapping ring segments... that overlap with the given packet (PacketManifest).
+// Furthermore geOverlapRings also will make sure none of these ring elements will have a Reassembly.Skip value
+// other than 0 (zero).
 func getOverlapRings(p PacketManifest, flow *types.TcpIpFlow, ringPtr *types.Ring) (*types.Ring, *types.Ring) {
 	var head, tail *types.Ring
 	start := types.Sequence(p.TCP.Seq)
@@ -164,7 +166,8 @@ func getOverlapRings(p PacketManifest, flow *types.TcpIpFlow, ringPtr *types.Rin
 }
 
 // getHeadFromRing returns a pointer to the oldest ring element that
-// contains the beginning of our sequence range (start - end)
+// contains the beginning of our sequence range (start - end) AND
+// whose Reassembly.Skip value is 0 (zero).
 func getHeadFromRing(ringPtr *types.Ring, start, end types.Sequence) *types.Ring {
 	var head *types.Ring
 	current := ringPtr.Prev()
@@ -194,13 +197,23 @@ func getHeadFromRing(ringPtr *types.Ring, start, end types.Sequence) *types.Ring
 		}
 		diff := current.Reassembly.Seq.Difference(start)
 		if diff == 0 {
-			head = current
-			break
+			if current.Reassembly.Skip != 0 {
+				log.Print("getHeadFromRing: stream skip encountered")
+				continue
+			} else {
+				head = current
+				break
+			}
 		} else if diff > 0 {
 			diff = start.Difference(current.Reassembly.Seq.Add(len(current.Reassembly.Bytes) - 1))
 			if diff >= 0 {
-				head = current
-				break
+				if current.Reassembly.Skip != 0 {
+					log.Print("getHeadFromRing: stream skip encountered")
+					continue
+				} else {
+					head = current
+					break
+				}
 			}
 		}
 	}
@@ -208,10 +221,17 @@ func getHeadFromRing(ringPtr *types.Ring, start, end types.Sequence) *types.Ring
 }
 
 // getTailFromRing returns the oldest ring element that contains the beginning of
-// our sequence range (start - end)
+// our sequence range (start - end) and whose range of ring segments all
+// have their Reassembly.Skip value set to 0 (zero).
+// NOTE: this function assumes that head's Reassembly is non-nil and
+// it's Skip value is 0.
 func getTailFromRing(head *types.Ring, end types.Sequence) *types.Ring {
 	for r := head; r != head.Prev(); r = r.Next() {
 		if r.Reassembly == nil {
+			return r.Prev()
+		}
+		if r.Reassembly.Skip != 0 {
+			log.Print("getTailFromRing: stream skip encountered.")
 			return r.Prev()
 		}
 		diff := r.Reassembly.Seq.Add(len(r.Reassembly.Bytes) - 1).Difference(end)
