@@ -353,10 +353,24 @@ func TestGetOverlapBytes(t *testing.T) {
 			},
 		},
 		{
-			reassemblyInput{4, []byte{1, 2, 3, 4, 5, 6, 7}}, TestOverlapBytesWant{
+			reassemblyInput{4, []byte{91, 92, 93, 94, 95, 96, 97}}, TestOverlapBytesWant{
 				bytes:       []byte{6, 7, 8, 9, 10, 11},
 				startOffset: 1,
-				endOffset:   6,
+				endOffset:   7,
+			},
+		},
+		{
+			reassemblyInput{4, []byte{91, 92, 93, 94, 95, 96, 97, 98}}, TestOverlapBytesWant{
+				bytes:       []byte{6, 7, 8, 9, 10, 11, 12},
+				startOffset: 1,
+				endOffset:   8,
+			},
+		},
+		{
+			reassemblyInput{4, []byte{91, 92, 93, 94, 95, 96, 97, 98, 99}}, TestOverlapBytesWant{
+				bytes:       []byte{6, 7, 8, 9, 10, 11, 12, 13},
+				startOffset: 1,
+				endOffset:   9,
 			},
 		},
 		{

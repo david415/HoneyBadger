@@ -82,6 +82,7 @@ func injectionInStreamRing(p PacketManifest, flow *types.TcpIpFlow, ringPtr *typ
 func getOverlapBytes(head, tail *types.Ring, start, end types.Sequence) ([]byte, int, int) {
 	var overlapStartSlice, overlapEndSlice int
 	var overlapBytes []byte
+	var diff int
 
 	if head == nil || tail == nil {
 		panic("wtf; head or tail is nil\n")
@@ -93,21 +94,21 @@ func getOverlapBytes(head, tail *types.Ring, start, end types.Sequence) ([]byte,
 		panic("length of tail ring element is zero")
 	}
 
-	packetLength := start.Difference(end)
+	packetLength := start.Difference(end) + 1
 	if packetLength <= 0 {
 		panic("wtf")
 	}
 	var headOffset int
 	tailLastSeq := tail.Reassembly.Seq.Add(len(tail.Reassembly.Bytes) - 1)
-	diff := head.Reassembly.Seq.Difference(start)
-	if diff < 0 {
+	startDiff := head.Reassembly.Seq.Difference(start)
+	if startDiff < 0 {
 		headOffset = 0
-		overlapStartSlice = -1 * diff
-	} else if diff == 0 {
+		overlapStartSlice = -1 * startDiff
+	} else if startDiff == 0 {
 		headOffset = 0
 		overlapStartSlice = 0
 	} else {
-		headOffset = diff
+		headOffset = startDiff
 		overlapStartSlice = 0
 	}
 	if head.Reassembly.Seq == tail.Reassembly.Seq {
@@ -115,11 +116,11 @@ func getOverlapBytes(head, tail *types.Ring, start, end types.Sequence) ([]byte,
 		var endOffset int
 		diff = tailLastSeq.Difference(end)
 		if diff <= 0 {
-			overlapEndSlice = packetLength + 1
+			overlapEndSlice = packetLength
 			tailDiff := end.Difference(tailLastSeq)
 			endOffset = len(head.Reassembly.Bytes) - tailDiff
 		} else {
-			overlapEndSlice = packetLength - diff + 1
+			overlapEndSlice = packetLength - diff
 			endOffset = len(head.Reassembly.Bytes)
 			log.Printf("endOffset %d diff %d", endOffset, diff)
 		}
@@ -138,7 +139,7 @@ func getOverlapBytes(head, tail *types.Ring, start, end types.Sequence) ([]byte,
 				tailSlice = len(tail.Reassembly.Bytes) - (diff * -1)
 			}
 		} else {
-			overlapEndSlice = packetLength - diff + 1
+			overlapEndSlice = packetLength - diff
 			tailSlice = len(tail.Reassembly.Bytes)
 		}
 		overlapBytes = getRingSlice(head, tail, headOffset, tailSlice)
