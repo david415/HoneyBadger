@@ -226,9 +226,18 @@ func getHeadFromRing(ringPtr *types.Ring, start, end types.Sequence) *types.Ring
 // getTailFromRing returns the oldest ring element that contains the beginning of
 // our sequence range (start - end) and whose range of ring segments all
 // have their Reassembly.Skip value set to 0 (zero).
-// NOTE: this function assumes that head's Reassembly is non-nil and
-// it's Skip value is 0.
 func getTailFromRing(head *types.Ring, end types.Sequence) *types.Ring {
+
+	if head.Reassembly == nil {
+		return nil
+	}
+	if len(head.Reassembly.Bytes) == 0 {
+		return nil
+	}
+	if head.Reassembly.Skip != 0 {
+		return nil
+	}
+
 	for r := head; r != head.Prev(); r = r.Next() {
 		if r.Reassembly == nil {
 			return r.Prev()
