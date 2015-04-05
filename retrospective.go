@@ -195,7 +195,8 @@ func getHeadFromRing(ringPtr *types.Ring, start, end types.Sequence) *types.Ring
 			}
 		}
 		if len(current.Reassembly.Bytes) == 0 {
-			panic("zero length payload in ring. wtf.")
+			log.Print("getHeadFromRing: skipping zero payload ring segment")
+			continue
 		}
 		diff := current.Reassembly.Seq.Difference(start)
 		if diff == 0 {
@@ -230,6 +231,10 @@ func getHeadFromRing(ringPtr *types.Ring, start, end types.Sequence) *types.Ring
 func getTailFromRing(head *types.Ring, end types.Sequence) *types.Ring {
 	for r := head; r != head.Prev(); r = r.Next() {
 		if r.Reassembly == nil {
+			return r.Prev()
+		}
+		if len(r.Reassembly.Bytes) == 0 {
+			log.Print("getTailFromRing: zero payload ring segment encountered.")
 			return r.Prev()
 		}
 		if r.Reassembly.Skip != 0 {

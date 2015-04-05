@@ -272,7 +272,11 @@ func (c *Connection) stateUnknown(p PacketManifest) {
 		c.clientFlow = p.Flow
 		c.serverFlow = p.Flow.Reverse()
 		c.packetCount = FIRST_FEW_PACKETS // skip handshake hijack detection
-		c.clientNextSeq = c.ServerCoalesce.insert(p, c.clientNextSeq)
+
+		// XXX todo handle FIN and RST
+		if len(p.Payload) > 0 {
+			c.clientNextSeq = c.ServerCoalesce.insert(p, c.clientNextSeq)
+		}
 	}
 }
 
