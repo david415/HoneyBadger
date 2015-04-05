@@ -52,6 +52,7 @@ func injectionInStreamRing(p PacketManifest, flow *types.TcpIpFlow, ringPtr *typ
 			Time:          time.Now(),
 			Flow:          flow,
 			Payload:       p.Payload,
+			Overlap:       overlapBytes,
 			StartSequence: start,
 			EndSequence:   end,
 			OverlapStart:  startOffset,
