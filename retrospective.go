@@ -122,9 +122,7 @@ func getOverlapBytes(head, tail *types.Ring, start, end types.Sequence) ([]byte,
 		} else {
 			overlapEndSlice = packetLength - diff
 			endOffset = len(head.Reassembly.Bytes)
-			log.Printf("endOffset %d diff %d", endOffset, diff)
 		}
-		log.Printf("len head %d headOffset %d endOffset %d", len(head.Reassembly.Bytes), headOffset, endOffset)
 		overlapBytes = head.Reassembly.Bytes[headOffset:endOffset]
 	} else {
 		log.Print("head != tail\n")
@@ -147,7 +145,6 @@ func getOverlapBytes(head, tail *types.Ring, start, end types.Sequence) ([]byte,
 			return nil, 0, 0
 		}
 	}
-	log.Printf("len overlapBytes %d overlapStartSlice %d overlapEndSlice %d", len(overlapBytes), overlapStartSlice, overlapEndSlice)
 	return overlapBytes, overlapStartSlice, overlapEndSlice
 }
 
@@ -180,45 +177,38 @@ func getHeadFromRing(ringPtr *types.Ring, start, end types.Sequence) *types.Ring
 		log.Printf("lastestSeq %d < newStartSeq %d\n", current.Reassembly.Seq.Add(len(current.Reassembly.Bytes)-1), start)
 		return nil
 	}
-	for prev, current := ringPtr, ringPtr.Prev(); current != ringPtr; prev, current = current, current.Prev() {
-		if current.Reassembly == nil {
-			if prev.Reassembly != nil {
-				if prev.Reassembly.Seq.Difference(end) < 0 {
-					log.Print("end of segment is before oldest ring buffer entry\n")
-					head = nil
-					break
-				}
-				head = prev
-				break
-			} else {
-				return nil
-			}
-		}
+	head = nil
+	var candidate *types.Ring = nil
+
+	for current := ringPtr.Prev(); current != ringPtr && current.Reassembly != nil; current = current.Prev() {
 		if len(current.Reassembly.Bytes) == 0 {
-			log.Print("getHeadFromRing: skipping zero payload ring segment")
 			continue
 		}
-		diff := current.Reassembly.Seq.Difference(start)
-		if diff == 0 {
-			if current.Reassembly.Skip != 0 {
-				log.Print("getHeadFromRing: stream skip encountered")
-				continue
-			} else {
+		if current.Reassembly.Skip != 0 {
+			log.Print("getHeadFromRing: stream skip encountered")
+			continue
+		}
+		startDiff := current.Reassembly.Seq.Difference(start)
+		if startDiff == 0 {
+			return current
+		}
+		if startDiff < 0 {
+			finishEndDiff := current.Reassembly.Seq.Difference(end)
+			if finishEndDiff >= 0 {
+				candidate = current
+			}
+
+			continue
+		} else {
+			endDiff := start.Difference(current.Reassembly.Seq.Add(len(current.Reassembly.Bytes) - 1))
+			if endDiff >= 0 {
 				head = current
 				break
 			}
-		} else if diff > 0 {
-			diff = start.Difference(current.Reassembly.Seq.Add(len(current.Reassembly.Bytes) - 1))
-			if diff >= 0 {
-				if current.Reassembly.Skip != 0 {
-					log.Print("getHeadFromRing: stream skip encountered")
-					continue
-				} else {
-					head = current
-					break
-				}
-			}
 		}
+	}
+	if head == nil && candidate != nil {
+		head = candidate
 	}
 	return head
 }
@@ -227,7 +217,6 @@ func getHeadFromRing(ringPtr *types.Ring, start, end types.Sequence) *types.Ring
 // our sequence range (start - end) and whose range of ring segments all
 // have their Reassembly.Skip value set to 0 (zero).
 func getTailFromRing(head *types.Ring, end types.Sequence) *types.Ring {
-
 	if head.Reassembly == nil {
 		return nil
 	}

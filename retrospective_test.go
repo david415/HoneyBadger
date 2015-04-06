@@ -230,6 +230,10 @@ func TestGetRingSlice(t *testing.T) {
 	}
 
 	head, tail = getOverlapRings(p, conn.serverFlow, conn.ClientStreamRing)
+
+	log.Printf("sequence of head %d", head.Reassembly.Seq)
+	log.Printf("and tail %d", tail.Reassembly.Seq)
+
 	ringSlice = getRingSlice(head, tail, 0, 2)
 
 	if !bytes.Equal(ringSlice, []byte{1, 2, 3, 4, 5, 1, 2}) {
@@ -573,6 +577,16 @@ func TestGetOverlapRings(t *testing.T) {
 			},
 		},
 		{
+			reassemblyInput{7, []byte{6, 7}}, []*types.Reassembly{
+				&types.Reassembly{
+					Seq: 5,
+				},
+				&types.Reassembly{
+					Seq: 5,
+				},
+			},
+		},
+		{
 			reassemblyInput{5, []byte{1, 2, 3, 4, 5}}, []*types.Reassembly{
 				&types.Reassembly{
 					Seq: 5,
@@ -712,6 +726,7 @@ func TestGetOverlapRings(t *testing.T) {
 	conn := NewConnection(&options)
 	for j := 5; j < 40; j += 5 {
 		conn.ClientStreamRing.Reassembly = &types.Reassembly{
+			Skip:  0,
 			Seq:   types.Sequence(j),
 			Bytes: []byte{1, 2, 3, 4, 5},
 		}
@@ -719,6 +734,7 @@ func TestGetOverlapRings(t *testing.T) {
 	}
 
 	for i := 0; i < len(overlapTests); i++ {
+		log.Printf("test # %d", i)
 		tcp := layers.TCP{
 			Seq:     overlapTests[i].in.Seq,
 			SYN:     false,
@@ -738,7 +754,13 @@ func TestGetOverlapRings(t *testing.T) {
 
 		head, tail := getOverlapRings(p, conn.serverFlow, conn.ClientStreamRing)
 
+		log.Printf("head %v tail %v", head, tail)
+
+		log.Printf("want %v", overlapTests[i].want[0])
+
 		if overlapTests[i].want[0] == nil {
+			log.Print("want nil results")
+
 			if head != nil {
 				t.Error("getOverlapRings did not return a nil ring segment head\n")
 				t.Fail()
@@ -747,22 +769,24 @@ func TestGetOverlapRings(t *testing.T) {
 				t.Error("getOverlapRings did not return a nil ring segment tail\n")
 				t.Fail()
 			}
-			continue
-		}
-		if head == nil || tail == nil {
-			t.Error("head or tail is nil\n")
-			t.Fail()
-		}
-		if overlapTests[i].want[0] != nil {
-			if head.Reassembly.Seq.Difference(overlapTests[i].want[0].Seq) != 0 {
-				t.Errorf("test %d: reassembly.Seq %d != want.Seq %d\n", i, head.Reassembly.Seq, overlapTests[i].want[0].Seq)
-				t.Fail()
+		} else {
+			if overlapTests[i].want[0] != nil {
+				if head == nil || tail == nil {
+					t.Error("head or tail is nil\n")
+					t.Fail()
+				}
 			}
-		}
-		if overlapTests[i].want[1] != nil {
-			if tail.Reassembly.Seq.Difference(overlapTests[i].want[1].Seq) != 0 {
-				t.Errorf("test num %d in.Seq %d != want.Seq %d\n", i, head.Reassembly.Seq, overlapTests[i].want[1].Seq)
-				t.Fail()
+			if overlapTests[i].want[0] != nil {
+				if head.Reassembly.Seq.Difference(overlapTests[i].want[0].Seq) != 0 {
+					t.Errorf("test %d: reassembly.Seq %d != want.Seq %d\n", i, head.Reassembly.Seq, overlapTests[i].want[0].Seq)
+					t.Fail()
+				}
+			}
+			if overlapTests[i].want[1] != nil {
+				if tail.Reassembly.Seq.Difference(overlapTests[i].want[1].Seq) != 0 {
+					t.Errorf("test num %d in.Seq %d != want.Seq %d\n", i, head.Reassembly.Seq, overlapTests[i].want[1].Seq)
+					t.Fail()
+				}
 			}
 		}
 	}
