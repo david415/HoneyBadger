@@ -1,0 +1,11 @@
+{
+	"ImportPath": "github.com/david415/HoneyBadger",
+	"GoVersion": "go1.4.2",
+	"Deps": [
+		{
+			"ImportPath": "github.com/google/gopacket",
+			"Comment": "v1.1.10-2-gfc2fb8a",
+			"Rev": "fc2fb8aef6037fe015468281e37e67519a79bbf2"
+		}
+	]
+}
