@@ -41,21 +41,22 @@ type TimedRawPacket struct {
 // details of how to proceed with honey_bager's TCP connection monitoring.
 // More parameters should soon be added here!
 type InquisitorOptions struct {
-	Interface               string
-	Filename                string
-	WireDuration            time.Duration
-	BufferedPerConnection   int
-	BufferedTotal           int
-	Filter                  string
-	LogDir                  string
-	Snaplen                 int
-	LogPackets              bool
-	TcpIdleTimeout          time.Duration
-	MaxRingPackets          int
-	Logger                  types.Logger
-	DetectHijack            bool
-	DetectInjection         bool
-	DetectCoalesceInjection bool
+	Interface                string
+	Filename                 string
+	WireDuration             time.Duration
+	BufferedPerConnection    int
+	BufferedTotal            int
+	Filter                   string
+	LogDir                   string
+	Snaplen                  int
+	LogPackets               bool
+	TcpIdleTimeout           time.Duration
+	MaxRingPackets           int
+	Logger                   types.Logger
+	DetectHijack             bool
+	DetectInjection          bool
+	DetectCoalesceInjection  bool
+	MaxConcurrentConnections int
 }
 
 // Inquisitor sets up the connection pool and is an abstraction layer for dealing
@@ -68,7 +69,7 @@ type Inquisitor struct {
 	dispatchPacketChan  chan HoneyBadger.PacketManifest
 	stopDispatchChan    chan bool
 	closeConnectionChan chan HoneyBadger.CloseRequest
-	connPool            *HoneyBadger.ConnectionPool
+	pool                *HoneyBadger.ConnectionPool
 	handle              *pcap.Handle
 	pager               *HoneyBadger.Pager
 }
@@ -84,7 +85,7 @@ func NewInquisitor(options *InquisitorOptions) *Inquisitor {
 		stopDispatchChan:    make(chan bool),
 		closeConnectionChan: make(chan HoneyBadger.CloseRequest),
 		pager:               HoneyBadger.NewPager(),
-		connPool:            HoneyBadger.NewConnectionPool(),
+		pool:                HoneyBadger.NewConnectionPool(),
 	}
 	return &i
 }
@@ -105,7 +106,7 @@ func (i *Inquisitor) Stop() {
 	i.stopDispatchChan <- true
 	i.stopDecodeChan <- true
 	i.stopCaptureChan <- true
-	i.connPool.CloseAllConnections()
+	i.pool.CloseAllConnections()
 	i.handle.Close()
 	i.pager.Stop()
 }
@@ -208,7 +209,7 @@ func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) *HoneyBadger.Conn
 		DetectHijack:                  i.DetectHijack,
 		DetectInjection:               i.DetectInjection,
 		DetectCoalesceInjection:       i.DetectCoalesceInjection,
-		Pool: i.connPool,
+		Pool: i.pool,
 	}
 	conn := HoneyBadger.NewConnection(&options)
 
@@ -216,7 +217,7 @@ func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) *HoneyBadger.Conn
 		conn.PacketLogger = logging.NewPcapLogger(i.LogDir, flow)
 		conn.PacketLogger.Start()
 	}
-	i.connPool.Put(flow, conn)
+	i.pool.Put(flow, conn)
 	conn.Start()
 	return conn
 }
@@ -229,21 +230,28 @@ func (i *Inquisitor) dispatchPackets() {
 	for {
 		select {
 		case <-ticker:
-			closed := i.connPool.CloseOlderThan(time.Now().Add(timeout * -1))
+			closed := i.pool.CloseOlderThan(time.Now().Add(timeout * -1))
 			if closed != 0 {
 				log.Printf("timeout closed %d connections\n", closed)
 			}
 		case <-i.stopDispatchChan:
 			return
 		case packetManifest := <-i.dispatchPacketChan:
-			if i.connPool.Has(packetManifest.Flow) {
-				conn, err = i.connPool.Get(packetManifest.Flow)
+			if i.pool.Has(packetManifest.Flow) {
+				conn, err = i.pool.Get(packetManifest.Flow)
 				if err != nil {
 					panic(err) // wtf
 				}
 			} else {
+				if i.MaxConcurrentConnections != 0 {
+					if i.pool.Len() >= i.MaxConcurrentConnections {
+						log.Print("not tracking new connection: max concurrent connections reached.")
+						continue
+					}
+				}
 				conn = i.setupNewConnection(packetManifest.Flow)
 			}
+
 			conn.ReceivePacket(&packetManifest)
 		} // end of select {
 	} // end of for {
