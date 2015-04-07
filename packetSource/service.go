@@ -245,7 +245,6 @@ func (i *Inquisitor) dispatchPackets() {
 			} else {
 				if i.MaxConcurrentConnections != 0 {
 					if i.pool.Len() >= i.MaxConcurrentConnections {
-						log.Print("not tracking new connection: max concurrent connections reached.")
 						continue
 					}
 				}
