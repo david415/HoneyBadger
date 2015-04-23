@@ -61,6 +61,10 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		log.Fatal("invalid wire timeout duration: ", *wireTimeout)
 	}
 
+	if *maxConcurrentConnections == 0 && *bufferedTotal == 0 {
+		log.Fatal("connection_max_buffer and or total_max_buffer must be set to a non-zero value")
+	}
+
 	var logger types.Logger
 
 	if *metadataAttackLog {
