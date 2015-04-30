@@ -69,16 +69,10 @@ type PacketManifest struct {
 	Payload   gopacket.Payload
 }
 
-type CloseRequest struct {
-	Flow           *types.TcpIpFlow
-	CloseReadyChan chan bool
-}
-
 type ConnectionOptions struct {
 	MaxBufferedPagesTotal         int
 	MaxBufferedPagesPerConnection int
 	MaxRingPackets                int
-	CloseRequestChan              chan CloseRequest
 	Pager                         *Pager
 	LogDir                        string
 	LogPackets                    bool
@@ -86,7 +80,7 @@ type ConnectionOptions struct {
 	DetectHijack                  bool
 	DetectInjection               bool
 	DetectCoalesceInjection       bool
-	Pool                          *ConnectionPool
+	Dispatcher                    types.PacketDispatcher
 }
 
 // Connection is used to track client and server flows for a given TCP connection.
@@ -163,27 +157,6 @@ func (c *Connection) updateLastSeen(timestamp time.Time) {
 	}
 }
 
-// Close is used by the Connection to shutdown itself.
-// Firstly it removes it's entry from the connection pool...
-// if CloseRequestChanListening is set to true.
-// After that Stop is called.
-func (c *Connection) Close() {
-	c.state = TCP_CLOSED
-
-	// remove this connection from the pool so that
-	// further packets will not make it here anymore
-	c.ConnectionOptions.Pool.Delete(c.clientFlow)
-
-	// sloppy ensurance that if the next sniffed packet is destined for this connection
-	// then we'll sleep through it before closing the receiveChan.
-	go func() { // sloppy way to mitigate race with packet sniffer
-		time.Sleep(40 * time.Second)
-		close(c.receiveChan)
-	}()
-
-	c.Stop()
-}
-
 // Start is used to start the packet receiving goroutine for
 // this connection... closeRequestChanListening shall be set to
 // false for many of the TCP FSM unit tests.
@@ -191,9 +164,22 @@ func (c *Connection) Start() {
 	go c.startReceivingPackets()
 }
 
-// Stop frees up all resources used by the connection
-func (c *Connection) Stop() {
-	// XXX must not close channel because data race; close(c.receiveChan)
+func (c *Connection) Close() {
+	close(c.receiveChan)
+}
+
+// shutdown is used by the Connection to shutdown itself.
+func (c *Connection) shutdown() {
+	c.state = TCP_CLOSED
+	if c.Dispatcher == nil {
+		close(c.receiveChan) // XXX should cause c.stop() to be called...
+	} else {
+		go c.Dispatcher.CloseRequest()
+	}
+}
+
+// stop frees up all resources used by the connection
+func (c *Connection) stop() {
 	if c.getAttackDetectedStatus() == false {
 		c.removeAllLogs()
 	} else {
@@ -588,4 +574,5 @@ func (c *Connection) startReceivingPackets() {
 	for p := range c.receiveChan {
 		c.receivePacketState(p)
 	}
+	c.stop()
 }

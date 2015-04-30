@@ -68,8 +68,8 @@ type Inquisitor struct {
 	stopDecodeChan      chan bool
 	dispatchPacketChan  chan HoneyBadger.PacketManifest
 	stopDispatchChan    chan bool
-	closeConnectionChan chan HoneyBadger.CloseRequest
-	pool                *HoneyBadger.ConnectionPool
+	closeConnectionChan chan *HoneyBadger.Connection
+	pool                map[types.ConnectionHash]*HoneyBadger.Connection
 	handle              *pcap.Handle
 	pager               *HoneyBadger.Pager
 }
@@ -83,9 +83,9 @@ func NewInquisitor(options *InquisitorOptions) *Inquisitor {
 		stopDecodeChan:      make(chan bool),
 		dispatchPacketChan:  make(chan HoneyBadger.PacketManifest),
 		stopDispatchChan:    make(chan bool),
-		closeConnectionChan: make(chan HoneyBadger.CloseRequest),
+		closeConnectionChan: make(chan *HoneyBadger.Connection),
 		pager:               HoneyBadger.NewPager(),
-		pool:                HoneyBadger.NewConnectionPool(),
+		pool:                make(map[types.ConnectionHash]*HoneyBadger.Connection),
 	}
 	return &i
 }
@@ -106,7 +106,8 @@ func (i *Inquisitor) Stop() {
 	i.stopDispatchChan <- true
 	i.stopDecodeChan <- true
 	i.stopCaptureChan <- true
-	i.pool.CloseAllConnections()
+	closedConns := i.CloseAllConnections()
+	log.Printf("%d connection(s) closed.", closedConns)
 	i.handle.Close()
 	i.pager.Stop()
 }
@@ -126,6 +127,53 @@ func (i *Inquisitor) setupHandle() {
 	if err = i.handle.SetBPFFilter(i.Filter); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// connectionsLocked returns a slice of Connection pointers.
+func (i *Inquisitor) connections() []*HoneyBadger.Connection {
+	conns := make([]*Connection, 0, len(c.connectionMap))
+	for _, conn := range c.connectionMap {
+		conns = append(conns, conn)
+	}
+	return conns
+}
+
+func (i *Inquisitor) CloseRequest(conn *HoneyBadger.Connection) {
+	i.closeRequestChan <- conn
+}
+
+// CloseOlderThan takes a Time argument and closes all the connections
+// that have not received packet since that specified time
+func (i *Inquisitor) CloseOlderThan(t time.Time) int {
+	closed := 0
+	conns := c.connections()
+	if conns == nil {
+		return 0
+	}
+	for _, conn := range conns {
+		lastSeen := conn.getLastSeen()
+		if lastSeen.Equal(t) || lastSeen.Before(t) {
+			conn.Stop()
+			delete(i.pool, conn.clientFlow.ConnectionHash())
+			closed += 1
+		}
+	}
+	return closed
+}
+
+// CloseAllConnections closes all connections in the pool.
+func (i *Inquisitor) CloseAllConnections() int {
+	conns := c.connections()
+	if conns == nil {
+		return 0
+	}
+	count := 0
+	for _, conn := range conns {
+		conn.Close()
+		delete(i.pool, conn.clientFlow.ConnectionHash())
+		count += 1
+	}
+	return count
 }
 
 func (i *Inquisitor) capturePackets() {
@@ -209,7 +257,7 @@ func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) *HoneyBadger.Conn
 		DetectHijack:                  i.DetectHijack,
 		DetectInjection:               i.DetectInjection,
 		DetectCoalesceInjection:       i.DetectCoalesceInjection,
-		Pool: i.pool,
+		Dispatcher:                    i,
 	}
 	conn := HoneyBadger.NewConnection(&options)
 
@@ -217,7 +265,7 @@ func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) *HoneyBadger.Conn
 		conn.PacketLogger = logging.NewPcapLogger(i.LogDir, flow)
 		conn.PacketLogger.Start()
 	}
-	i.pool.Put(flow, conn)
+	i.pool[flow.ConnectionHash()] = conn
 	conn.Start()
 	return conn
 }
@@ -229,22 +277,28 @@ func (i *Inquisitor) dispatchPackets() {
 	ticker := time.Tick(timeout)
 	for {
 		select {
+		case conn := <-i.closeConnectionChan:
+			conn.Close()
+		default:
+		}
+		select {
 		case <-ticker:
-			closed := i.pool.CloseOlderThan(time.Now().Add(timeout * -1))
+			closed := i.CloseOlderThan(time.Now().Add(timeout * -1))
 			if closed != 0 {
 				log.Printf("timeout closed %d connections\n", closed)
 			}
 		case <-i.stopDispatchChan:
 			return
 		case packetManifest := <-i.dispatchPacketChan:
-			if i.pool.Has(packetManifest.Flow) {
-				conn, err = i.pool.Get(packetManifest.Flow)
+			_, ok := i.pool[packetManifest.Flow.ConnectionHash()]
+			if ok {
+				conn, err = i.pool[packetManifest.Flow.ConnectionHash()]
 				if err != nil {
 					panic(err) // wtf
 				}
 			} else {
 				if i.MaxConcurrentConnections != 0 {
-					if i.pool.Len() >= i.MaxConcurrentConnections {
+					if len(i.pool) >= i.MaxConcurrentConnections {
 						continue
 					}
 				}
