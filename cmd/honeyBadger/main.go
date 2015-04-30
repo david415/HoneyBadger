@@ -1,6 +1,5 @@
 /*
- *    honeyBadger.go - HoneyBadger core program for detecting TCP attacks
- *    such as handshake-hijack, segment veto and sloppy injection.
+ *    HoneyBadger main command line tool
  *
  *    Copyright (C) 2014  David Stainton
  *
@@ -24,6 +23,7 @@ import (
 	"flag"
 	"github.com/david415/HoneyBadger"
 	"github.com/david415/HoneyBadger/logging"
+	"github.com/david415/HoneyBadger/packetSource"
 	"github.com/david415/HoneyBadger/types"
 	"log"
 	"os"
@@ -33,6 +33,7 @@ import (
 
 func main() {
 	var (
+		pcapfile                 = flag.String("pcapfile", "", "pcap filename to read packets from rather than a wire interface.")
 		iface                    = flag.String("i", "eth0", "Interface to get packets from")
 		snaplen                  = flag.Int("s", 65536, "SnapLen for pcap packet capture")
 		filter                   = flag.String("f", "tcp", "BPF filter for pcap")
@@ -80,13 +81,9 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 	}
 
 	options := HoneyBadger.InquisitorOptions{
-		Interface:                *iface,
-		WireDuration:             wireDuration,
 		BufferedPerConnection:    *bufferedPerConnection,
 		BufferedTotal:            *bufferedTotal,
-		Filter:                   *filter,
 		LogDir:                   *logDir,
-		Snaplen:                  *snaplen,
 		LogPackets:               *logPackets,
 		TcpIdleTimeout:           *tcpTimeout,
 		MaxRingPackets:           *maxRingPackets,
@@ -97,13 +94,27 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		MaxConcurrentConnections: *maxConcurrentConnections,
 	}
 
-	service := HoneyBadger.NewInquisitor(&options)
+	inquisitor := HoneyBadger.NewInquisitor(&options)
+
+	snifferOptions := packetSource.PcapSnifferOptions{
+		Interface:    *iface,
+		Filename:     *pcapfile,
+		WireDuration: wireDuration,
+		Snaplen:      *snaplen,
+		Filter:       *filter,
+		Dispatcher:   inquisitor,
+	}
+
+	sniffer := packetSource.NewPcapSniffer(&snifferOptions)
+
 	log.Println("HoneyBadger: comprehensive TCP injection attack detection.")
-	service.Start()
+	inquisitor.Start()
+	sniffer.Start()
 
 	// quit when we detect a control-c
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	<-c
-	service.Stop()
+	inquisitor.Stop()
+	sniffer.Stop()
 }

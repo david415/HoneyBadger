@@ -61,6 +61,7 @@ const (
 
 type PacketDispatcher interface {
 	CloseRequest(*Connection)
+	ReceivePacket(PacketManifest)
 }
 
 // PacketManifest is used to send parsed packets via channels to other goroutines

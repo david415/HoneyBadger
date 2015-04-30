@@ -23,10 +23,6 @@ package HoneyBadger
 import (
 	"github.com/david415/HoneyBadger/logging"
 	"github.com/david415/HoneyBadger/types"
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pcap"
-	"io"
 	"log"
 	"time"
 )
@@ -40,14 +36,9 @@ type TimedRawPacket struct {
 // details of how to proceed with honey_bager's TCP connection monitoring.
 // More parameters should soon be added here!
 type InquisitorOptions struct {
-	Interface                string
-	Filename                 string
-	WireDuration             time.Duration
 	BufferedPerConnection    int
 	BufferedTotal            int
-	Filter                   string
 	LogDir                   string
-	Snaplen                  int
 	LogPackets               bool
 	TcpIdleTimeout           time.Duration
 	MaxRingPackets           int
@@ -69,7 +60,6 @@ type Inquisitor struct {
 	stopDispatchChan    chan bool
 	closeConnectionChan chan *Connection
 	pool                map[types.ConnectionHash]*Connection
-	handle              *pcap.Handle
 	pager               *Pager
 }
 
@@ -91,41 +81,16 @@ func NewInquisitor(options *InquisitorOptions) *Inquisitor {
 
 // Start... starts the TCP attack inquisition!
 func (i *Inquisitor) Start() {
-	if i.handle == nil {
-		i.setupHandle()
-	}
-	go i.capturePackets()
-	go i.decodePackets()
-	go i.dispatchPackets()
 	i.pager.Start()
+	go i.dispatchPackets()
 }
 
 // Stop... stops the TCP attack inquisition!
 func (i *Inquisitor) Stop() {
 	i.stopDispatchChan <- true
-	i.stopDecodeChan <- true
-	i.stopCaptureChan <- true
 	closedConns := i.CloseAllConnections()
 	log.Printf("%d connection(s) closed.", closedConns)
-	i.handle.Close()
 	i.pager.Stop()
-}
-
-func (i *Inquisitor) setupHandle() {
-	var err error
-	if i.Filename != "" {
-		log.Printf("Reading from pcap dump %q", i.Filename)
-		i.handle, err = pcap.OpenOffline(i.Filename)
-	} else {
-		log.Printf("Starting capture on interface %q", i.Interface)
-		i.handle, err = pcap.OpenLive(i.Interface, int32(i.Snaplen), true, i.WireDuration)
-	}
-	if err != nil {
-		log.Fatal(err)
-	}
-	if err = i.handle.SetBPFFilter(i.Filter); err != nil {
-		log.Fatal(err)
-	}
 }
 
 // connectionsLocked returns a slice of Connection pointers.
@@ -139,6 +104,10 @@ func (i *Inquisitor) connections() []*Connection {
 
 func (i *Inquisitor) CloseRequest(conn *Connection) {
 	i.closeConnectionChan <- conn
+}
+
+func (i *Inquisitor) ReceivePacket(p PacketManifest) {
+	i.dispatchPacketChan <- p
 }
 
 // CloseOlderThan takes a Time argument and closes all the connections
@@ -173,74 +142,6 @@ func (i *Inquisitor) CloseAllConnections() int {
 		count += 1
 	}
 	return count
-}
-
-func (i *Inquisitor) capturePackets() {
-
-	tchan := make(chan TimedRawPacket, 0)
-	// XXX does this need a shutdown code path?
-	go func() {
-		for {
-			rawPacket, captureInfo, err := i.handle.ReadPacketData()
-			if err == io.EOF {
-				log.Print("ReadPacketData got EOF\n")
-				i.Stop()
-				close(tchan)
-				return
-			}
-			if err != nil {
-				continue
-			}
-
-			tchan <- TimedRawPacket{
-				Timestamp: captureInfo.Timestamp,
-				RawPacket: rawPacket,
-			}
-		}
-	}()
-
-	for {
-		select {
-		case <-i.stopCaptureChan:
-			return
-		case t := <-tchan:
-			i.decodePacketChan <- t
-		}
-	}
-}
-
-func (i *Inquisitor) decodePackets() {
-	var eth layers.Ethernet
-	var ip layers.IPv4
-	var tcp layers.TCP
-	var payload gopacket.Payload
-
-	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet, &eth, &ip, &tcp, &payload)
-	decoded := make([]gopacket.LayerType, 0, 4)
-
-	for {
-		select {
-		case <-i.stopDecodeChan:
-			return
-		case timedRawPacket := <-i.decodePacketChan:
-			newPayload := new(gopacket.Payload)
-			payload = *newPayload
-			err := parser.DecodeLayers(timedRawPacket.RawPacket, &decoded)
-			if err != nil {
-				continue
-			}
-			flow := types.NewTcpIpFlowFromFlows(ip.NetworkFlow(), tcp.TransportFlow())
-			packetManifest := PacketManifest{
-				Timestamp: timedRawPacket.Timestamp,
-				Flow:      flow,
-				RawPacket: timedRawPacket.RawPacket,
-				IP:        ip,
-				TCP:       tcp,
-				Payload:   payload,
-			}
-			i.dispatchPacketChan <- packetManifest
-		}
-	}
 }
 
 func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) *Connection {
