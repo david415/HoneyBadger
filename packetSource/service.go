@@ -131,30 +131,30 @@ func (i *Inquisitor) setupHandle() {
 
 // connectionsLocked returns a slice of Connection pointers.
 func (i *Inquisitor) connections() []*HoneyBadger.Connection {
-	conns := make([]*Connection, 0, len(c.connectionMap))
-	for _, conn := range c.connectionMap {
+	conns := make([]*HoneyBadger.Connection, 0, len(i.pool))
+	for _, conn := range i.pool {
 		conns = append(conns, conn)
 	}
 	return conns
 }
 
 func (i *Inquisitor) CloseRequest(conn *HoneyBadger.Connection) {
-	i.closeRequestChan <- conn
+	i.closeConnectionChan <- conn
 }
 
 // CloseOlderThan takes a Time argument and closes all the connections
 // that have not received packet since that specified time
 func (i *Inquisitor) CloseOlderThan(t time.Time) int {
 	closed := 0
-	conns := c.connections()
+	conns := i.connections()
 	if conns == nil {
 		return 0
 	}
 	for _, conn := range conns {
-		lastSeen := conn.getLastSeen()
+		lastSeen := conn.GetLastSeen()
 		if lastSeen.Equal(t) || lastSeen.Before(t) {
 			conn.Stop()
-			delete(i.pool, conn.clientFlow.ConnectionHash())
+			delete(i.pool, conn.GetConnectionHash())
 			closed += 1
 		}
 	}
@@ -163,14 +163,14 @@ func (i *Inquisitor) CloseOlderThan(t time.Time) int {
 
 // CloseAllConnections closes all connections in the pool.
 func (i *Inquisitor) CloseAllConnections() int {
-	conns := c.connections()
+	conns := i.connections()
 	if conns == nil {
 		return 0
 	}
 	count := 0
 	for _, conn := range conns {
 		conn.Close()
-		delete(i.pool, conn.clientFlow.ConnectionHash())
+		delete(i.pool, conn.GetConnectionHash())
 		count += 1
 	}
 	return count
@@ -249,7 +249,6 @@ func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) *HoneyBadger.Conn
 		MaxBufferedPagesTotal:         i.InquisitorOptions.BufferedTotal,
 		MaxBufferedPagesPerConnection: i.InquisitorOptions.BufferedPerConnection,
 		MaxRingPackets:                i.InquisitorOptions.MaxRingPackets,
-		CloseRequestChan:              i.closeConnectionChan,
 		Pager:                         i.pager,
 		LogDir:                        i.LogDir,
 		AttackLogger:                  i.Logger,
@@ -272,7 +271,6 @@ func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) *HoneyBadger.Conn
 
 func (i *Inquisitor) dispatchPackets() {
 	var conn *HoneyBadger.Connection
-	var err error
 	timeout := i.InquisitorOptions.TcpIdleTimeout
 	ticker := time.Tick(timeout)
 	for {
@@ -292,10 +290,7 @@ func (i *Inquisitor) dispatchPackets() {
 		case packetManifest := <-i.dispatchPacketChan:
 			_, ok := i.pool[packetManifest.Flow.ConnectionHash()]
 			if ok {
-				conn, err = i.pool[packetManifest.Flow.ConnectionHash()]
-				if err != nil {
-					panic(err) // wtf
-				}
+				conn = i.pool[packetManifest.Flow.ConnectionHash()]
 			} else {
 				if i.MaxConcurrentConnections != 0 {
 					if len(i.pool) >= i.MaxConcurrentConnections {

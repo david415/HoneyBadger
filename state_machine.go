@@ -59,6 +59,10 @@ const (
 	TCP_LAST_ACK   = 1
 )
 
+type PacketDispatcher interface {
+	CloseRequest(*Connection)
+}
+
 // PacketManifest is used to send parsed packets via channels to other goroutines
 type PacketManifest struct {
 	Timestamp time.Time
@@ -80,7 +84,7 @@ type ConnectionOptions struct {
 	DetectHijack                  bool
 	DetectInjection               bool
 	DetectCoalesceInjection       bool
-	Dispatcher                    types.PacketDispatcher
+	Dispatcher                    PacketDispatcher
 }
 
 // Connection is used to track client and server flows for a given TCP connection.
@@ -141,8 +145,8 @@ func (c *Connection) getAttackDetectedStatus() bool {
 	return c.attackDetected
 }
 
-// getLastSeen returns the lastSeen timestamp after grabbing the lock
-func (c *Connection) getLastSeen() time.Time {
+// GetLastSeen returns the lastSeen timestamp after grabbing the lock
+func (c *Connection) GetLastSeen() time.Time {
 	c.lastSeenMutex.Lock()
 	defer c.lastSeenMutex.Unlock()
 	return c.lastSeen
@@ -155,6 +159,10 @@ func (c *Connection) updateLastSeen(timestamp time.Time) {
 	if c.lastSeen.Before(timestamp) {
 		c.lastSeen = timestamp
 	}
+}
+
+func (c *Connection) GetConnectionHash() types.ConnectionHash {
+	return c.clientFlow.ConnectionHash()
 }
 
 // Start is used to start the packet receiving goroutine for
@@ -174,12 +182,12 @@ func (c *Connection) shutdown() {
 	if c.Dispatcher == nil {
 		close(c.receiveChan) // XXX should cause c.stop() to be called...
 	} else {
-		go c.Dispatcher.CloseRequest()
+		go c.Dispatcher.CloseRequest(c)
 	}
 }
 
 // stop frees up all resources used by the connection
-func (c *Connection) stop() {
+func (c *Connection) Stop() {
 	if c.getAttackDetectedStatus() == false {
 		c.removeAllLogs()
 	} else {
@@ -574,5 +582,5 @@ func (c *Connection) startReceivingPackets() {
 	for p := range c.receiveChan {
 		c.receivePacketState(p)
 	}
-	c.stop()
+	c.Stop()
 }
