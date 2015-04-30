@@ -22,8 +22,8 @@ package main
 
 import (
 	"flag"
+	"github.com/david415/HoneyBadger"
 	"github.com/david415/HoneyBadger/logging"
-	"github.com/david415/HoneyBadger/packetSource"
 	"github.com/david415/HoneyBadger/types"
 	"log"
 	"os"
@@ -79,7 +79,7 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		logger = loggerInstance
 	}
 
-	options := packetSource.InquisitorOptions{
+	options := HoneyBadger.InquisitorOptions{
 		Interface:                *iface,
 		WireDuration:             wireDuration,
 		BufferedPerConnection:    *bufferedPerConnection,
@@ -97,7 +97,7 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		MaxConcurrentConnections: *maxConcurrentConnections,
 	}
 
-	service := packetSource.NewInquisitor(&options)
+	service := HoneyBadger.NewInquisitor(&options)
 	log.Println("HoneyBadger: comprehensive TCP injection attack detection.")
 	service.Start()
 

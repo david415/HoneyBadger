@@ -18,10 +18,9 @@
  *    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package packetSource
+package HoneyBadger
 
 import (
-	"github.com/david415/HoneyBadger"
 	"github.com/david415/HoneyBadger/logging"
 	"github.com/david415/HoneyBadger/types"
 	"github.com/google/gopacket"
@@ -66,12 +65,12 @@ type Inquisitor struct {
 	stopCaptureChan     chan bool
 	decodePacketChan    chan TimedRawPacket
 	stopDecodeChan      chan bool
-	dispatchPacketChan  chan HoneyBadger.PacketManifest
+	dispatchPacketChan  chan PacketManifest
 	stopDispatchChan    chan bool
-	closeConnectionChan chan *HoneyBadger.Connection
-	pool                map[types.ConnectionHash]*HoneyBadger.Connection
+	closeConnectionChan chan *Connection
+	pool                map[types.ConnectionHash]*Connection
 	handle              *pcap.Handle
-	pager               *HoneyBadger.Pager
+	pager               *Pager
 }
 
 // NewInquisitor creates a new Inquisitor struct
@@ -81,11 +80,11 @@ func NewInquisitor(options *InquisitorOptions) *Inquisitor {
 		stopCaptureChan:     make(chan bool),
 		decodePacketChan:    make(chan TimedRawPacket),
 		stopDecodeChan:      make(chan bool),
-		dispatchPacketChan:  make(chan HoneyBadger.PacketManifest),
+		dispatchPacketChan:  make(chan PacketManifest),
 		stopDispatchChan:    make(chan bool),
-		closeConnectionChan: make(chan *HoneyBadger.Connection),
-		pager:               HoneyBadger.NewPager(),
-		pool:                make(map[types.ConnectionHash]*HoneyBadger.Connection),
+		closeConnectionChan: make(chan *Connection),
+		pager:               NewPager(),
+		pool:                make(map[types.ConnectionHash]*Connection),
 	}
 	return &i
 }
@@ -130,15 +129,15 @@ func (i *Inquisitor) setupHandle() {
 }
 
 // connectionsLocked returns a slice of Connection pointers.
-func (i *Inquisitor) connections() []*HoneyBadger.Connection {
-	conns := make([]*HoneyBadger.Connection, 0, len(i.pool))
+func (i *Inquisitor) connections() []*Connection {
+	conns := make([]*Connection, 0, len(i.pool))
 	for _, conn := range i.pool {
 		conns = append(conns, conn)
 	}
 	return conns
 }
 
-func (i *Inquisitor) CloseRequest(conn *HoneyBadger.Connection) {
+func (i *Inquisitor) CloseRequest(conn *Connection) {
 	i.closeConnectionChan <- conn
 }
 
@@ -231,7 +230,7 @@ func (i *Inquisitor) decodePackets() {
 				continue
 			}
 			flow := types.NewTcpIpFlowFromFlows(ip.NetworkFlow(), tcp.TransportFlow())
-			packetManifest := HoneyBadger.PacketManifest{
+			packetManifest := PacketManifest{
 				Timestamp: timedRawPacket.Timestamp,
 				Flow:      flow,
 				RawPacket: timedRawPacket.RawPacket,
@@ -244,8 +243,8 @@ func (i *Inquisitor) decodePackets() {
 	}
 }
 
-func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) *HoneyBadger.Connection {
-	options := HoneyBadger.ConnectionOptions{
+func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) *Connection {
+	options := ConnectionOptions{
 		MaxBufferedPagesTotal:         i.InquisitorOptions.BufferedTotal,
 		MaxBufferedPagesPerConnection: i.InquisitorOptions.BufferedPerConnection,
 		MaxRingPackets:                i.InquisitorOptions.MaxRingPackets,
@@ -258,7 +257,7 @@ func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) *HoneyBadger.Conn
 		DetectCoalesceInjection:       i.DetectCoalesceInjection,
 		Dispatcher:                    i,
 	}
-	conn := HoneyBadger.NewConnection(&options)
+	conn := NewConnection(&options)
 
 	if i.LogPackets {
 		conn.PacketLogger = logging.NewPcapLogger(i.LogDir, flow)
@@ -270,7 +269,7 @@ func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) *HoneyBadger.Conn
 }
 
 func (i *Inquisitor) dispatchPackets() {
-	var conn *HoneyBadger.Connection
+	var conn *Connection
 	timeout := i.InquisitorOptions.TcpIdleTimeout
 	ticker := time.Tick(timeout)
 	for {
