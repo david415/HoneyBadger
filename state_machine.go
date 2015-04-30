@@ -178,9 +178,12 @@ func (c *Connection) Close() {
 
 // shutdown is used by the Connection to shutdown itself.
 func (c *Connection) shutdown() {
+	if c.state == TCP_CLOSED {
+		return // already
+	}
 	c.state = TCP_CLOSED
 	if c.Dispatcher == nil {
-		close(c.receiveChan) // XXX should cause c.stop() to be called...
+		close(c.receiveChan)
 	} else {
 		go c.Dispatcher.CloseRequest(c)
 	}
@@ -280,17 +283,17 @@ func (c *Connection) stateUnknown(p PacketManifest) {
 func (c *Connection) stateConnectionRequest(p PacketManifest) {
 	if !p.Flow.Equal(c.serverFlow) {
 		//handshake anomaly
-		c.Close()
+		c.shutdown()
 		return
 	}
 	if !(p.TCP.SYN && p.TCP.ACK) {
 		//handshake anomaly
-		c.Close()
+		c.shutdown()
 		return
 	}
 	if c.clientNextSeq.Difference(types.Sequence(p.TCP.Ack)) != 0 {
 		//handshake anomaly
-		c.Close()
+		c.shutdown()
 		return
 	}
 	c.state = TCP_CONNECTION_ESTABLISHED
@@ -312,22 +315,22 @@ func (c *Connection) stateConnectionEstablished(p PacketManifest) {
 	}
 	if !p.Flow.Equal(c.clientFlow) {
 		// handshake anomaly
-		c.Close()
+		c.shutdown()
 		return
 	}
 	if !p.TCP.ACK || p.TCP.SYN {
 		// handshake anomaly
-		c.Close()
+		c.shutdown()
 		return
 	}
 	if types.Sequence(p.TCP.Seq).Difference(c.clientNextSeq) != 0 {
 		// handshake anomaly
-		c.Close()
+		c.shutdown()
 		return
 	}
 	if types.Sequence(p.TCP.Ack).Difference(c.serverNextSeq) != 0 {
 		// handshake anomaly
-		c.Close()
+		c.shutdown()
 		return
 	}
 	c.state = TCP_DATA_TRANSFER
@@ -384,7 +387,7 @@ func (c *Connection) stateDataTransfer(p PacketManifest) {
 		}
 		if p.TCP.RST {
 			log.Print("got RST!\n")
-			c.Close()
+			c.shutdown()
 			return
 		}
 		if len(p.Payload) > 0 {
@@ -418,13 +421,13 @@ func (c *Connection) stateDataTransfer(p PacketManifest) {
 func (c *Connection) stateFinWait1(p PacketManifest, flow *types.TcpIpFlow, nextSeqPtr *types.Sequence, nextAckPtr *types.Sequence, statePtr, otherStatePtr *uint8) {
 	if types.Sequence(p.TCP.Seq).Difference(*nextSeqPtr) != 0 {
 		log.Printf("FIN-WAIT-1: out of order packet received. sequence %d != nextSeq %d\n", p.TCP.Seq, *nextSeqPtr)
-		c.Close()
+		c.shutdown()
 		return
 	}
 	if p.TCP.ACK {
 		if types.Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 { //XXX
 			log.Printf("FIN-WAIT-1: unexpected ACK: got %d expected %d\n", p.TCP.Ack, *nextAckPtr)
-			c.Close()
+			c.shutdown()
 			return
 		}
 		if p.TCP.FIN {
@@ -436,7 +439,7 @@ func (c *Connection) stateFinWait1(p PacketManifest, flow *types.TcpIpFlow, next
 		}
 	} else {
 		log.Print("FIN-WAIT-1: non-ACK packet received.\n")
-		c.Close()
+		c.shutdown()
 	}
 }
 
@@ -446,7 +449,7 @@ func (c *Connection) stateFinWait2(p PacketManifest, flow *types.TcpIpFlow, next
 		if p.TCP.ACK && p.TCP.FIN {
 			if types.Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 {
 				log.Print("FIN-WAIT-1: out of order ACK packet received.\n")
-				c.Close()
+				c.shutdown()
 				return
 			}
 			*nextSeqPtr += 1
@@ -456,11 +459,11 @@ func (c *Connection) stateFinWait2(p PacketManifest, flow *types.TcpIpFlow, next
 
 		} else {
 			log.Print("FIN-WAIT-2: protocol anamoly")
-			c.Close()
+			c.shutdown()
 		}
 	} else {
 		log.Print("FIN-WAIT-2: out of order packet received.\n")
-		c.Close()
+		c.shutdown()
 	}
 }
 
@@ -469,19 +472,19 @@ func (c *Connection) stateCloseWait(p PacketManifest) {
 	flow := types.NewTcpIpFlowFromLayers(p.IP, p.TCP)
 	log.Printf("stateCloseWait: flow %s\n", flow.String())
 	log.Print("CLOSE-WAIT: invalid protocol state\n")
-	c.Close()
+	c.shutdown()
 }
 
 // stateTimeWait represents the TCP FSM's CLOSE-WAIT state
 func (c *Connection) stateTimeWait(p PacketManifest) {
 	log.Print("TIME-WAIT: invalid protocol state\n")
-	c.Close()
+	c.shutdown()
 }
 
 // stateClosing represents the TCP FSM's CLOSING state
 func (c *Connection) stateClosing(p PacketManifest) {
 	log.Print("CLOSING: invalid protocol state\n")
-	c.Close()
+	c.shutdown()
 }
 
 // stateLastAck represents the TCP FSM's LAST-ACK state
@@ -498,7 +501,7 @@ func (c *Connection) stateLastAck(p PacketManifest, flow *types.TcpIpFlow, nextS
 		log.Print("LAST-ACK: out of order packet received\n")
 		log.Printf("LAST-ACK: out of order packet received; got %d expected %d\n", p.TCP.Seq, *nextSeqPtr)
 	}
-	c.Close()
+	c.shutdown()
 }
 
 // stateConnectionClosing handles all the closing states until the closed state has been reached.

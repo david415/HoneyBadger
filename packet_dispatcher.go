@@ -276,6 +276,7 @@ func (i *Inquisitor) dispatchPackets() {
 		select {
 		case conn := <-i.closeConnectionChan:
 			conn.Close()
+			delete(i.pool, conn.GetConnectionHash())
 		default:
 		}
 		select {
