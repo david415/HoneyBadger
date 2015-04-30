@@ -44,6 +44,7 @@ type PcapSnifferOptions struct {
 	Filter       string
 	Snaplen      int
 	Dispatcher   HoneyBadger.PacketDispatcher
+	Supervisor   types.Supervisor
 }
 
 // PcapSniffer sets up the connection pool and is an abstraction layer for dealing
@@ -77,15 +78,15 @@ func (i *PcapSniffer) Start() {
 }
 
 func (i *PcapSniffer) Stop() {
-	i.stopDecodeChan <- true
 	i.stopCaptureChan <- true
+	i.stopDecodeChan <- true
 	i.handle.Close()
 }
 
 func (i *PcapSniffer) setupHandle() {
 	var err error
 	if i.Filename != "" {
-		log.Printf("Reading from pcap dump %q", i.Filename)
+		log.Printf("Reading from pcap file %q", i.Filename)
 		i.handle, err = pcap.OpenOffline(i.Filename)
 	} else {
 		log.Printf("Starting capture on interface %q", i.Interface)
@@ -107,9 +108,9 @@ func (i *PcapSniffer) capturePackets() {
 		for {
 			rawPacket, captureInfo, err := i.handle.ReadPacketData()
 			if err == io.EOF {
-				log.Print("ReadPacketData got EOF\n")
 				i.Stop()
 				close(tchan)
+				i.Supervisor.Stopped()
 				return
 			}
 			if err != nil {

@@ -31,6 +31,46 @@ import (
 	"time"
 )
 
+type BadgerSupervisor struct {
+	inquisitor       *HoneyBadger.Inquisitor
+	sniffer          *packetSource.PcapSniffer
+	childStoppedChan chan bool
+	forceQuitChan    chan os.Signal
+}
+
+func NewBadgerSupervisor(snifferOptions *packetSource.PcapSnifferOptions, inquisitorOptions *HoneyBadger.InquisitorOptions) *BadgerSupervisor {
+	inquisitor := HoneyBadger.NewInquisitor(inquisitorOptions)
+	snifferOptions.Dispatcher = inquisitor
+	sniffer := packetSource.NewPcapSniffer(snifferOptions)
+	supervisor := BadgerSupervisor{
+		forceQuitChan:    make(chan os.Signal, 1),
+		childStoppedChan: make(chan bool, 0),
+		inquisitor:       inquisitor,
+		sniffer:          sniffer,
+	}
+	sniffer.Supervisor = supervisor
+	return &supervisor
+}
+
+func (b BadgerSupervisor) Stopped() {
+	b.childStoppedChan <- true
+}
+
+func (b BadgerSupervisor) Run() {
+	log.Println("HoneyBadger: comprehensive TCP injection attack detection.")
+	b.inquisitor.Start()
+	b.sniffer.Start()
+
+	signal.Notify(b.forceQuitChan, os.Interrupt)
+
+	select {
+	case <-b.forceQuitChan:
+		b.inquisitor.Stop()
+		b.sniffer.Stop()
+	case <-b.childStoppedChan:
+	}
+}
+
 func main() {
 	var (
 		pcapfile                 = flag.String("pcapfile", "", "pcap filename to read packets from rather than a wire interface.")
@@ -80,7 +120,7 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		logger = loggerInstance
 	}
 
-	options := HoneyBadger.InquisitorOptions{
+	inquisitorOptions := HoneyBadger.InquisitorOptions{
 		BufferedPerConnection:    *bufferedPerConnection,
 		BufferedTotal:            *bufferedTotal,
 		LogDir:                   *logDir,
@@ -94,27 +134,14 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		MaxConcurrentConnections: *maxConcurrentConnections,
 	}
 
-	inquisitor := HoneyBadger.NewInquisitor(&options)
-
 	snifferOptions := packetSource.PcapSnifferOptions{
 		Interface:    *iface,
 		Filename:     *pcapfile,
 		WireDuration: wireDuration,
 		Snaplen:      *snaplen,
 		Filter:       *filter,
-		Dispatcher:   inquisitor,
 	}
 
-	sniffer := packetSource.NewPcapSniffer(&snifferOptions)
-
-	log.Println("HoneyBadger: comprehensive TCP injection attack detection.")
-	inquisitor.Start()
-	sniffer.Start()
-
-	// quit when we detect a control-c
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-	<-c
-	inquisitor.Stop()
-	sniffer.Stop()
+	supervisor := NewBadgerSupervisor(&snifferOptions, &inquisitorOptions)
+	supervisor.Run()
 }
