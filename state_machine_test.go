@@ -17,12 +17,12 @@ func TestStateDataTransfer(t *testing.T) {
 		Dispatcher:                    nil,
 		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
+		AttackLogger:                  NewDummyAttackLogger(),
 	}
-	conn := NewConnection(&options)
-	conn.AttackLogger = NewDummyAttackLogger()
+	conn := NewRealConnection(&options)
 	conn.Start()
 
-	conn.state = TCP_DATA_TRANSFER
+	conn.SetState(TCP_DATA_TRANSFER)
 	clientRingCount := 0
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},
@@ -45,8 +45,8 @@ func TestStateDataTransfer(t *testing.T) {
 		TCP:       tcp,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
-	conn.serverFlow = flow
-	conn.clientFlow = flow.Reverse()
+	conn.SetServerFlow(flow)
+	conn.SetClientFlow(flow.Reverse())
 	conn.clientNextSeq = 9666
 	conn.serverNextSeq = 3
 
@@ -123,7 +123,7 @@ func TestTCPConnect(t *testing.T) {
 		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 	}
-	conn := NewConnection(&options)
+	conn := NewRealConnection(&options)
 	conn.Start()
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},
@@ -246,7 +246,7 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		Pager:                         pager,
 		LogDir:                        "fake-log-dir",
 	}
-	conn := NewConnection(&options)
+	conn := NewRealConnection(&options)
 	conn.AttackLogger = attackLogger
 	conn.Start()
 
@@ -383,7 +383,7 @@ func TestTCPHijack(t *testing.T) {
 		LogDir:                        "fake-log-dir",
 		DetectHijack:                  true,
 	}
-	conn := NewConnection(&options)
+	conn := NewRealConnection(&options)
 	conn.AttackLogger = attackLogger
 	conn.Start()
 

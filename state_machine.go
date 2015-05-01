@@ -60,10 +60,16 @@ type ConnectionInterface interface {
 	Start()
 	Close()
 	Stop()
+	AppendToClientStreamRing(*types.Reassembly)
 	SetPacketLogger(types.PacketLogger)
 	GetConnectionHash() types.ConnectionHash
 	ReceivePacket(*types.PacketManifest)
 	GetLastSeen() time.Time
+	SetServerFlow(*types.TcpIpFlow)
+	SetClientFlow(*types.TcpIpFlow)
+	detectInjection(p types.PacketManifest, flow *types.TcpIpFlow)
+	GetClientStreamRing() *types.Ring
+	SetState(uint8)
 }
 
 type PacketDispatcher interface {
@@ -135,16 +141,43 @@ func NewConnection(options *ConnectionOptions) ConnectionInterface {
 	return ConnectionInterface(&conn)
 }
 
+func NewRealConnection(options *ConnectionOptions) *Connection {
+	conn := NewConnection(options)
+	c := conn.(*Connection)
+	return c
+}
+
 func (c *Connection) SetPacketLogger(logger types.PacketLogger) {
 	c.PacketLogger = logger
+}
+
+func (c *Connection) GetClientStreamRing() *types.Ring {
+	return c.ClientStreamRing
+}
+
+func (c *Connection) AppendToClientStreamRing(reassembly *types.Reassembly) {
+	c.ClientStreamRing.Reassembly = reassembly
+	c.ClientStreamRing = c.ClientStreamRing.Next()
+}
+
+func (c *Connection) SetServerFlow(flow *types.TcpIpFlow) {
+	c.serverFlow = flow
+}
+
+func (c *Connection) SetClientFlow(flow *types.TcpIpFlow) {
+	c.clientFlow = flow
+}
+
+func (c *Connection) getAttackDetectedStatus() bool {
+	return c.attackDetected
 }
 
 func (c *Connection) setAttackDetectedStatus() {
 	c.attackDetected = true
 }
 
-func (c *Connection) getAttackDetectedStatus() bool {
-	return c.attackDetected
+func (c *Connection) SetState(state uint8) {
+	c.state = state
 }
 
 // GetLastSeen returns the lastSeen timestamp after grabbing the lock

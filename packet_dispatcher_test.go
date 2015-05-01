@@ -36,10 +36,57 @@ func (s MockSniffer) GetStartedChan() chan bool {
 }
 
 type MockConnection struct {
+	clientFlow       types.TcpIpFlow
+	serverFlow       types.TcpIpFlow
+	lastSeen         time.Time
+	ClientStreamRing *types.Ring
 }
 
-NewMockConnection(options *ConnectionOptions) ConnectionInterface {
-	return &MockConnection{}
+func (m *MockConnection) Start() {
+}
+
+func (m *MockConnection) Stop() {
+}
+
+func (m *MockConnection) Close() {
+}
+
+func (m *MockConnection) GetConnectionHash() types.ConnectionHash {
+	return m.clientFlow.ConnectionHash()
+}
+
+func (m *MockConnection) GetLastSeen() time.Time {
+	return m.lastSeen
+}
+
+func (m *MockConnection) ReceivePacket(p *types.PacketManifest) {
+}
+
+func (m *MockConnection) SetPacketLogger(l types.PacketLogger) {
+}
+
+func (m *MockConnection) SetServerFlow(*types.TcpIpFlow) {
+}
+
+func (m *MockConnection) SetClientFlow(*types.TcpIpFlow) {
+}
+
+func (m *MockConnection) AppendToClientStreamRing(reassembly *types.Reassembly) {
+}
+
+func (m *MockConnection) detectInjection(p types.PacketManifest, flow *types.TcpIpFlow) {
+}
+
+func (m *MockConnection) GetClientStreamRing() *types.Ring {
+	return m.ClientStreamRing
+}
+
+func (m *MockConnection) SetState(state uint8) {
+}
+
+func NewMockConnection(options *ConnectionOptions) ConnectionInterface {
+	m := MockConnection{}
+	return ConnectionInterface(&m)
 }
 
 func TestInquisitorForceQuit(t *testing.T) {
@@ -68,7 +115,7 @@ func TestInquisitorForceQuit(t *testing.T) {
 		Filter:       "tcp",
 	}
 
-	supervisor := NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, NewMockSniffer)
+	supervisor := NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, NewMockSniffer, NewMockConnection)
 
 	log.Print("supervisor before run")
 	go supervisor.Run()
@@ -108,7 +155,7 @@ func TestInquisitorSourceStopped(t *testing.T) {
 		Filter:       "tcp",
 	}
 
-	supervisor := NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, NewMockSniffer)
+	supervisor := NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, NewMockSniffer, NewMockConnection)
 
 	log.Print("supervisor before run")
 	go supervisor.Run()
@@ -147,7 +194,7 @@ func TestInquisitorSourceReceiveSimple(t *testing.T) {
 		Filter:       "tcp",
 	}
 
-	supervisor := NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, NewMockSniffer)
+	supervisor := NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, NewMockSniffer, NewMockConnection)
 
 	log.Print("supervisor before run")
 	go supervisor.Run()
