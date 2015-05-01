@@ -54,7 +54,7 @@ type InquisitorOptions struct {
 type Inquisitor struct {
 	InquisitorOptions
 	connectionFactoryFunc func(*ConnectionOptions) ConnectionInterface
-	dispatchPacketChan    chan types.PacketManifest
+	dispatchPacketChan    chan *types.PacketManifest
 	stopDispatchChan      chan bool
 	closeConnectionChan   chan ConnectionInterface
 	pool                  map[types.ConnectionHash]ConnectionInterface
@@ -66,7 +66,7 @@ func NewInquisitor(options *InquisitorOptions, connectionFactoryFunc func(*Conne
 	i := Inquisitor{
 		connectionFactoryFunc: connectionFactoryFunc,
 		InquisitorOptions:     *options,
-		dispatchPacketChan:    make(chan types.PacketManifest),
+		dispatchPacketChan:    make(chan *types.PacketManifest),
 		stopDispatchChan:      make(chan bool),
 		closeConnectionChan:   make(chan ConnectionInterface),
 		pager:                 NewPager(),
@@ -102,7 +102,7 @@ func (i *Inquisitor) CloseRequest(conn ConnectionInterface) {
 	i.closeConnectionChan <- conn
 }
 
-func (i *Inquisitor) ReceivePacket(p types.PacketManifest) {
+func (i *Inquisitor) ReceivePacket(p *types.PacketManifest) {
 	i.dispatchPacketChan <- p
 }
 
@@ -198,7 +198,7 @@ func (i *Inquisitor) dispatchPackets() {
 				conn = i.setupNewConnection(packetManifest.Flow)
 			}
 
-			conn.ReceivePacket(&packetManifest)
+			conn.ReceivePacket(packetManifest)
 		} // end of select {
 	} // end of for {
 }

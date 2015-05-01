@@ -170,7 +170,7 @@ func (i *PcapSniffer) decodePackets() {
 				TCP:       tcp,
 				Payload:   payload,
 			}
-			i.Dispatcher.ReceivePacket(packetManifest)
+			i.Dispatcher.ReceivePacket(&packetManifest)
 		}
 	}
 }

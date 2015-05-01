@@ -74,7 +74,7 @@ type ConnectionInterface interface {
 
 type PacketDispatcher interface {
 	CloseRequest(ConnectionInterface)
-	ReceivePacket(types.PacketManifest)
+	ReceivePacket(*types.PacketManifest)
 }
 
 type ConnectionOptions struct {
