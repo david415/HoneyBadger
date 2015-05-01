@@ -54,7 +54,7 @@ func TestInjectionDetector(t *testing.T) {
 	}
 	conn.ClientStreamRing = conn.ClientStreamRing.Next()
 	conn.AttackLogger = attackLogger
-	p := PacketManifest{
+	p := types.PacketManifest{
 		IP: layers.IPv4{
 			SrcIP:    net.IP{1, 2, 3, 4},
 			DstIP:    net.IP{2, 3, 4, 5},
@@ -141,7 +141,7 @@ func TestGetRingSlice(t *testing.T) {
 		conn.ClientStreamRing = conn.ClientStreamRing.Next()
 	}
 	var startSeq uint32 = 5
-	p := PacketManifest{
+	p := types.PacketManifest{
 		IP: layers.IPv4{
 			SrcIP:    net.IP{1, 2, 3, 4},
 			DstIP:    net.IP{2, 3, 4, 5},
@@ -213,7 +213,7 @@ func TestGetRingSlice(t *testing.T) {
 	}
 
 	startSeq = 1
-	p = PacketManifest{
+	p = types.PacketManifest{
 		IP: layers.IPv4{
 			SrcIP:    net.IP{1, 2, 3, 4},
 			DstIP:    net.IP{2, 3, 4, 5},
@@ -467,7 +467,7 @@ func TestGetOverlapBytes(t *testing.T) {
 		var startSeq uint32 = overlapBytesTests[i].in.Seq
 		start := types.Sequence(startSeq)
 		end := start.Add(len(overlapBytesTests[i].in.Payload) - 1)
-		p := PacketManifest{
+		p := types.PacketManifest{
 			IP: layers.IPv4{
 				SrcIP:    net.IP{1, 2, 3, 4},
 				DstIP:    net.IP{2, 3, 4, 5},
@@ -532,7 +532,7 @@ func TestGetOverlapRingsWithZeroRings(t *testing.T) {
 	}
 	tcp.SetNetworkLayerForChecksum(&ip)
 	payload := gopacket.Payload([]byte{1, 2, 3, 4})
-	p := PacketManifest{
+	p := types.PacketManifest{
 		IP:      ip,
 		TCP:     tcp,
 		Payload: payload,
@@ -741,7 +741,7 @@ func TestGetOverlapRings(t *testing.T) {
 			SrcPort: 1,
 			DstPort: 2,
 		}
-		p := PacketManifest{
+		p := types.PacketManifest{
 			IP:      ip,
 			TCP:     tcp,
 			Payload: overlapTests[i].in.Payload,

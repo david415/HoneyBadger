@@ -53,10 +53,7 @@ type InquisitorOptions struct {
 // with incoming packets weather they be from a pcap file or directly off the wire.
 type Inquisitor struct {
 	InquisitorOptions
-	stopCaptureChan     chan bool
-	decodePacketChan    chan TimedRawPacket
-	stopDecodeChan      chan bool
-	dispatchPacketChan  chan PacketManifest
+	dispatchPacketChan  chan types.PacketManifest
 	stopDispatchChan    chan bool
 	closeConnectionChan chan *Connection
 	pool                map[types.ConnectionHash]*Connection
@@ -67,10 +64,7 @@ type Inquisitor struct {
 func NewInquisitor(options *InquisitorOptions) *Inquisitor {
 	i := Inquisitor{
 		InquisitorOptions:   *options,
-		stopCaptureChan:     make(chan bool),
-		decodePacketChan:    make(chan TimedRawPacket),
-		stopDecodeChan:      make(chan bool),
-		dispatchPacketChan:  make(chan PacketManifest),
+		dispatchPacketChan:  make(chan types.PacketManifest),
 		stopDispatchChan:    make(chan bool),
 		closeConnectionChan: make(chan *Connection),
 		pager:               NewPager(),
@@ -106,7 +100,7 @@ func (i *Inquisitor) CloseRequest(conn *Connection) {
 	i.closeConnectionChan <- conn
 }
 
-func (i *Inquisitor) ReceivePacket(p PacketManifest) {
+func (i *Inquisitor) ReceivePacket(p types.PacketManifest) {
 	i.dispatchPacketChan <- p
 }
 

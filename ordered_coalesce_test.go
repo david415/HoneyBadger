@@ -40,7 +40,7 @@ func TestOrderedCoalesceUsedPages(t *testing.T) {
 		SrcPort: 1,
 		DstPort: 2,
 	}
-	p := PacketManifest{
+	p := types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flow,
 		IP:        ip,

@@ -160,7 +160,7 @@ func (o *OrderedCoalesce) Close() {
 	o.pager.ReplaceAllFrom(o.first)
 }
 
-func (o *OrderedCoalesce) insert(packetManifest PacketManifest, nextSeq types.Sequence) types.Sequence {
+func (o *OrderedCoalesce) insert(packetManifest types.PacketManifest, nextSeq types.Sequence) types.Sequence {
 	if o.first != nil && o.first.Seq == nextSeq {
 		panic("wtf")
 	}
@@ -199,7 +199,7 @@ func (o *OrderedCoalesce) insert(packetManifest PacketManifest, nextSeq types.Se
 // correctly.
 //
 // It returns the first and last page in its doubly-linked list of new pages.
-func (o *OrderedCoalesce) pagesFromTcp(p PacketManifest) (*page, *page, int) {
+func (o *OrderedCoalesce) pagesFromTcp(p types.PacketManifest) (*page, *page, int) {
 	first := o.pager.Next(p.Timestamp)
 	count := 1
 	current := first
@@ -278,7 +278,7 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 	if o.DetectCoalesceInjection && len(o.first.Bytes) > 0 {
 		// XXX stream segment overlap condition
 		if diff < 0 {
-			p := PacketManifest{
+			p := types.PacketManifest{
 				Timestamp: o.first.Seen,
 				Payload:   o.first.Bytes,
 				TCP: layers.TCP{

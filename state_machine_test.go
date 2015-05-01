@@ -38,7 +38,7 @@ func TestStateDataTransfer(t *testing.T) {
 		DstPort: 2,
 	}
 	flow := types.NewTcpIpFlowFromLayers(ip, tcp)
-	p := PacketManifest{
+	p := types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flow,
 		IP:        ip,
@@ -68,7 +68,7 @@ func TestStateDataTransfer(t *testing.T) {
 		SrcPort: 1,
 		DstPort: 2,
 	}
-	p = PacketManifest{
+	p = types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flow,
 		IP:        ip,
@@ -94,7 +94,7 @@ func TestStateDataTransfer(t *testing.T) {
 		SrcPort: 1,
 		DstPort: 2,
 	}
-	p = PacketManifest{
+	p = types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flow,
 		IP:        ip,
@@ -144,7 +144,7 @@ func TestTCPConnect(t *testing.T) {
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
 	flow := types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 
-	p := PacketManifest{
+	p := types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flow,
 		IP:        ip,
@@ -178,7 +178,7 @@ func TestTCPConnect(t *testing.T) {
 		SrcPort: 2,
 		DstPort: 1,
 	}
-	p = PacketManifest{
+	p = types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flowReversed,
 		IP:        ip,
@@ -208,7 +208,7 @@ func TestTCPConnect(t *testing.T) {
 		SrcPort: 1,
 		DstPort: 2,
 	}
-	p = PacketManifest{
+	p = types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flow,
 		IP:        ip,
@@ -283,7 +283,7 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 	}
 
 	flow := types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
-	p := PacketManifest{
+	p := types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flow,
 		IP:        ip,
@@ -329,7 +329,7 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 
 	flow2 := flow.Reverse()
 
-	p = PacketManifest{
+	p = types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flow2,
 		IP:        ip,
@@ -361,7 +361,7 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		SrcPort: 1,
 		DstPort: 2,
 	}
-	p = PacketManifest{
+	p = types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flow,
 		IP:        ip,
@@ -406,7 +406,7 @@ func TestTCPHijack(t *testing.T) {
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
 	flow := types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 
-	p := PacketManifest{
+	p := types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flow,
 		IP:        ip,
@@ -442,7 +442,7 @@ func TestTCPHijack(t *testing.T) {
 		SrcPort: 2,
 		DstPort: 1,
 	}
-	p = PacketManifest{
+	p = types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flowReversed,
 		IP:        ip,
@@ -472,7 +472,7 @@ func TestTCPHijack(t *testing.T) {
 		SrcPort: 2,
 		DstPort: 1,
 	}
-	p = PacketManifest{
+	p = types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flowReversed,
 		IP:        ip,
@@ -502,7 +502,7 @@ func TestTCPHijack(t *testing.T) {
 		SrcPort: 1,
 		DstPort: 2,
 	}
-	p = PacketManifest{
+	p = types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flow,
 		IP:        ip,
@@ -532,7 +532,7 @@ func TestTCPHijack(t *testing.T) {
 		SrcPort: 2,
 		DstPort: 1,
 	}
-	p = PacketManifest{
+	p = types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flowReversed,
 		IP:        ip,

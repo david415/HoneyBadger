@@ -17,10 +17,9 @@
  *    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package packetSource
+package HoneyBadger
 
 import (
-	"github.com/david415/HoneyBadger"
 	"github.com/david415/HoneyBadger/types"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -30,11 +29,11 @@ import (
 	"time"
 )
 
-type TimedRawPacket struct {
+/*type TimedRawPacket struct {
 	Timestamp time.Time
 	RawPacket []byte
 }
-
+*/
 // PcapSnifferOptions are user set parameters for specifying how to
 // receive packets.
 type PcapSnifferOptions struct {
@@ -43,7 +42,7 @@ type PcapSnifferOptions struct {
 	WireDuration time.Duration
 	Filter       string
 	Snaplen      int
-	Dispatcher   HoneyBadger.PacketDispatcher
+	Dispatcher   PacketDispatcher
 	Supervisor   types.Supervisor
 }
 
@@ -55,10 +54,11 @@ type PcapSniffer struct {
 	decodePacketChan chan TimedRawPacket
 	stopDecodeChan   chan bool
 	handle           *pcap.Handle
+	supervisor       types.Supervisor
 }
 
 // NewPcapSniffer creates a new PcapSniffer struct
-func NewPcapSniffer(options *PcapSnifferOptions) *PcapSniffer {
+func NewPcapSniffer(options *PcapSnifferOptions) types.PacketSource {
 	i := PcapSniffer{
 		PcapSnifferOptions: *options,
 		stopCaptureChan:    make(chan bool),
@@ -66,6 +66,13 @@ func NewPcapSniffer(options *PcapSnifferOptions) *PcapSniffer {
 		stopDecodeChan:     make(chan bool),
 	}
 	return &i
+}
+
+func (i *PcapSniffer) SetSupervisor(supervisor types.Supervisor) {
+	i.supervisor = supervisor
+}
+func (i *PcapSniffer) GetStartedChan() chan bool {
+	return make(chan bool)
 }
 
 // Start... starts the TCP attack inquisition!
@@ -108,15 +115,15 @@ func (i *PcapSniffer) capturePackets() {
 		for {
 			rawPacket, captureInfo, err := i.handle.ReadPacketData()
 			if err == io.EOF {
+				log.Print("ReadPacketData got EOF\n")
 				i.Stop()
 				close(tchan)
-				i.Supervisor.Stopped()
+				i.supervisor.Stopped()
 				return
 			}
 			if err != nil {
 				continue
 			}
-
 			tchan <- TimedRawPacket{
 				Timestamp: captureInfo.Timestamp,
 				RawPacket: rawPacket,
@@ -155,7 +162,7 @@ func (i *PcapSniffer) decodePackets() {
 				continue
 			}
 			flow := types.NewTcpIpFlowFromFlows(ip.NetworkFlow(), tcp.TransportFlow())
-			packetManifest := HoneyBadger.PacketManifest{
+			packetManifest := types.PacketManifest{
 				Timestamp: timedRawPacket.Timestamp,
 				Flow:      flow,
 				RawPacket: timedRawPacket.RawPacket,

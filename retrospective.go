@@ -28,7 +28,7 @@ import (
 	"time"
 )
 
-func injectionInStreamRing(p PacketManifest, flow *types.TcpIpFlow, ringPtr *types.Ring, eventType string) *types.Event {
+func injectionInStreamRing(p types.PacketManifest, flow *types.TcpIpFlow, ringPtr *types.Ring, eventType string) *types.Event {
 	start := types.Sequence(p.TCP.Seq)
 	end := start.Add(len(p.Payload) - 1)
 	head, tail := getOverlapRings(p, flow, ringPtr)
@@ -149,10 +149,10 @@ func getOverlapBytes(head, tail *types.Ring, start, end types.Sequence) ([]byte,
 }
 
 // getOverlapRings returns the head and tail ring elements corresponding to the first and last
-// overlapping ring segments... that overlap with the given packet (PacketManifest).
+// overlapping ring segments... that overlap with the given packet (types.PacketManifest).
 // Furthermore geOverlapRings also will make sure none of these ring elements will have a Reassembly.Skip value
 // other than 0 (zero).
-func getOverlapRings(p PacketManifest, flow *types.TcpIpFlow, ringPtr *types.Ring) (*types.Ring, *types.Ring) {
+func getOverlapRings(p types.PacketManifest, flow *types.TcpIpFlow, ringPtr *types.Ring) (*types.Ring, *types.Ring) {
 	var head, tail *types.Ring
 	start := types.Sequence(p.TCP.Seq)
 	end := start.Add(len(p.Payload) - 1)

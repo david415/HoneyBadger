@@ -24,8 +24,6 @@ import (
 	"fmt"
 	"github.com/david415/HoneyBadger/logging"
 	"github.com/david415/HoneyBadger/types"
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
 	"log"
 	"os"
 	"path/filepath"
@@ -61,17 +59,7 @@ const (
 
 type PacketDispatcher interface {
 	CloseRequest(*Connection)
-	ReceivePacket(PacketManifest)
-}
-
-// PacketManifest is used to send parsed packets via channels to other goroutines
-type PacketManifest struct {
-	Timestamp time.Time
-	Flow      *types.TcpIpFlow
-	RawPacket []byte
-	IP        layers.IPv4
-	TCP       layers.TCP
-	Payload   gopacket.Payload
+	ReceivePacket(types.PacketManifest)
 }
 
 type ConnectionOptions struct {
@@ -95,7 +83,7 @@ type Connection struct {
 	ConnectionOptions
 	attackDetected   bool
 	stopChan         chan bool
-	receiveChan      chan *PacketManifest
+	receiveChan      chan *types.PacketManifest
 	packetCount      uint64
 	lastSeen         time.Time
 	lastSeenMutex    sync.Mutex
@@ -122,7 +110,7 @@ func NewConnection(options *ConnectionOptions) *Connection {
 		ConnectionOptions: *options,
 		attackDetected:    false,
 		stopChan:          make(chan bool),
-		receiveChan:       make(chan *PacketManifest),
+		receiveChan:       make(chan *types.PacketManifest),
 		state:             TCP_UNKNOWN,
 		clientNextSeq:     types.InvalidSequence,
 		serverNextSeq:     types.InvalidSequence,
@@ -212,7 +200,7 @@ func (c *Connection) removeAllLogs() {
 
 // detectHijack checks for duplicate SYN/ACK indicating handshake hijake
 // and submits a report if an attack was observed
-func (c *Connection) detectHijack(p PacketManifest, flow *types.TcpIpFlow) {
+func (c *Connection) detectHijack(p types.PacketManifest, flow *types.TcpIpFlow) {
 	// check for duplicate SYN/ACK indicating handshake hijake
 	if !flow.Equal(c.serverFlow) {
 		return
@@ -232,7 +220,7 @@ func (c *Connection) detectHijack(p PacketManifest, flow *types.TcpIpFlow) {
 
 // detectInjection write an attack report if the given packet indicates a TCP injection attack
 // such as segment veto.
-func (c *Connection) detectInjection(p PacketManifest, flow *types.TcpIpFlow) {
+func (c *Connection) detectInjection(p types.PacketManifest, flow *types.TcpIpFlow) {
 	var ringPtr *types.Ring
 	if flow.Equal(c.clientFlow) {
 		ringPtr = c.ServerStreamRing
@@ -251,7 +239,7 @@ func (c *Connection) detectInjection(p PacketManifest, flow *types.TcpIpFlow) {
 // stateUnknown gets called by our TCP finite state machine runtime
 // and moves us into the TCP_CONNECTION_REQUEST state if we receive
 // a SYN packet... otherwise TCP_DATA_TRANSFER state.
-func (c *Connection) stateUnknown(p PacketManifest) {
+func (c *Connection) stateUnknown(p types.PacketManifest) {
 	if p.TCP.SYN && !p.TCP.ACK {
 		c.state = TCP_CONNECTION_REQUEST
 		*c.clientFlow = *p.Flow
@@ -281,7 +269,7 @@ func (c *Connection) stateUnknown(p PacketManifest) {
 // stateConnectionRequest gets called by our TCP finite state machine runtime
 // and moves us into the TCP_CONNECTION_ESTABLISHED state if we receive
 // a SYN/ACK packet.
-func (c *Connection) stateConnectionRequest(p PacketManifest) {
+func (c *Connection) stateConnectionRequest(p types.PacketManifest) {
 	if !p.Flow.Equal(c.serverFlow) {
 		//handshake anomaly
 		c.shutdown()
@@ -305,7 +293,7 @@ func (c *Connection) stateConnectionRequest(p PacketManifest) {
 // stateConnectionEstablished is called by our TCP FSM runtime and
 // changes our state to TCP_DATA_TRANSFER if we receive a valid final
 // handshake ACK packet.
-func (c *Connection) stateConnectionEstablished(p PacketManifest) {
+func (c *Connection) stateConnectionEstablished(p types.PacketManifest) {
 	if !c.attackDetected {
 		if c.DetectHijack {
 			c.detectHijack(p, p.Flow)
@@ -340,7 +328,7 @@ func (c *Connection) stateConnectionEstablished(p PacketManifest) {
 
 // stateDataTransfer is called by our TCP FSM and processes packets
 // once we are in the TCP_DATA_TRANSFER state
-func (c *Connection) stateDataTransfer(p PacketManifest) {
+func (c *Connection) stateDataTransfer(p types.PacketManifest) {
 	var nextSeqPtr *types.Sequence
 	var closerState, remoteState *uint8
 
@@ -419,7 +407,7 @@ func (c *Connection) stateDataTransfer(p PacketManifest) {
 }
 
 // stateFinWait1 handles packets for the FIN-WAIT-1 state
-func (c *Connection) stateFinWait1(p PacketManifest, flow *types.TcpIpFlow, nextSeqPtr *types.Sequence, nextAckPtr *types.Sequence, statePtr, otherStatePtr *uint8) {
+func (c *Connection) stateFinWait1(p types.PacketManifest, flow *types.TcpIpFlow, nextSeqPtr *types.Sequence, nextAckPtr *types.Sequence, statePtr, otherStatePtr *uint8) {
 	if types.Sequence(p.TCP.Seq).Difference(*nextSeqPtr) != 0 {
 		log.Printf("FIN-WAIT-1: out of order packet received. sequence %d != nextSeq %d\n", p.TCP.Seq, *nextSeqPtr)
 		c.shutdown()
@@ -445,7 +433,7 @@ func (c *Connection) stateFinWait1(p PacketManifest, flow *types.TcpIpFlow, next
 }
 
 // stateFinWait1 handles packets for the FIN-WAIT-2 state
-func (c *Connection) stateFinWait2(p PacketManifest, flow *types.TcpIpFlow, nextSeqPtr *types.Sequence, nextAckPtr *types.Sequence, statePtr *uint8) {
+func (c *Connection) stateFinWait2(p types.PacketManifest, flow *types.TcpIpFlow, nextSeqPtr *types.Sequence, nextAckPtr *types.Sequence, statePtr *uint8) {
 	if types.Sequence(p.TCP.Seq).Difference(*nextSeqPtr) == 0 {
 		if p.TCP.ACK && p.TCP.FIN {
 			if types.Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 {
@@ -469,7 +457,7 @@ func (c *Connection) stateFinWait2(p PacketManifest, flow *types.TcpIpFlow, next
 }
 
 // stateCloseWait represents the TCP FSM's CLOSE-WAIT state
-func (c *Connection) stateCloseWait(p PacketManifest) {
+func (c *Connection) stateCloseWait(p types.PacketManifest) {
 	flow := types.NewTcpIpFlowFromLayers(p.IP, p.TCP)
 	log.Printf("stateCloseWait: flow %s\n", flow.String())
 	log.Print("CLOSE-WAIT: invalid protocol state\n")
@@ -477,19 +465,19 @@ func (c *Connection) stateCloseWait(p PacketManifest) {
 }
 
 // stateTimeWait represents the TCP FSM's CLOSE-WAIT state
-func (c *Connection) stateTimeWait(p PacketManifest) {
+func (c *Connection) stateTimeWait(p types.PacketManifest) {
 	log.Print("TIME-WAIT: invalid protocol state\n")
 	c.shutdown()
 }
 
 // stateClosing represents the TCP FSM's CLOSING state
-func (c *Connection) stateClosing(p PacketManifest) {
+func (c *Connection) stateClosing(p types.PacketManifest) {
 	log.Print("CLOSING: invalid protocol state\n")
 	c.shutdown()
 }
 
 // stateLastAck represents the TCP FSM's LAST-ACK state
-func (c *Connection) stateLastAck(p PacketManifest, flow *types.TcpIpFlow, nextSeqPtr *types.Sequence, nextAckPtr *types.Sequence, statePtr *uint8) {
+func (c *Connection) stateLastAck(p types.PacketManifest, flow *types.TcpIpFlow, nextSeqPtr *types.Sequence, nextAckPtr *types.Sequence, statePtr *uint8) {
 	if types.Sequence(p.TCP.Seq).Difference(*nextSeqPtr) == 0 { //XXX
 		if p.TCP.ACK && (!p.TCP.FIN && !p.TCP.SYN) {
 			if types.Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 {
@@ -506,7 +494,7 @@ func (c *Connection) stateLastAck(p PacketManifest, flow *types.TcpIpFlow, nextS
 }
 
 // stateConnectionClosing handles all the closing states until the closed state has been reached.
-func (c *Connection) stateConnectionClosing(p PacketManifest) {
+func (c *Connection) stateConnectionClosing(p types.PacketManifest) {
 	var nextSeqPtr *types.Sequence
 	var nextAckPtr *types.Sequence
 	var statePtr, otherStatePtr *uint8
@@ -551,7 +539,7 @@ func (c *Connection) stateConnectionClosing(p PacketManifest) {
 	}
 }
 
-func (c *Connection) ReceivePacket(p *PacketManifest) {
+func (c *Connection) ReceivePacket(p *types.PacketManifest) {
 	c.receiveChan <- p
 }
 
@@ -559,7 +547,7 @@ func (c *Connection) ReceivePacket(p *PacketManifest) {
 // which is loosely based off of the simplified FSM in this paper:
 // http://ants.iis.sinica.edu.tw/3bkmj9ltewxtsrrvnoknfdxrm3zfwrr/17/p520460.pdf
 // The goal is to detect all manner of content injection.
-func (c *Connection) receivePacketState(p *PacketManifest) {
+func (c *Connection) receivePacketState(p *types.PacketManifest) {
 	c.updateLastSeen(p.Timestamp)
 	if c.PacketLogger != nil {
 		c.PacketLogger.WritePacket(p.RawPacket, p.Timestamp)

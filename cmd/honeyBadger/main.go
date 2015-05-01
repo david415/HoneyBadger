@@ -23,53 +23,10 @@ import (
 	"flag"
 	"github.com/david415/HoneyBadger"
 	"github.com/david415/HoneyBadger/logging"
-	"github.com/david415/HoneyBadger/packetSource"
 	"github.com/david415/HoneyBadger/types"
 	"log"
-	"os"
-	"os/signal"
 	"time"
 )
-
-type BadgerSupervisor struct {
-	inquisitor       *HoneyBadger.Inquisitor
-	sniffer          *packetSource.PcapSniffer
-	childStoppedChan chan bool
-	forceQuitChan    chan os.Signal
-}
-
-func NewBadgerSupervisor(snifferOptions *packetSource.PcapSnifferOptions, inquisitorOptions *HoneyBadger.InquisitorOptions) *BadgerSupervisor {
-	inquisitor := HoneyBadger.NewInquisitor(inquisitorOptions)
-	snifferOptions.Dispatcher = inquisitor
-	sniffer := packetSource.NewPcapSniffer(snifferOptions)
-	supervisor := BadgerSupervisor{
-		forceQuitChan:    make(chan os.Signal, 1),
-		childStoppedChan: make(chan bool, 0),
-		inquisitor:       inquisitor,
-		sniffer:          sniffer,
-	}
-	sniffer.Supervisor = supervisor
-	return &supervisor
-}
-
-func (b BadgerSupervisor) Stopped() {
-	b.childStoppedChan <- true
-}
-
-func (b BadgerSupervisor) Run() {
-	log.Println("HoneyBadger: comprehensive TCP injection attack detection.")
-	b.inquisitor.Start()
-	b.sniffer.Start()
-
-	signal.Notify(b.forceQuitChan, os.Interrupt)
-
-	select {
-	case <-b.forceQuitChan:
-		b.inquisitor.Stop()
-		b.sniffer.Stop()
-	case <-b.childStoppedChan:
-	}
-}
 
 func main() {
 	var (
@@ -134,7 +91,7 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		MaxConcurrentConnections: *maxConcurrentConnections,
 	}
 
-	snifferOptions := packetSource.PcapSnifferOptions{
+	snifferOptions := HoneyBadger.PcapSnifferOptions{
 		Interface:    *iface,
 		Filename:     *pcapfile,
 		WireDuration: wireDuration,
@@ -142,6 +99,6 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		Filter:       *filter,
 	}
 
-	supervisor := NewBadgerSupervisor(&snifferOptions, &inquisitorOptions)
+	supervisor := HoneyBadger.NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, HoneyBadger.NewPcapSniffer)
 	supervisor.Run()
 }
