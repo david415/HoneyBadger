@@ -53,22 +53,24 @@ type InquisitorOptions struct {
 // with incoming packets weather they be from a pcap file or directly off the wire.
 type Inquisitor struct {
 	InquisitorOptions
-	dispatchPacketChan  chan types.PacketManifest
-	stopDispatchChan    chan bool
-	closeConnectionChan chan *Connection
-	pool                map[types.ConnectionHash]*Connection
-	pager               *Pager
+	connectionFactoryFunc func(*ConnectionOptions) ConnectionInterface
+	dispatchPacketChan    chan types.PacketManifest
+	stopDispatchChan      chan bool
+	closeConnectionChan   chan ConnectionInterface
+	pool                  map[types.ConnectionHash]ConnectionInterface
+	pager                 *Pager
 }
 
 // NewInquisitor creates a new Inquisitor struct
-func NewInquisitor(options *InquisitorOptions) *Inquisitor {
+func NewInquisitor(options *InquisitorOptions, connectionFactoryFunc func(*ConnectionOptions) ConnectionInterface) *Inquisitor {
 	i := Inquisitor{
-		InquisitorOptions:   *options,
-		dispatchPacketChan:  make(chan types.PacketManifest),
-		stopDispatchChan:    make(chan bool),
-		closeConnectionChan: make(chan *Connection),
-		pager:               NewPager(),
-		pool:                make(map[types.ConnectionHash]*Connection),
+		connectionFactoryFunc: connectionFactoryFunc,
+		InquisitorOptions:     *options,
+		dispatchPacketChan:    make(chan types.PacketManifest),
+		stopDispatchChan:      make(chan bool),
+		closeConnectionChan:   make(chan ConnectionInterface),
+		pager:                 NewPager(),
+		pool:                  make(map[types.ConnectionHash]ConnectionInterface),
 	}
 	return &i
 }
@@ -88,15 +90,15 @@ func (i *Inquisitor) Stop() {
 }
 
 // connectionsLocked returns a slice of Connection pointers.
-func (i *Inquisitor) connections() []*Connection {
-	conns := make([]*Connection, 0, len(i.pool))
+func (i *Inquisitor) connections() []ConnectionInterface {
+	conns := make([]ConnectionInterface, 0, len(i.pool))
 	for _, conn := range i.pool {
 		conns = append(conns, conn)
 	}
 	return conns
 }
 
-func (i *Inquisitor) CloseRequest(conn *Connection) {
+func (i *Inquisitor) CloseRequest(conn ConnectionInterface) {
 	i.closeConnectionChan <- conn
 }
 
@@ -115,7 +117,7 @@ func (i *Inquisitor) CloseOlderThan(t time.Time) int {
 	for _, conn := range conns {
 		lastSeen := conn.GetLastSeen()
 		if lastSeen.Equal(t) || lastSeen.Before(t) {
-			conn.Stop()
+			conn.Close()
 			delete(i.pool, conn.GetConnectionHash())
 			closed += 1
 		}
@@ -138,7 +140,7 @@ func (i *Inquisitor) CloseAllConnections() int {
 	return count
 }
 
-func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) *Connection {
+func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) ConnectionInterface {
 	options := ConnectionOptions{
 		MaxBufferedPagesTotal:         i.InquisitorOptions.BufferedTotal,
 		MaxBufferedPagesPerConnection: i.InquisitorOptions.BufferedPerConnection,
@@ -152,11 +154,12 @@ func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) *Connection {
 		DetectCoalesceInjection:       i.DetectCoalesceInjection,
 		Dispatcher:                    i,
 	}
-	conn := NewConnection(&options)
+	conn := i.connectionFactoryFunc(&options)
 
 	if i.LogPackets {
-		conn.PacketLogger = logging.NewPcapLogger(i.LogDir, flow)
-		conn.PacketLogger.Start()
+		packetLogger := logging.NewPcapLogger(i.LogDir, flow)
+		conn.SetPacketLogger(packetLogger)
+		packetLogger.Start()
 	}
 	i.pool[flow.ConnectionHash()] = conn
 	conn.Start()
@@ -164,7 +167,7 @@ func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) *Connection {
 }
 
 func (i *Inquisitor) dispatchPackets() {
-	var conn *Connection
+	var conn ConnectionInterface
 	timeout := i.InquisitorOptions.TcpIdleTimeout
 	ticker := time.Tick(timeout)
 	for {

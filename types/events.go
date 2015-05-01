@@ -23,6 +23,16 @@ import (
 	"time"
 )
 
+type Logger interface {
+	Log(r *Event)
+}
+
+type PacketLogger interface {
+	WritePacket(rawPacket []byte, timestamp time.Time)
+	Start()
+	Stop()
+}
+
 type Event struct {
 	Type          string
 	Flow          *TcpIpFlow
@@ -35,8 +45,4 @@ type Event struct {
 	EndSequence   Sequence
 	OverlapStart  int
 	OverlapEnd    int
-}
-
-type Logger interface {
-	Log(r *Event)
 }

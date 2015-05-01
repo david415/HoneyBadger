@@ -99,6 +99,6 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		Filter:       *filter,
 	}
 
-	supervisor := HoneyBadger.NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, HoneyBadger.NewPcapSniffer)
+	supervisor := HoneyBadger.NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, HoneyBadger.NewPcapSniffer, HoneyBadger.NewConnection)
 	supervisor.Run()
 }

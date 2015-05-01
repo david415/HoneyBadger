@@ -22,7 +22,6 @@ package HoneyBadger
 
 import (
 	"fmt"
-	"github.com/david415/HoneyBadger/logging"
 	"github.com/david415/HoneyBadger/types"
 	"log"
 	"os"
@@ -57,8 +56,18 @@ const (
 	TCP_LAST_ACK   = 1
 )
 
+type ConnectionInterface interface {
+	Start()
+	Close()
+	Stop()
+	SetPacketLogger(types.PacketLogger)
+	GetConnectionHash() types.ConnectionHash
+	ReceivePacket(*types.PacketManifest)
+	GetLastSeen() time.Time
+}
+
 type PacketDispatcher interface {
-	CloseRequest(*Connection)
+	CloseRequest(ConnectionInterface)
 	ReceivePacket(types.PacketManifest)
 }
 
@@ -101,11 +110,11 @@ type Connection struct {
 	ServerStreamRing *types.Ring
 	ClientCoalesce   *OrderedCoalesce
 	ServerCoalesce   *OrderedCoalesce
-	PacketLogger     *logging.PcapLogger
+	PacketLogger     types.PacketLogger
 }
 
 // NewConnection returns a new Connection struct
-func NewConnection(options *ConnectionOptions) *Connection {
+func NewConnection(options *ConnectionOptions) ConnectionInterface {
 	conn := Connection{
 		ConnectionOptions: *options,
 		attackDetected:    false,
@@ -123,7 +132,11 @@ func NewConnection(options *ConnectionOptions) *Connection {
 	conn.ClientCoalesce = NewOrderedCoalesce(conn.Close, conn.AttackLogger, conn.clientFlow, conn.Pager, conn.ClientStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection)
 	conn.ServerCoalesce = NewOrderedCoalesce(conn.Close, conn.AttackLogger, conn.serverFlow, conn.Pager, conn.ServerStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection)
 
-	return &conn
+	return ConnectionInterface(&conn)
+}
+
+func (c *Connection) SetPacketLogger(logger types.PacketLogger) {
+	c.PacketLogger = logger
 }
 
 func (c *Connection) setAttackDetectedStatus() {

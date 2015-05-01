@@ -32,12 +32,6 @@ import (
 	"time"
 )
 
-type PacketLogger interface {
-	WritePacket(rawPacket []byte, timestamp time.Time)
-	Start()
-	Stop()
-}
-
 type TimedPacket struct {
 	RawPacket []byte
 	Timestamp time.Time
