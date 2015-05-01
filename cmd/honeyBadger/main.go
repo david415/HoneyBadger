@@ -99,6 +99,16 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		Filter:       *filter,
 	}
 
-	supervisor := HoneyBadger.NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, HoneyBadger.NewPcapSniffer, HoneyBadger.NewConnection)
+	connectionFactory := HoneyBadger.ConnectionFactory{
+		CreateConnectionFunc: HoneyBadger.NewConnection,
+	}
+
+	var packetLoggerFunc func(string, *types.TcpIpFlow) types.PacketLogger
+	if *logPackets {
+		packetLoggerFunc = logging.NewPcapLogger
+	} else {
+		packetLoggerFunc = nil
+	}
+	supervisor := HoneyBadger.NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, HoneyBadger.NewPcapSniffer, &connectionFactory, packetLoggerFunc)
 	supervisor.Run()
 }

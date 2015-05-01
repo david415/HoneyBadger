@@ -21,7 +21,6 @@
 package HoneyBadger
 
 import (
-	"github.com/david415/HoneyBadger/logging"
 	"github.com/david415/HoneyBadger/types"
 	"log"
 	"time"
@@ -53,24 +52,26 @@ type InquisitorOptions struct {
 // with incoming packets weather they be from a pcap file or directly off the wire.
 type Inquisitor struct {
 	InquisitorOptions
-	connectionFactoryFunc func(*ConnectionOptions) ConnectionInterface
-	dispatchPacketChan    chan *types.PacketManifest
-	stopDispatchChan      chan bool
-	closeConnectionChan   chan ConnectionInterface
-	pool                  map[types.ConnectionHash]ConnectionInterface
-	pager                 *Pager
+	connectionFactory       *ConnectionFactory
+	dispatchPacketChan      chan *types.PacketManifest
+	stopDispatchChan        chan bool
+	closeConnectionChan     chan ConnectionInterface
+	pool                    map[types.ConnectionHash]ConnectionInterface
+	pager                   *Pager
+	PacketLoggerFactoryFunc func(string, *types.TcpIpFlow) types.PacketLogger
 }
 
 // NewInquisitor creates a new Inquisitor struct
-func NewInquisitor(options *InquisitorOptions, connectionFactoryFunc func(*ConnectionOptions) ConnectionInterface) *Inquisitor {
+func NewInquisitor(options *InquisitorOptions, connectionFactory *ConnectionFactory, packetLoggerFactoryFunc func(string, *types.TcpIpFlow) types.PacketLogger) *Inquisitor {
 	i := Inquisitor{
-		connectionFactoryFunc: connectionFactoryFunc,
-		InquisitorOptions:     *options,
-		dispatchPacketChan:    make(chan *types.PacketManifest),
-		stopDispatchChan:      make(chan bool),
-		closeConnectionChan:   make(chan ConnectionInterface),
-		pager:                 NewPager(),
-		pool:                  make(map[types.ConnectionHash]ConnectionInterface),
+		PacketLoggerFactoryFunc: packetLoggerFactoryFunc,
+		connectionFactory:       connectionFactory,
+		InquisitorOptions:       *options,
+		dispatchPacketChan:      make(chan *types.PacketManifest),
+		stopDispatchChan:        make(chan bool),
+		closeConnectionChan:     make(chan ConnectionInterface),
+		pager:                   NewPager(),
+		pool:                    make(map[types.ConnectionHash]ConnectionInterface),
 	}
 	return &i
 }
@@ -154,10 +155,12 @@ func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) ConnectionInterfa
 		DetectCoalesceInjection:       i.DetectCoalesceInjection,
 		Dispatcher:                    i,
 	}
-	conn := i.connectionFactoryFunc(&options)
+	i.connectionFactory.options = &options
+	conn := i.connectionFactory.Build()
 
 	if i.LogPackets {
-		packetLogger := logging.NewPcapLogger(i.LogDir, flow)
+		//packetLogger := logging.NewPcapLogger(i.LogDir, flow)
+		packetLogger := i.PacketLoggerFactoryFunc(i.LogDir, flow)
 		conn.SetPacketLogger(packetLogger)
 		packetLogger.Start()
 	}

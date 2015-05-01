@@ -3,7 +3,9 @@ package HoneyBadger
 import (
 	"github.com/david415/HoneyBadger/logging"
 	"github.com/david415/HoneyBadger/types"
+	"github.com/google/gopacket/layers"
 	"log"
+	"net"
 	"os"
 	"testing"
 	"time"
@@ -36,10 +38,18 @@ func (s MockSniffer) GetStartedChan() chan bool {
 }
 
 type MockConnection struct {
+	options          *ConnectionOptions
 	clientFlow       types.TcpIpFlow
 	serverFlow       types.TcpIpFlow
 	lastSeen         time.Time
 	ClientStreamRing *types.Ring
+}
+
+func NewMockConnection(options *ConnectionOptions) ConnectionInterface {
+	m := MockConnection{
+		options: options,
+	}
+	return ConnectionInterface(&m)
 }
 
 func (m *MockConnection) Start() {
@@ -84,9 +94,21 @@ func (m *MockConnection) GetClientStreamRing() *types.Ring {
 func (m *MockConnection) SetState(state uint8) {
 }
 
-func NewMockConnection(options *ConnectionOptions) ConnectionInterface {
-	m := MockConnection{}
-	return ConnectionInterface(&m)
+type MockPacketLogger struct {
+}
+
+func NewMockPacketLogger(str string, flow *types.TcpIpFlow) types.PacketLogger {
+	m := MockPacketLogger{}
+	return types.PacketLogger(&m)
+}
+
+func (m *MockPacketLogger) WritePacket(rawPacket []byte, timestamp time.Time) {
+}
+
+func (m *MockPacketLogger) Start() {
+}
+
+func (m *MockPacketLogger) Stop() {
 }
 
 func TestInquisitorForceQuit(t *testing.T) {
@@ -114,8 +136,14 @@ func TestInquisitorForceQuit(t *testing.T) {
 		Snaplen:      65536,
 		Filter:       "tcp",
 	}
+	connOptions := ConnectionOptions{}
 
-	supervisor := NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, NewMockSniffer, NewMockConnection)
+	connectionFactory := ConnectionFactory{
+		options:              &connOptions,
+		CreateConnectionFunc: NewMockConnection,
+	}
+
+	supervisor := NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, NewMockSniffer, &connectionFactory, NewMockPacketLogger)
 
 	log.Print("supervisor before run")
 	go supervisor.Run()
@@ -154,8 +182,12 @@ func TestInquisitorSourceStopped(t *testing.T) {
 		Snaplen:      65536,
 		Filter:       "tcp",
 	}
-
-	supervisor := NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, NewMockSniffer, NewMockConnection)
+	connOptions := ConnectionOptions{}
+	connectionFactory := ConnectionFactory{
+		options:              &connOptions,
+		CreateConnectionFunc: NewMockConnection,
+	}
+	supervisor := NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, NewMockSniffer, &connectionFactory, NewMockPacketLogger)
 
 	log.Print("supervisor before run")
 	go supervisor.Run()
@@ -193,8 +225,12 @@ func TestInquisitorSourceReceiveSimple(t *testing.T) {
 		Snaplen:      65536,
 		Filter:       "tcp",
 	}
-
-	supervisor := NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, NewMockSniffer, NewMockConnection)
+	connOptions := ConnectionOptions{}
+	connectionFactory := ConnectionFactory{
+		options:              &connOptions,
+		CreateConnectionFunc: NewMockConnection,
+	}
+	supervisor := NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, NewMockSniffer, &connectionFactory, NewMockPacketLogger)
 
 	log.Print("supervisor before run")
 	go supervisor.Run()
@@ -202,7 +238,33 @@ func TestInquisitorSourceReceiveSimple(t *testing.T) {
 
 	sniffer := supervisor.GetSniffer()
 	startedChan := sniffer.GetStartedChan()
-	<-startedChan
+
+	dispatcher := supervisor.GetDispatcher()
+
+	ip := layers.IPv4{
+		SrcIP:    net.IP{1, 2, 3, 4},
+		DstIP:    net.IP{2, 3, 4, 5},
+		Version:  4,
+		TTL:      64,
+		Protocol: layers.IPProtocolTCP,
+	}
+	tcp := layers.TCP{
+		Seq:     3,
+		SYN:     false,
+		SrcPort: 1,
+		DstPort: 2,
+	}
+	flow := types.NewTcpIpFlowFromLayers(ip, tcp)
+	p := types.PacketManifest{
+		Timestamp: time.Now(),
+		Flow:      flow,
+		IP:        ip,
+		TCP:       tcp,
+		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
+	}
+
+	dispatcher.ReceivePacket(&p)
 
 	sniffer.Stop()
+	<-startedChan
 }

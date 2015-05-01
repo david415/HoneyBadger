@@ -56,6 +56,15 @@ const (
 	TCP_LAST_ACK   = 1
 )
 
+type ConnectionFactory struct {
+	options              *ConnectionOptions
+	CreateConnectionFunc func(*ConnectionOptions) ConnectionInterface
+}
+
+func (f ConnectionFactory) Build() ConnectionInterface {
+	return f.CreateConnectionFunc(f.options).(ConnectionInterface)
+}
+
 type ConnectionInterface interface {
 	Start()
 	Close()

@@ -49,14 +49,14 @@ type PcapLogger struct {
 
 // NewPcapLogger returns a PcapLogger struct...
 // and in doing so writes a pcap header to the beginning of the file.
-func NewPcapLogger(dir string, flow *types.TcpIpFlow) *PcapLogger {
+func NewPcapLogger(dir string, flow *types.TcpIpFlow) types.PacketLogger {
 	p := PcapLogger{
 		packetChan: make(chan TimedPacket),
 		stopChan:   make(chan bool),
 		Flow:       flow,
 		Dir:        dir,
 	}
-	return &p
+	return types.PacketLogger(&p)
 }
 
 func (p *PcapLogger) Start() {

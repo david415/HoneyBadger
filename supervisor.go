@@ -33,8 +33,8 @@ type BadgerSupervisor struct {
 	forceQuitChan    chan os.Signal
 }
 
-func NewBadgerSupervisor(snifferOptions *PcapSnifferOptions, inquisitorOptions *InquisitorOptions, snifferFactoryFunc func(*PcapSnifferOptions) types.PacketSource, connectionFactoryFunc func(*ConnectionOptions) ConnectionInterface) *BadgerSupervisor {
-	inquisitor := NewInquisitor(inquisitorOptions, connectionFactoryFunc)
+func NewBadgerSupervisor(snifferOptions *PcapSnifferOptions, inquisitorOptions *InquisitorOptions, snifferFactoryFunc func(*PcapSnifferOptions) types.PacketSource, connectionFactory *ConnectionFactory, packetLoggerFactoryFunc func(string, *types.TcpIpFlow) types.PacketLogger) *BadgerSupervisor {
+	inquisitor := NewInquisitor(inquisitorOptions, connectionFactory, packetLoggerFactoryFunc)
 	snifferOptions.Dispatcher = inquisitor
 	sniffer := snifferFactoryFunc(snifferOptions)
 	supervisor := BadgerSupervisor{
@@ -45,6 +45,10 @@ func NewBadgerSupervisor(snifferOptions *PcapSnifferOptions, inquisitorOptions *
 	}
 	sniffer.SetSupervisor(supervisor)
 	return &supervisor
+}
+
+func (b BadgerSupervisor) GetDispatcher() PacketDispatcher {
+	return b.inquisitor
 }
 
 func (b BadgerSupervisor) GetSniffer() types.PacketSource {
