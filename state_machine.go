@@ -417,14 +417,6 @@ func (c *Connection) stateDataTransfer(p types.PacketManifest) {
 			// possibly RST or FIN
 		}
 	} else if diff == 0 { // contiguous
-		if p.TCP.FIN {
-			*nextSeqPtr += 1
-			c.closingFlow = p.Flow
-			c.state = TCP_CONNECTION_CLOSING
-			*closerState = TCP_FIN_WAIT1
-			*remoteState = TCP_CLOSE_WAIT
-			return
-		}
 		if p.TCP.RST {
 			log.Print("got RST!\n")
 			c.shutdown()
@@ -448,6 +440,14 @@ func (c *Connection) stateDataTransfer(p types.PacketManifest) {
 				*nextSeqPtr = c.ClientCoalesce.addContiguous(*nextSeqPtr)
 			}
 		}
+		if p.TCP.FIN {
+			//*nextSeqPtr += 1
+			c.closingFlow = p.Flow
+			c.state = TCP_CONNECTION_CLOSING
+			*closerState = TCP_FIN_WAIT1
+			*remoteState = TCP_CLOSE_WAIT
+			return
+		}
 	} else if diff < 0 { // future-out-of-order packet case
 		if p.Flow.Equal(c.clientFlow) {
 			c.clientNextSeq = c.ServerCoalesce.insert(p, c.clientNextSeq)
@@ -459,23 +459,21 @@ func (c *Connection) stateDataTransfer(p types.PacketManifest) {
 
 // stateFinWait1 handles packets for the FIN-WAIT-1 state
 func (c *Connection) stateFinWait1(p types.PacketManifest, flow *types.TcpIpFlow, nextSeqPtr *types.Sequence, nextAckPtr *types.Sequence, statePtr, otherStatePtr *uint8) {
-	if types.Sequence(p.TCP.Seq).Difference(*nextSeqPtr) != 0 {
-		log.Printf("FIN-WAIT-1: out of order packet received. sequence %d != nextSeq %d\n", p.TCP.Seq, *nextSeqPtr)
-		c.shutdown()
-		return
-	}
 	if p.TCP.ACK {
-		if types.Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 { //XXX
-			log.Printf("FIN-WAIT-1: unexpected ACK: got %d expected %d\n", p.TCP.Ack, *nextAckPtr)
-			c.shutdown()
-			return
-		}
+		*nextAckPtr += 1
 		if p.TCP.FIN {
 			*statePtr = TCP_CLOSING
 			*otherStatePtr = TCP_LAST_ACK
-			*nextSeqPtr = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
+			*nextSeqPtr = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
+
+			if types.Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 {
+				log.Printf("FIN-WAIT-1: unexpected ACK: got %d expected %d TCP.Seq %d\n", p.TCP.Ack, *nextAckPtr, p.TCP.Seq)
+				c.shutdown()
+				return
+			}
 		} else {
 			*statePtr = TCP_FIN_WAIT2
+			*nextSeqPtr = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
 		}
 	} else {
 		log.Print("FIN-WAIT-1: non-ACK packet received.\n")
@@ -483,36 +481,47 @@ func (c *Connection) stateFinWait1(p types.PacketManifest, flow *types.TcpIpFlow
 	}
 }
 
-// stateFinWait1 handles packets for the FIN-WAIT-2 state
+// stateFinWait2 handles packets for the FIN-WAIT-2 state
 func (c *Connection) stateFinWait2(p types.PacketManifest, flow *types.TcpIpFlow, nextSeqPtr *types.Sequence, nextAckPtr *types.Sequence, statePtr *uint8) {
 	if types.Sequence(p.TCP.Seq).Difference(*nextSeqPtr) == 0 {
 		if p.TCP.ACK && p.TCP.FIN {
 			if types.Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 {
-				log.Print("FIN-WAIT-1: out of order ACK packet received.\n")
+				log.Print("FIN-WAIT-2: out of order ACK packet received.\n")
 				c.shutdown()
 				return
 			}
 			*nextSeqPtr += 1
-			// XXX
 			*statePtr = TCP_TIME_WAIT
-			log.Print("TCP_TIME_WAIT\n")
-
 		} else {
-			log.Print("FIN-WAIT-2: protocol anamoly")
-			c.shutdown()
+			c.detectInjection(p, p.Flow)
 		}
 	} else {
 		log.Print("FIN-WAIT-2: out of order packet received.\n")
+		log.Printf("got TCP.Seq %d expected %d\n", p.TCP.Seq, *nextSeqPtr)
 		c.shutdown()
 	}
 }
 
 // stateCloseWait represents the TCP FSM's CLOSE-WAIT state
 func (c *Connection) stateCloseWait(p types.PacketManifest) {
-	flow := types.NewTcpIpFlowFromLayers(p.IP, p.TCP)
-	log.Printf("stateCloseWait: flow %s\n", flow.String())
-	log.Print("CLOSE-WAIT: invalid protocol state\n")
-	c.shutdown()
+	var nextSeqPtr *types.Sequence
+
+	if p.Flow.Equal(c.clientFlow) {
+		nextSeqPtr = &c.clientNextSeq
+	} else {
+		nextSeqPtr = &c.serverNextSeq
+	}
+
+	diff := types.Sequence(p.TCP.Seq).Difference(*nextSeqPtr)
+	// stream overlap case
+	if diff > 0 {
+		if len(p.Payload) == 0 {
+			// XXX perhaps we should count this as an injection?
+			// there hasn't been any content injection however this
+			// does indicate an attempt to inject a FIN packet
+			log.Print("CLOSE-WAIT: injected FIN len 0\n")
+		}
+	}
 }
 
 // stateTimeWait represents the TCP FSM's CLOSE-WAIT state
