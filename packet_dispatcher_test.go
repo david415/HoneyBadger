@@ -99,97 +99,7 @@ func (m MockPacketLogger) Start() {
 func (m MockPacketLogger) Stop() {
 }
 
-func TestInquisitorForceQuit(t *testing.T) {
-
-	tcpIdleTimeout, _ := time.ParseDuration("10m")
-	inquisitorOptions := InquisitorOptions{
-		BufferedPerConnection:    10,
-		BufferedTotal:            100,
-		LogDir:                   ".",
-		LogPackets:               true,
-		TcpIdleTimeout:           tcpIdleTimeout,
-		MaxRingPackets:           40,
-		Logger:                   logging.NewAttackMetadataJsonLogger("."),
-		DetectHijack:             true,
-		DetectInjection:          true,
-		DetectCoalesceInjection:  true,
-		MaxConcurrentConnections: 100,
-	}
-
-	wireDuration, _ := time.ParseDuration("3s")
-	snifferOptions := PcapSnifferOptions{
-		Interface:    "myInterface",
-		Filename:     "",
-		WireDuration: wireDuration,
-		Snaplen:      65536,
-		Filter:       "tcp",
-	}
-	connOptions := ConnectionOptions{}
-
-	connectionFactory := ConnectionFactory{
-		options:              &connOptions,
-		CreateConnectionFunc: NewMockConnection,
-	}
-
-	supervisor := NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, NewMockSniffer, &connectionFactory, NewMockPacketLogger)
-
-	log.Print("supervisor before run")
-	go supervisor.Run()
-	log.Print("supervisor after run")
-
-	sniffer := supervisor.GetSniffer()
-	startedChan := sniffer.GetStartedChan()
-	<-startedChan
-
-	var sig os.Signal
-	supervisor.forceQuitChan <- sig
-}
-
-func TestInquisitorSourceStopped(t *testing.T) {
-
-	tcpIdleTimeout, _ := time.ParseDuration("10m")
-	inquisitorOptions := InquisitorOptions{
-		BufferedPerConnection:    10,
-		BufferedTotal:            100,
-		LogDir:                   ".",
-		LogPackets:               true,
-		TcpIdleTimeout:           tcpIdleTimeout,
-		MaxRingPackets:           40,
-		Logger:                   logging.NewAttackMetadataJsonLogger("."),
-		DetectHijack:             true,
-		DetectInjection:          true,
-		DetectCoalesceInjection:  true,
-		MaxConcurrentConnections: 100,
-	}
-
-	wireDuration, _ := time.ParseDuration("3s")
-	snifferOptions := PcapSnifferOptions{
-		Interface:    "myInterface",
-		Filename:     "",
-		WireDuration: wireDuration,
-		Snaplen:      65536,
-		Filter:       "tcp",
-	}
-	connOptions := ConnectionOptions{}
-	connectionFactory := ConnectionFactory{
-		options:              &connOptions,
-		CreateConnectionFunc: NewMockConnection,
-	}
-	supervisor := NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, NewMockSniffer, &connectionFactory, NewMockPacketLogger)
-
-	log.Print("supervisor before run")
-	go supervisor.Run()
-	log.Print("supervisor after run")
-
-	sniffer := supervisor.GetSniffer()
-	startedChan := sniffer.GetStartedChan()
-	<-startedChan
-
-	sniffer.Stop()
-}
-
-func TestInquisitorSourceReceiveSimple(t *testing.T) {
-
+func SetupTestInquisitor() (*BadgerSupervisor, PacketDispatcher, types.PacketSource) {
 	tcpIdleTimeout, _ := time.ParseDuration("10m")
 	inquisitorOptions := InquisitorOptions{
 		BufferedPerConnection:    10,
@@ -227,6 +137,26 @@ func TestInquisitorSourceReceiveSimple(t *testing.T) {
 	sniffer := supervisor.GetSniffer()
 	startedChan := sniffer.GetStartedChan()
 	dispatcher := supervisor.GetDispatcher()
+	<-startedChan
+	log.Print("started.")
+	return supervisor, dispatcher, sniffer
+}
+
+func TestInquisitorForceQuit(t *testing.T) {
+	supervisor, _, _ := SetupTestInquisitor()
+	var sig os.Signal
+	supervisor.forceQuitChan <- sig
+}
+
+func TestInquisitorSourceStopped(t *testing.T) {
+	_, _, sniffer := SetupTestInquisitor()
+	sniffer.Stop()
+}
+
+func TestInquisitorSourceReceiveOne(t *testing.T) {
+
+	_, dispatcher, sniffer := SetupTestInquisitor()
+	//supervisor, dispatcher, sniffer := SetupTestInquisitor()
 
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},
@@ -250,9 +180,6 @@ func TestInquisitorSourceReceiveSimple(t *testing.T) {
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
 
-	<-startedChan
-	log.Print("started.")
-
 	connsChan := dispatcher.GetObservedConnectionsChan(1)
 	dispatcher.ReceivePacket(&p)
 
@@ -261,6 +188,10 @@ func TestInquisitorSourceReceiveSimple(t *testing.T) {
 	conns := dispatcher.Connections()
 
 	// assert conns len is 1
+	if len(conns) != 1 {
+		t.Fatalf("number of connections %d is not 1", len(conns))
+	}
+
 	conn := conns[0]
 	mockConn := conn.(*MockConnection)
 
