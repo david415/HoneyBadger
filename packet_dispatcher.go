@@ -53,6 +53,8 @@ type InquisitorOptions struct {
 type Inquisitor struct {
 	InquisitorOptions
 	connectionFactory       *ConnectionFactory
+	observeConnectionCount  int
+	observeConnectionChan   chan bool
 	dispatchPacketChan      chan *types.PacketManifest
 	stopDispatchChan        chan bool
 	closeConnectionChan     chan ConnectionInterface
@@ -76,6 +78,12 @@ func NewInquisitor(options *InquisitorOptions, connectionFactory *ConnectionFact
 	return &i
 }
 
+func (i *Inquisitor) GetObservedConnectionsChan(count int) chan bool {
+	i.observeConnectionCount = count
+	i.observeConnectionChan = make(chan bool, 0)
+	return i.observeConnectionChan
+}
+
 // Start... starts the TCP attack inquisition!
 func (i *Inquisitor) Start() {
 	i.pager.Start()
@@ -91,7 +99,7 @@ func (i *Inquisitor) Stop() {
 }
 
 // connectionsLocked returns a slice of Connection pointers.
-func (i *Inquisitor) connections() []ConnectionInterface {
+func (i *Inquisitor) Connections() []ConnectionInterface {
 	conns := make([]ConnectionInterface, 0, len(i.pool))
 	for _, conn := range i.pool {
 		conns = append(conns, conn)
@@ -111,7 +119,7 @@ func (i *Inquisitor) ReceivePacket(p *types.PacketManifest) {
 // that have not received packet since that specified time
 func (i *Inquisitor) CloseOlderThan(t time.Time) int {
 	closed := 0
-	conns := i.connections()
+	conns := i.Connections()
 	if conns == nil {
 		return 0
 	}
@@ -128,7 +136,7 @@ func (i *Inquisitor) CloseOlderThan(t time.Time) int {
 
 // CloseAllConnections closes all connections in the pool.
 func (i *Inquisitor) CloseAllConnections() int {
-	conns := i.connections()
+	conns := i.Connections()
 	if conns == nil {
 		return 0
 	}
@@ -159,13 +167,15 @@ func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) ConnectionInterfa
 	conn := i.connectionFactory.Build()
 
 	if i.LogPackets {
-		//packetLogger := logging.NewPcapLogger(i.LogDir, flow)
 		packetLogger := i.PacketLoggerFactoryFunc(i.LogDir, flow)
 		conn.SetPacketLogger(packetLogger)
 		packetLogger.Start()
 	}
 	i.pool[flow.ConnectionHash()] = conn
 	conn.Start()
+	if i.observeConnectionCount != 0 && i.observeConnectionCount == len(i.Connections()) {
+		i.observeConnectionChan <- true
+	}
 	return conn
 }
 

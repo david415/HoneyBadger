@@ -69,21 +69,17 @@ type ConnectionInterface interface {
 	Start()
 	Close()
 	Stop()
-	AppendToClientStreamRing(*types.Reassembly)
 	SetPacketLogger(types.PacketLogger)
 	GetConnectionHash() types.ConnectionHash
 	ReceivePacket(*types.PacketManifest)
 	GetLastSeen() time.Time
-	SetServerFlow(*types.TcpIpFlow)
-	SetClientFlow(*types.TcpIpFlow)
-	detectInjection(p types.PacketManifest, flow *types.TcpIpFlow)
-	GetClientStreamRing() *types.Ring
-	SetState(uint8)
 }
 
 type PacketDispatcher interface {
 	CloseRequest(ConnectionInterface)
 	ReceivePacket(*types.PacketManifest)
+	GetObservedConnectionsChan(int) chan bool
+	Connections() []ConnectionInterface
 }
 
 type ConnectionOptions struct {

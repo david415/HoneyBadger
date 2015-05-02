@@ -38,60 +38,48 @@ func (s MockSniffer) GetStartedChan() chan bool {
 }
 
 type MockConnection struct {
-	options          *ConnectionOptions
-	clientFlow       types.TcpIpFlow
-	serverFlow       types.TcpIpFlow
-	lastSeen         time.Time
-	ClientStreamRing *types.Ring
+	options            *ConnectionOptions
+	clientFlow         types.TcpIpFlow
+	serverFlow         types.TcpIpFlow
+	lastSeen           time.Time
+	ClientStreamRing   *types.Ring
+	packetObserverChan chan bool
 }
 
 func NewMockConnection(options *ConnectionOptions) ConnectionInterface {
 	m := MockConnection{
-		options: options,
+		options:            options,
+		packetObserverChan: make(chan bool, 0),
 	}
 	return ConnectionInterface(&m)
 }
 
 func (m *MockConnection) Start() {
+	log.Print("MockConnection.Start()")
 }
 
 func (m *MockConnection) Stop() {
+	log.Print("MockConnection.Stop()")
 }
 
-func (m *MockConnection) Close() {
+func (m MockConnection) Close() {
+	log.Print("MockConnection.Close()")
 }
 
-func (m *MockConnection) GetConnectionHash() types.ConnectionHash {
+func (m MockConnection) GetConnectionHash() types.ConnectionHash {
 	return m.clientFlow.ConnectionHash()
 }
 
-func (m *MockConnection) GetLastSeen() time.Time {
+func (m MockConnection) GetLastSeen() time.Time {
 	return m.lastSeen
 }
 
-func (m *MockConnection) ReceivePacket(p *types.PacketManifest) {
+func (m MockConnection) ReceivePacket(p *types.PacketManifest) {
+	log.Print("MockConnection.ReceivePacket:")
+	m.packetObserverChan <- true
 }
 
-func (m *MockConnection) SetPacketLogger(l types.PacketLogger) {
-}
-
-func (m *MockConnection) SetServerFlow(*types.TcpIpFlow) {
-}
-
-func (m *MockConnection) SetClientFlow(*types.TcpIpFlow) {
-}
-
-func (m *MockConnection) AppendToClientStreamRing(reassembly *types.Reassembly) {
-}
-
-func (m *MockConnection) detectInjection(p types.PacketManifest, flow *types.TcpIpFlow) {
-}
-
-func (m *MockConnection) GetClientStreamRing() *types.Ring {
-	return m.ClientStreamRing
-}
-
-func (m *MockConnection) SetState(state uint8) {
+func (m MockConnection) SetPacketLogger(l types.PacketLogger) {
 }
 
 type MockPacketLogger struct {
@@ -105,10 +93,10 @@ func NewMockPacketLogger(str string, flow *types.TcpIpFlow) types.PacketLogger {
 func (m *MockPacketLogger) WritePacket(rawPacket []byte, timestamp time.Time) {
 }
 
-func (m *MockPacketLogger) Start() {
+func (m MockPacketLogger) Start() {
 }
 
-func (m *MockPacketLogger) Stop() {
+func (m MockPacketLogger) Stop() {
 }
 
 func TestInquisitorForceQuit(t *testing.T) {
@@ -238,7 +226,6 @@ func TestInquisitorSourceReceiveSimple(t *testing.T) {
 
 	sniffer := supervisor.GetSniffer()
 	startedChan := sniffer.GetStartedChan()
-
 	dispatcher := supervisor.GetDispatcher()
 
 	ip := layers.IPv4{
@@ -263,8 +250,22 @@ func TestInquisitorSourceReceiveSimple(t *testing.T) {
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
 
+	<-startedChan
+	log.Print("started.")
+
+	connsChan := dispatcher.GetObservedConnectionsChan(1)
 	dispatcher.ReceivePacket(&p)
 
+	<-connsChan
+	// XXX we now have one connection
+	conns := dispatcher.Connections()
+
+	// assert conns len is 1
+	conn := conns[0]
+	mockConn := conn.(*MockConnection)
+
+	log.Print("awaiting packet...")
+	<-mockConn.packetObserverChan
+
 	sniffer.Stop()
-	<-startedChan
 }
