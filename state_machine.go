@@ -127,6 +127,7 @@ type Connection struct {
 // NewConnection returns a new Connection struct
 func NewConnection(options *ConnectionOptions) ConnectionInterface {
 	conn := Connection{
+		packetCount:       0,
 		ConnectionOptions: *options,
 		attackDetected:    false,
 		stopChan:          make(chan bool),
@@ -308,11 +309,19 @@ func (c *Connection) stateUnknown(p types.PacketManifest) {
 		c.state = TCP_DATA_TRANSFER
 		c.clientFlow = p.Flow
 		c.serverFlow = p.Flow.Reverse()
-		c.packetCount = FIRST_FEW_PACKETS // skip handshake hijack detection
 
-		// XXX todo handle FIN and RST
-		if len(p.Payload) > 0 {
-			c.clientNextSeq = c.ServerCoalesce.insert(p, c.clientNextSeq)
+		// skip handshake hijack detection
+		c.packetCount = FIRST_FEW_PACKETS
+
+		c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1) // XXX
+
+		if p.TCP.FIN || p.TCP.RST {
+			log.Print("got RST or FIN")
+			c.shutdown()
+		} else {
+			if len(p.Payload) > 0 {
+				c.clientNextSeq = c.ServerCoalesce.insert(p, c.clientNextSeq)
+			}
 		}
 	}
 }
