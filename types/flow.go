@@ -1,8 +1,7 @@
 /*
- *    flow.go - HoneyBadger core library for detecting TCP attacks
- *    such as handshake-hijack, segment veto and sloppy injection.
+ *    HoneyBadger core library for detecting TCP injection attacks
  *
- *    Copyright (C) 2014  David Stainton
+ *    Copyright (C) 2014, 2015  David Stainton
  *
  *    This program is free software: you can redistribute it and/or modify
  *    it under the terms of the GNU General Public License as published by
@@ -21,9 +20,9 @@
 package types
 
 import (
+	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"fmt"
 )
 
 // SequenceFromPacket returns a Sequence number and nil error if the given

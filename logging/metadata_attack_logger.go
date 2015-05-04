@@ -1,8 +1,7 @@
 /*
- *    metadata_attack_logger.go - HoneyBadger core library for detecting TCP attacks
- *    such as handshake-hijack, segment veto and sloppy injection.
+ *    HoneyBadger core library for detecting TCP injection attacks
  *
- *    Copyright (C) 2014  David Stainton
+ *    Copyright (C) 2014, 2015  David Stainton
  *
  *    This program is free software: you can redistribute it and/or modify
  *    it under the terms of the GNU General Public License as published by

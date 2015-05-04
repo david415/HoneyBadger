@@ -1,6 +1,6 @@
 /*
- *    injector.go - TCP stream injector API - integration test for HoneyBadger
- *    Copyright (C) 2014  David Stainton
+ *    injector.go - TCP stream injector API - "integration tests" for HoneyBadger
+ *    Copyright (C) 2014, 2015  David Stainton
  *
  *    This program is free software: you can redistribute it and/or modify
  *    it under the terms of the GNU General Public License as published by
@@ -19,9 +19,9 @@
 package attack
 
 import (
+	"github.com/david415/HoneyBadger/types"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/david415/HoneyBadger/types"
 	"golang.org/x/net/ipv4"
 	"net"
 )

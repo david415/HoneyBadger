@@ -1,8 +1,7 @@
 /*
- *    sprayInjectorTest.go - probabalistic TCP stream injection based on observed TCP sequences
- *    such as handshake-hijack, segment veto and sloppy injection.
+ *    probabalistic/sloppy TCP stream injection based on observed TCP sequences
  *
- *    Copyright (C) 2014  David Stainton
+ *    Copyright (C) 2014, 2015  David Stainton
  *
  *    This program is free software: you can redistribute it and/or modify
  *    it under the terms of the GNU General Public License as published by
@@ -21,14 +20,14 @@
 package main
 
 import (
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/examples/util"
-	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pcap"
 	"flag"
 	"fmt"
 	"github.com/david415/HoneyBadger/attack"
 	"github.com/david415/HoneyBadger/types"
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/examples/util"
+	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap"
 	"log"
 	"net"
 )

@@ -1,6 +1,6 @@
 /*
- *    handshakeInjectorTest.go - TCP handshake stream injector
- *    Copyright (C) 2014  David Stainton
+ *    TCP handshake hijack implementation
+ *    Copyright (C) 2014, 2015  David Stainton
  *
  *    This program is free software: you can redistribute it and/or modify
  *    it under the terms of the GNU General Public License as published by
@@ -19,13 +19,13 @@
 package main
 
 import (
+	"flag"
+	"github.com/david415/HoneyBadger/attack"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/examples/util"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/google/gopacket/tcpassembly"
-	"flag"
-	"github.com/david415/HoneyBadger/attack"
 	"log"
 	"math/rand"
 	"time"
