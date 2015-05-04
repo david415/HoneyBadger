@@ -157,8 +157,9 @@ func TestInquisitorForceQuit(t *testing.T) {
 }
 
 func TestInquisitorSourceStopped(t *testing.T) {
-	_, _, sniffer := SetupTestInquisitor()
+	supervisor, _, sniffer := SetupTestInquisitor()
 	sniffer.Stop()
+	supervisor.Stopped()
 }
 
 func TestInquisitorSourceReceiveOne(t *testing.T) {
