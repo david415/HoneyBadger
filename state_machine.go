@@ -502,7 +502,11 @@ func (c *Connection) stateFinWait2(p types.PacketManifest, flow *types.TcpIpFlow
 			*nextSeqPtr += 1
 			*statePtr = TCP_TIME_WAIT
 		} else {
-			c.detectInjection(p, p.Flow)
+			if len(p.Payload) > 0 {
+				c.detectInjection(p, p.Flow)
+			} else {
+				log.Print("FIN-WAIT-2: injected FIN len 0")
+			}
 		}
 	} else {
 		log.Print("FIN-WAIT-2: out of order packet received.\n")
