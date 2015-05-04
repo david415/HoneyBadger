@@ -3,7 +3,6 @@ package HoneyBadger
 import (
 	"fmt"
 	"github.com/david415/HoneyBadger/types"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -78,9 +77,6 @@ func SetupAttackDetectionPcapInquisitor(pcapPath string, attackLogger *TestLogge
 func PcapIsDetectInjection(pcapPath string) bool {
 	logger := NewTestLogger()
 	SetupAttackDetectionPcapInquisitor(pcapPath, &logger)
-	log.Print("after test")
-
-	log.Printf("COUNT %d\n", logger.count)
 	if logger.count == 0 {
 		return false
 	} else {
@@ -110,6 +106,6 @@ func TestAllPcapFiles(t *testing.T) {
 	}
 	err = filepath.Walk(path, walkpath)
 	if err != nil {
-		log.Print("err != nil")
+		panic(err)
 	}
 }
