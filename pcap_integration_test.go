@@ -96,6 +96,9 @@ func TestAllPcapFiles(t *testing.T) {
 	}
 	var path string
 	path, err = filepath.EvalSymlinks(absPathSymLink)
+	if err != nil {
+		t.Skip("skipping test because pcap_archive symlink is missing.")
+	}
 	walkpath := func(path string, f os.FileInfo, err error) error {
 		if strings.HasSuffix(path, ".pcap") {
 			fmt.Printf("HoneyBadger integration test with: %s\n", path)
