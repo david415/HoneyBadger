@@ -20,9 +20,10 @@
 package HoneyBadger
 
 import (
-	"github.com/david415/HoneyBadger/types"
 	"log"
 	"time"
+
+	"github.com/david415/HoneyBadger/types"
 )
 
 type TimedRawPacket struct {
@@ -33,7 +34,7 @@ type TimedRawPacket struct {
 // InquisitorOptions are user set parameters for specifying the
 // details of how to proceed with honey_bager's TCP connection monitoring.
 // More parameters should soon be added here!
-type InquisitorOptions struct {
+type DispatcherOptions struct {
 	BufferedPerConnection    int
 	BufferedTotal            int
 	LogDir                   string
@@ -49,9 +50,9 @@ type InquisitorOptions struct {
 
 // Inquisitor sets up the connection pool and is an abstraction layer for dealing
 // with incoming packets weather they be from a pcap file or directly off the wire.
-type Inquisitor struct {
-	InquisitorOptions
-	connectionFactory       *ConnectionFactory
+type Dispatcher struct {
+	options                 DispatcherOptions
+	connectionFactory       ConnectionFactory
 	observeConnectionCount  int
 	observeConnectionChan   chan bool
 	dispatchPacketChan      chan *types.PacketManifest
@@ -63,11 +64,11 @@ type Inquisitor struct {
 }
 
 // NewInquisitor creates a new Inquisitor struct
-func NewInquisitor(options *InquisitorOptions, connectionFactory *ConnectionFactory, packetLoggerFactoryFunc func(string, *types.TcpIpFlow) types.PacketLogger) *Inquisitor {
-	i := Inquisitor{
+func NewDispatcher(options DispatcherOptions, connectionFactory ConnectionFactory, packetLoggerFactoryFunc func(string, *types.TcpIpFlow) types.PacketLogger) *Dispatcher {
+	i := Dispatcher{
 		PacketLoggerFactoryFunc: packetLoggerFactoryFunc,
 		connectionFactory:       connectionFactory,
-		InquisitorOptions:       *options,
+		options:                 options,
 		dispatchPacketChan:      make(chan *types.PacketManifest),
 		stopDispatchChan:        make(chan bool),
 		closeConnectionChan:     make(chan ConnectionInterface),
@@ -77,20 +78,20 @@ func NewInquisitor(options *InquisitorOptions, connectionFactory *ConnectionFact
 	return &i
 }
 
-func (i *Inquisitor) GetObservedConnectionsChan(count int) chan bool {
+func (i *Dispatcher) GetObservedConnectionsChan(count int) chan bool {
 	i.observeConnectionCount = count
 	i.observeConnectionChan = make(chan bool, 0)
 	return i.observeConnectionChan
 }
 
 // Start... starts the TCP attack inquisition!
-func (i *Inquisitor) Start() {
+func (i *Dispatcher) Start() {
 	i.pager.Start()
 	go i.dispatchPackets()
 }
 
 // Stop... stops the TCP attack inquisition!
-func (i *Inquisitor) Stop() {
+func (i *Dispatcher) Stop() {
 	i.stopDispatchChan <- true
 	closedConns := i.CloseAllConnections()
 	log.Printf("%d connection(s) closed.", closedConns)
@@ -98,7 +99,7 @@ func (i *Inquisitor) Stop() {
 }
 
 // connectionsLocked returns a slice of Connection pointers.
-func (i *Inquisitor) Connections() []ConnectionInterface {
+func (i *Dispatcher) Connections() []ConnectionInterface {
 	conns := make([]ConnectionInterface, 0, len(i.pool))
 	for _, conn := range i.pool {
 		conns = append(conns, conn)
@@ -106,17 +107,17 @@ func (i *Inquisitor) Connections() []ConnectionInterface {
 	return conns
 }
 
-func (i *Inquisitor) CloseRequest(conn ConnectionInterface) {
+func (i *Dispatcher) CloseRequest(conn ConnectionInterface) {
 	i.closeConnectionChan <- conn
 }
 
-func (i *Inquisitor) ReceivePacket(p *types.PacketManifest) {
+func (i *Dispatcher) ReceivePacket(p *types.PacketManifest) {
 	i.dispatchPacketChan <- p
 }
 
 // CloseOlderThan takes a Time argument and closes all the connections
 // that have not received packet since that specified time
-func (i *Inquisitor) CloseOlderThan(t time.Time) int {
+func (i *Dispatcher) CloseOlderThan(t time.Time) int {
 	closed := 0
 	conns := i.Connections()
 	if conns == nil {
@@ -134,7 +135,7 @@ func (i *Inquisitor) CloseOlderThan(t time.Time) int {
 }
 
 // CloseAllConnections closes all connections in the pool.
-func (i *Inquisitor) CloseAllConnections() int {
+func (i *Dispatcher) CloseAllConnections() int {
 	conns := i.Connections()
 	if conns == nil {
 		return 0
@@ -148,25 +149,25 @@ func (i *Inquisitor) CloseAllConnections() int {
 	return count
 }
 
-func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) ConnectionInterface {
+func (i *Dispatcher) setupNewConnection(flow *types.TcpIpFlow) ConnectionInterface {
 	options := ConnectionOptions{
-		MaxBufferedPagesTotal:         i.InquisitorOptions.BufferedTotal,
-		MaxBufferedPagesPerConnection: i.InquisitorOptions.BufferedPerConnection,
-		MaxRingPackets:                i.InquisitorOptions.MaxRingPackets,
+		MaxBufferedPagesTotal:         i.options.BufferedTotal,
+		MaxBufferedPagesPerConnection: i.options.BufferedPerConnection,
+		MaxRingPackets:                i.options.MaxRingPackets,
 		Pager:                         i.pager,
-		LogDir:                        i.LogDir,
-		AttackLogger:                  i.Logger,
-		LogPackets:                    i.LogPackets,
-		DetectHijack:                  i.DetectHijack,
-		DetectInjection:               i.DetectInjection,
-		DetectCoalesceInjection:       i.DetectCoalesceInjection,
+		LogDir:                        i.options.LogDir,
+		AttackLogger:                  i.options.Logger,
+		LogPackets:                    i.options.LogPackets,
+		DetectHijack:                  i.options.DetectHijack,
+		DetectInjection:               i.options.DetectInjection,
+		DetectCoalesceInjection:       i.options.DetectCoalesceInjection,
 		Dispatcher:                    i,
 	}
-	i.connectionFactory.options = &options
-	conn := i.connectionFactory.Build()
 
-	if i.LogPackets {
-		packetLogger := i.PacketLoggerFactoryFunc(i.LogDir, flow)
+	conn := i.connectionFactory.Build(options)
+
+	if i.options.LogPackets {
+		packetLogger := i.PacketLoggerFactoryFunc(i.options.LogDir, flow)
 		conn.SetPacketLogger(packetLogger)
 		packetLogger.Start()
 	}
@@ -178,9 +179,9 @@ func (i *Inquisitor) setupNewConnection(flow *types.TcpIpFlow) ConnectionInterfa
 	return conn
 }
 
-func (i *Inquisitor) dispatchPackets() {
+func (i *Dispatcher) dispatchPackets() {
 	var conn ConnectionInterface
-	timeout := i.InquisitorOptions.TcpIdleTimeout
+	timeout := i.options.TcpIdleTimeout
 	ticker := time.Tick(timeout)
 	for {
 		select {
@@ -202,8 +203,8 @@ func (i *Inquisitor) dispatchPackets() {
 			if ok {
 				conn = i.pool[packetManifest.Flow.ConnectionHash()]
 			} else {
-				if i.MaxConcurrentConnections != 0 {
-					if len(i.pool) >= i.MaxConcurrentConnections {
+				if i.options.MaxConcurrentConnections != 0 {
+					if len(i.pool) >= i.options.MaxConcurrentConnections {
 						continue
 					}
 				}

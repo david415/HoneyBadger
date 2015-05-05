@@ -1,14 +1,15 @@
 package HoneyBadger
 
 import (
-	"github.com/david415/HoneyBadger/logging"
-	"github.com/david415/HoneyBadger/types"
-	"github.com/google/gopacket/layers"
 	"log"
 	"net"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/david415/HoneyBadger/logging"
+	"github.com/david415/HoneyBadger/types"
+	"github.com/google/gopacket/layers"
 )
 
 type MockSniffer struct {
@@ -16,7 +17,7 @@ type MockSniffer struct {
 	startedChan chan bool
 }
 
-func NewMockSniffer(options *PcapSnifferOptions) types.PacketSource {
+func NewMockSniffer(options PcapSnifferOptions) types.PacketSource {
 	var packetSource types.PacketSource = MockSniffer{
 		startedChan: make(chan bool, 0),
 	}
@@ -38,20 +39,12 @@ func (s MockSniffer) GetStartedChan() chan bool {
 }
 
 type MockConnection struct {
-	options            *ConnectionOptions
+	options            ConnectionOptions
 	clientFlow         types.TcpIpFlow
 	serverFlow         types.TcpIpFlow
 	lastSeen           time.Time
 	ClientStreamRing   *types.Ring
 	packetObserverChan chan bool
-}
-
-func NewMockConnection(options *ConnectionOptions) ConnectionInterface {
-	m := MockConnection{
-		options:            options,
-		packetObserverChan: make(chan bool, 0),
-	}
-	return ConnectionInterface(&m)
 }
 
 func (m *MockConnection) Start() {
@@ -83,6 +76,18 @@ func (m MockConnection) SetPacketLogger(l types.PacketLogger) {
 	log.Print("MockConnection.SetPacketLogger")
 }
 
+type mockConnFactory struct {
+}
+
+func (m *mockConnFactory) Build(options ConnectionOptions) ConnectionInterface {
+	c := &MockConnection{
+		options:            options,
+		packetObserverChan: make(chan bool, 0),
+	}
+
+	return c
+}
+
 type MockPacketLogger struct {
 	packetObserverChan chan bool
 }
@@ -109,7 +114,7 @@ func (m MockPacketLogger) Stop() {
 
 func SetupTestInquisitor() (*BadgerSupervisor, PacketDispatcher, types.PacketSource) {
 	tcpIdleTimeout, _ := time.ParseDuration("10m")
-	inquisitorOptions := InquisitorOptions{
+	dispatcherOptions := DispatcherOptions{
 		BufferedPerConnection:    10,
 		BufferedTotal:            100,
 		LogDir:                   ".",
@@ -131,12 +136,9 @@ func SetupTestInquisitor() (*BadgerSupervisor, PacketDispatcher, types.PacketSou
 		Snaplen:      65536,
 		Filter:       "tcp",
 	}
-	connOptions := ConnectionOptions{}
-	connectionFactory := ConnectionFactory{
-		options:              &connOptions,
-		CreateConnectionFunc: NewMockConnection,
-	}
-	supervisor := NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, NewMockSniffer, &connectionFactory, NewMockPacketLogger)
+
+	factory := &mockConnFactory{}
+	supervisor := NewBadgerSupervisor(snifferOptions, dispatcherOptions, NewMockSniffer, factory, NewMockPacketLogger)
 
 	log.Print("supervisor before run")
 	go supervisor.Run()
@@ -285,7 +287,7 @@ func TestInquisitorResetTwice(t *testing.T) {
 
 func SetupRealConnectionInquisitor() (*BadgerSupervisor, PacketDispatcher, types.PacketSource) {
 	tcpIdleTimeout, _ := time.ParseDuration("10m")
-	inquisitorOptions := InquisitorOptions{
+	dispatcherOptions := DispatcherOptions{
 		BufferedPerConnection:    10,
 		BufferedTotal:            100,
 		LogDir:                   ".",
@@ -307,12 +309,9 @@ func SetupRealConnectionInquisitor() (*BadgerSupervisor, PacketDispatcher, types
 		Snaplen:      65536,
 		Filter:       "tcp",
 	}
-	connOptions := ConnectionOptions{}
-	connectionFactory := ConnectionFactory{
-		options:              &connOptions,
-		CreateConnectionFunc: NewConnection,
-	}
-	supervisor := NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, NewMockSniffer, &connectionFactory, NewMockPacketLogger)
+
+	factory := &DefaultConnFactory{}
+	supervisor := NewBadgerSupervisor(snifferOptions, dispatcherOptions, NewMockSniffer, factory, NewMockPacketLogger)
 
 	log.Print("supervisor before run")
 	go supervisor.Run()

@@ -2,12 +2,13 @@ package HoneyBadger
 
 import (
 	"bytes"
-	"github.com/david415/HoneyBadger/types"
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
 	"log"
 	"net"
 	"testing"
+
+	"github.com/david415/HoneyBadger/types"
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 )
 
 type reassemblyInput struct {
@@ -48,7 +49,9 @@ func TestInjectionDetector(t *testing.T) {
 		LogDir:                        "fake-log-dir",
 		AttackLogger:                  attackLogger,
 	}
-	conn := NewRealConnection(&options)
+
+	f := &DefaultConnFactory{}
+	conn := f.Build(options).(*Connection)
 	reassembly := types.Reassembly{
 		Seq:   types.Sequence(5),
 		Bytes: []byte{1, 2, 3, 4, 5},
@@ -135,7 +138,9 @@ func TestGetRingSlice(t *testing.T) {
 		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 	}
-	conn := NewRealConnection(&options)
+
+	f := &DefaultConnFactory{}
+	conn := f.Build(options).(*Connection)
 	for j := 5; j < 40; j += 5 {
 		reassembly := types.Reassembly{
 			Seq:   types.Sequence(j),
@@ -451,6 +456,7 @@ func TestGetOverlapBytes(t *testing.T) {
 			},
 		},
 	}
+
 	options := ConnectionOptions{
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
@@ -459,7 +465,9 @@ func TestGetOverlapBytes(t *testing.T) {
 		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 	}
-	conn := NewRealConnection(&options)
+
+	f := &DefaultConnFactory{}
+	conn := f.Build(options).(*Connection)
 
 	for j := 5; j < 40; j += 5 {
 		reassembly := types.Reassembly{
@@ -552,7 +560,9 @@ func TestGetOverlapRingsWithZeroRings(t *testing.T) {
 		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 	}
-	conn := NewRealConnection(&options)
+
+	f := &DefaultConnFactory{}
+	conn := f.Build(options).(*Connection)
 
 	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
@@ -577,70 +587,70 @@ func TestGetOverlapRings(t *testing.T) {
 	}{
 		{
 			reassemblyInput{7, []byte{1, 2}}, []*types.Reassembly{
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
 			},
 		},
 		{
 			reassemblyInput{7, []byte{6, 7}}, []*types.Reassembly{
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
 			},
 		},
 		{
 			reassemblyInput{5, []byte{1, 2, 3, 4, 5}}, []*types.Reassembly{
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
 			},
 		},
 		{
 			reassemblyInput{5, []byte{1, 2, 3, 4, 5, 6}}, []*types.Reassembly{
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
-				&types.Reassembly{
+				{
 					Seq: 10,
 				},
 			},
 		},
 		{
 			reassemblyInput{6, []byte{1, 2, 3, 4, 5}}, []*types.Reassembly{
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
-				&types.Reassembly{
+				{
 					Seq: 10,
 				},
 			},
 		},
 		{
 			reassemblyInput{7, []byte{1, 2, 3, 4, 5}}, []*types.Reassembly{
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
-				&types.Reassembly{
+				{
 					Seq: 10,
 				},
 			},
 		},
 		{
 			reassemblyInput{32, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}}, []*types.Reassembly{
-				&types.Reassembly{
+				{
 					Seq: 30,
 				},
-				&types.Reassembly{
+				{
 					Seq: 35,
 				},
 			},
@@ -653,20 +663,20 @@ func TestGetOverlapRings(t *testing.T) {
 		},
 		{
 			reassemblyInput{0, []byte{1, 2, 3, 4, 5, 6, 7, 8}}, []*types.Reassembly{
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
 			},
 		},
 		{
 			reassemblyInput{0, []byte{1, 2, 3, 4, 5, 6}}, []*types.Reassembly{
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
 			},
@@ -685,10 +695,10 @@ func TestGetOverlapRings(t *testing.T) {
 		},
 		{
 			reassemblyInput{0, []byte{1, 2, 3, 4, 5, 6}}, []*types.Reassembly{
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
 			},
@@ -707,10 +717,10 @@ func TestGetOverlapRings(t *testing.T) {
 		},
 		{
 			reassemblyInput{38, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}}, []*types.Reassembly{
-				&types.Reassembly{
+				{
 					Seq: 35,
 				},
-				&types.Reassembly{
+				{
 					Seq: 35,
 				},
 			},
@@ -724,6 +734,7 @@ func TestGetOverlapRings(t *testing.T) {
 		TTL:      64,
 		Protocol: layers.IPProtocolTCP,
 	}
+
 	options := ConnectionOptions{
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
@@ -732,7 +743,10 @@ func TestGetOverlapRings(t *testing.T) {
 		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 	}
-	conn := NewRealConnection(&options)
+
+	f := &DefaultConnFactory{}
+	conn := f.Build(options).(*Connection)
+
 	for j := 5; j < 40; j += 5 {
 		reassembly := types.Reassembly{
 			Skip:  0,

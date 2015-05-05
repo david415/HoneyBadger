@@ -2,9 +2,9 @@ package logging
 
 import (
 	"bytes"
+	"github.com/david415/HoneyBadger/types"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/david415/HoneyBadger/types"
 	"net"
 	"testing"
 	"time"

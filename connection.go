@@ -21,12 +21,13 @@ package HoneyBadger
 
 import (
 	"fmt"
-	"github.com/david415/HoneyBadger/types"
 	"log"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/david415/HoneyBadger/types"
 )
 
 const (
@@ -55,13 +56,33 @@ const (
 	TCP_LAST_ACK   = 1
 )
 
-type ConnectionFactory struct {
-	options              *ConnectionOptions
-	CreateConnectionFunc func(*ConnectionOptions) ConnectionInterface
+type ConnectionFactory interface {
+	Build(ConnectionOptions) ConnectionInterface
 }
 
-func (f ConnectionFactory) Build() ConnectionInterface {
-	return f.CreateConnectionFunc(f.options).(ConnectionInterface)
+type DefaultConnFactory struct {
+}
+
+func (f *DefaultConnFactory) Build(options ConnectionOptions) ConnectionInterface {
+	conn := Connection{
+		packetCount:       0,
+		ConnectionOptions: options,
+		attackDetected:    false,
+		stopChan:          make(chan bool),
+		receiveChan:       make(chan *types.PacketManifest),
+		state:             TCP_UNKNOWN,
+		clientNextSeq:     types.InvalidSequence,
+		serverNextSeq:     types.InvalidSequence,
+		ClientStreamRing:  types.NewRing(options.MaxRingPackets),
+		ServerStreamRing:  types.NewRing(options.MaxRingPackets),
+		clientFlow:        &types.TcpIpFlow{},
+		serverFlow:        &types.TcpIpFlow{},
+	}
+
+	conn.ClientCoalesce = NewOrderedCoalesce(conn.Close, conn.AttackLogger, conn.clientFlow, conn.Pager, conn.ClientStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection)
+	conn.ServerCoalesce = NewOrderedCoalesce(conn.Close, conn.AttackLogger, conn.serverFlow, conn.Pager, conn.ServerStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection)
+
+	return &conn
 }
 
 type ConnectionInterface interface {
@@ -121,35 +142,6 @@ type Connection struct {
 	ClientCoalesce   *OrderedCoalesce
 	ServerCoalesce   *OrderedCoalesce
 	PacketLogger     types.PacketLogger
-}
-
-// NewConnection returns a new Connection struct
-func NewConnection(options *ConnectionOptions) ConnectionInterface {
-	conn := Connection{
-		packetCount:       0,
-		ConnectionOptions: *options,
-		attackDetected:    false,
-		stopChan:          make(chan bool),
-		receiveChan:       make(chan *types.PacketManifest),
-		state:             TCP_UNKNOWN,
-		clientNextSeq:     types.InvalidSequence,
-		serverNextSeq:     types.InvalidSequence,
-		ClientStreamRing:  types.NewRing(options.MaxRingPackets),
-		ServerStreamRing:  types.NewRing(options.MaxRingPackets),
-		clientFlow:        &types.TcpIpFlow{},
-		serverFlow:        &types.TcpIpFlow{},
-	}
-
-	conn.ClientCoalesce = NewOrderedCoalesce(conn.Close, conn.AttackLogger, conn.clientFlow, conn.Pager, conn.ClientStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection)
-	conn.ServerCoalesce = NewOrderedCoalesce(conn.Close, conn.AttackLogger, conn.serverFlow, conn.Pager, conn.ServerStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection)
-
-	return ConnectionInterface(&conn)
-}
-
-func NewRealConnection(options *ConnectionOptions) *Connection {
-	conn := NewConnection(options)
-	c := conn.(*Connection)
-	return c
 }
 
 func (c *Connection) SetPacketLogger(logger types.PacketLogger) {
