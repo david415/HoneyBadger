@@ -39,20 +39,12 @@ func (s MockSniffer) GetStartedChan() chan bool {
 }
 
 type MockConnection struct {
-	options            *ConnectionOptions
+	options            ConnectionOptions
 	clientFlow         types.TcpIpFlow
 	serverFlow         types.TcpIpFlow
 	lastSeen           time.Time
 	ClientStreamRing   *types.Ring
 	packetObserverChan chan bool
-}
-
-func NewMockConnection(options *ConnectionOptions) ConnectionInterface {
-	m := MockConnection{
-		options:            options,
-		packetObserverChan: make(chan bool, 0),
-	}
-	return ConnectionInterface(&m)
 }
 
 func (m *MockConnection) Start() {
@@ -82,6 +74,18 @@ func (m MockConnection) ReceivePacket(p *types.PacketManifest) {
 
 func (m MockConnection) SetPacketLogger(l types.PacketLogger) {
 	log.Print("MockConnection.SetPacketLogger")
+}
+
+type mockConnFactory struct {
+}
+
+func (m *mockConnFactory) Build(options ConnectionOptions) ConnectionInterface {
+	c := &MockConnection{
+		options:            options,
+		packetObserverChan: make(chan bool, 0),
+	}
+
+	return c
 }
 
 type MockPacketLogger struct {
@@ -132,12 +136,9 @@ func SetupTestInquisitor() (*BadgerSupervisor, PacketDispatcher, types.PacketSou
 		Snaplen:      65536,
 		Filter:       "tcp",
 	}
-	connOptions := ConnectionOptions{}
-	connectionFactory := ConnectionFactory{
-		options:              &connOptions,
-		CreateConnectionFunc: NewMockConnection,
-	}
-	supervisor := NewBadgerSupervisor(snifferOptions, dispatcherOptions, NewMockSniffer, &connectionFactory, NewMockPacketLogger)
+
+	factory := &mockConnFactory{}
+	supervisor := NewBadgerSupervisor(snifferOptions, dispatcherOptions, NewMockSniffer, factory, NewMockPacketLogger)
 
 	log.Print("supervisor before run")
 	go supervisor.Run()
@@ -308,12 +309,9 @@ func SetupRealConnectionInquisitor() (*BadgerSupervisor, PacketDispatcher, types
 		Snaplen:      65536,
 		Filter:       "tcp",
 	}
-	connOptions := ConnectionOptions{}
-	connectionFactory := ConnectionFactory{
-		options:              &connOptions,
-		CreateConnectionFunc: NewConnection,
-	}
-	supervisor := NewBadgerSupervisor(snifferOptions, dispatcherOptions, NewMockSniffer, &connectionFactory, NewMockPacketLogger)
+
+	factory := &DefaultConnFactory{}
+	supervisor := NewBadgerSupervisor(snifferOptions, dispatcherOptions, NewMockSniffer, factory, NewMockPacketLogger)
 
 	log.Print("supervisor before run")
 	go supervisor.Run()

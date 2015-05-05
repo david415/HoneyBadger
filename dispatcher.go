@@ -52,7 +52,7 @@ type DispatcherOptions struct {
 // with incoming packets weather they be from a pcap file or directly off the wire.
 type Dispatcher struct {
 	options                 DispatcherOptions
-	connectionFactory       *ConnectionFactory
+	connectionFactory       ConnectionFactory
 	observeConnectionCount  int
 	observeConnectionChan   chan bool
 	dispatchPacketChan      chan *types.PacketManifest
@@ -64,7 +64,7 @@ type Dispatcher struct {
 }
 
 // NewInquisitor creates a new Inquisitor struct
-func NewDispatcher(options DispatcherOptions, connectionFactory *ConnectionFactory, packetLoggerFactoryFunc func(string, *types.TcpIpFlow) types.PacketLogger) *Dispatcher {
+func NewDispatcher(options DispatcherOptions, connectionFactory ConnectionFactory, packetLoggerFactoryFunc func(string, *types.TcpIpFlow) types.PacketLogger) *Dispatcher {
 	i := Dispatcher{
 		PacketLoggerFactoryFunc: packetLoggerFactoryFunc,
 		connectionFactory:       connectionFactory,
@@ -163,8 +163,8 @@ func (i *Dispatcher) setupNewConnection(flow *types.TcpIpFlow) ConnectionInterfa
 		DetectCoalesceInjection:       i.options.DetectCoalesceInjection,
 		Dispatcher:                    i,
 	}
-	i.connectionFactory.options = &options
-	conn := i.connectionFactory.Build()
+
+	conn := i.connectionFactory.Build(options)
 
 	if i.options.LogPackets {
 		packetLogger := i.PacketLoggerFactoryFunc(i.options.LogDir, flow)

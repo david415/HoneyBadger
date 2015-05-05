@@ -1,12 +1,13 @@
 package HoneyBadger
 
 import (
-	"github.com/david415/HoneyBadger/types"
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
 	"net"
 	"testing"
 	"time"
+
+	"github.com/david415/HoneyBadger/types"
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 )
 
 func TestStateDataTransfer(t *testing.T) {
@@ -19,7 +20,9 @@ func TestStateDataTransfer(t *testing.T) {
 		LogDir:                        "fake-log-dir",
 		AttackLogger:                  NewDummyAttackLogger(),
 	}
-	conn := NewRealConnection(&options)
+
+	f := &DefaultConnFactory{}
+	conn := f.Build(options).(*Connection)
 	conn.Start()
 
 	conn.SetState(TCP_DATA_TRANSFER)
@@ -123,7 +126,9 @@ func TestTCPConnect(t *testing.T) {
 		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 	}
-	conn := NewRealConnection(&options)
+
+	f := &DefaultConnFactory{}
+	conn := f.Build(options).(*Connection)
 	conn.Start()
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},
@@ -246,7 +251,9 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		Pager:                         pager,
 		LogDir:                        "fake-log-dir",
 	}
-	conn := NewRealConnection(&options)
+
+	f := &DefaultConnFactory{}
+	conn := f.Build(options).(*Connection)
 	conn.AttackLogger = attackLogger
 	conn.Start()
 
@@ -383,7 +390,9 @@ func TestTCPHijack(t *testing.T) {
 		LogDir:                        "fake-log-dir",
 		DetectHijack:                  true,
 	}
-	conn := NewRealConnection(&options)
+
+	f := &DefaultConnFactory{}
+	conn := f.Build(options).(*Connection)
 	conn.AttackLogger = attackLogger
 	conn.Start()
 
