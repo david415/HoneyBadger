@@ -577,70 +577,70 @@ func TestGetOverlapRings(t *testing.T) {
 	}{
 		{
 			reassemblyInput{7, []byte{1, 2}}, []*types.Reassembly{
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
 			},
 		},
 		{
 			reassemblyInput{7, []byte{6, 7}}, []*types.Reassembly{
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
 			},
 		},
 		{
 			reassemblyInput{5, []byte{1, 2, 3, 4, 5}}, []*types.Reassembly{
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
 			},
 		},
 		{
 			reassemblyInput{5, []byte{1, 2, 3, 4, 5, 6}}, []*types.Reassembly{
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
-				&types.Reassembly{
+				{
 					Seq: 10,
 				},
 			},
 		},
 		{
 			reassemblyInput{6, []byte{1, 2, 3, 4, 5}}, []*types.Reassembly{
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
-				&types.Reassembly{
+				{
 					Seq: 10,
 				},
 			},
 		},
 		{
 			reassemblyInput{7, []byte{1, 2, 3, 4, 5}}, []*types.Reassembly{
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
-				&types.Reassembly{
+				{
 					Seq: 10,
 				},
 			},
 		},
 		{
 			reassemblyInput{32, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}}, []*types.Reassembly{
-				&types.Reassembly{
+				{
 					Seq: 30,
 				},
-				&types.Reassembly{
+				{
 					Seq: 35,
 				},
 			},
@@ -653,20 +653,20 @@ func TestGetOverlapRings(t *testing.T) {
 		},
 		{
 			reassemblyInput{0, []byte{1, 2, 3, 4, 5, 6, 7, 8}}, []*types.Reassembly{
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
 			},
 		},
 		{
 			reassemblyInput{0, []byte{1, 2, 3, 4, 5, 6}}, []*types.Reassembly{
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
 			},
@@ -685,10 +685,10 @@ func TestGetOverlapRings(t *testing.T) {
 		},
 		{
 			reassemblyInput{0, []byte{1, 2, 3, 4, 5, 6}}, []*types.Reassembly{
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
-				&types.Reassembly{
+				{
 					Seq: 5,
 				},
 			},
@@ -707,10 +707,10 @@ func TestGetOverlapRings(t *testing.T) {
 		},
 		{
 			reassemblyInput{38, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}}, []*types.Reassembly{
-				&types.Reassembly{
+				{
 					Seq: 35,
 				},
-				&types.Reassembly{
+				{
 					Seq: 35,
 				},
 			},

@@ -62,7 +62,7 @@ func (c *pageCache) grow() {
 	pages := make([]page, c.pcSize)
 	c.pages = append(c.pages, pages)
 	c.size += c.pcSize
-	for i, _ := range pages {
+	for i := range pages {
 		c.free = append(c.free, &pages[i])
 	}
 	if memLog {

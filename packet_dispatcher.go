@@ -20,9 +20,10 @@
 package HoneyBadger
 
 import (
-	"github.com/david415/HoneyBadger/types"
 	"log"
 	"time"
+
+	"github.com/david415/HoneyBadger/types"
 )
 
 type TimedRawPacket struct {
