@@ -1,14 +1,15 @@
 package HoneyBadger
 
 import (
-	"github.com/david415/HoneyBadger/logging"
-	"github.com/david415/HoneyBadger/types"
-	"github.com/google/gopacket/layers"
 	"log"
 	"net"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/david415/HoneyBadger/logging"
+	"github.com/david415/HoneyBadger/types"
+	"github.com/google/gopacket/layers"
 )
 
 type MockSniffer struct {
@@ -109,7 +110,7 @@ func (m MockPacketLogger) Stop() {
 
 func SetupTestInquisitor() (*BadgerSupervisor, PacketDispatcher, types.PacketSource) {
 	tcpIdleTimeout, _ := time.ParseDuration("10m")
-	inquisitorOptions := InquisitorOptions{
+	dispatcherOptions := DispatcherOptions{
 		BufferedPerConnection:    10,
 		BufferedTotal:            100,
 		LogDir:                   ".",
@@ -136,7 +137,7 @@ func SetupTestInquisitor() (*BadgerSupervisor, PacketDispatcher, types.PacketSou
 		options:              &connOptions,
 		CreateConnectionFunc: NewMockConnection,
 	}
-	supervisor := NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, NewMockSniffer, &connectionFactory, NewMockPacketLogger)
+	supervisor := NewBadgerSupervisor(&snifferOptions, dispatcherOptions, NewMockSniffer, &connectionFactory, NewMockPacketLogger)
 
 	log.Print("supervisor before run")
 	go supervisor.Run()
@@ -285,7 +286,7 @@ func TestInquisitorResetTwice(t *testing.T) {
 
 func SetupRealConnectionInquisitor() (*BadgerSupervisor, PacketDispatcher, types.PacketSource) {
 	tcpIdleTimeout, _ := time.ParseDuration("10m")
-	inquisitorOptions := InquisitorOptions{
+	dispatcherOptions := DispatcherOptions{
 		BufferedPerConnection:    10,
 		BufferedTotal:            100,
 		LogDir:                   ".",
@@ -312,7 +313,7 @@ func SetupRealConnectionInquisitor() (*BadgerSupervisor, PacketDispatcher, types
 		options:              &connOptions,
 		CreateConnectionFunc: NewConnection,
 	}
-	supervisor := NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, NewMockSniffer, &connectionFactory, NewMockPacketLogger)
+	supervisor := NewBadgerSupervisor(&snifferOptions, dispatcherOptions, NewMockSniffer, &connectionFactory, NewMockPacketLogger)
 
 	log.Print("supervisor before run")
 	go supervisor.Run()

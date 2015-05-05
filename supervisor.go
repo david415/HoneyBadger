@@ -20,27 +20,28 @@
 package HoneyBadger
 
 import (
-	"github.com/david415/HoneyBadger/types"
 	"log"
 	"os"
 	"os/signal"
+
+	"github.com/david415/HoneyBadger/types"
 )
 
 type BadgerSupervisor struct {
-	inquisitor       *Inquisitor
+	dispatcher       *Dispatcher
 	sniffer          types.PacketSource
 	childStoppedChan chan bool
 	forceQuitChan    chan os.Signal
 }
 
-func NewBadgerSupervisor(snifferOptions *PcapSnifferOptions, inquisitorOptions *InquisitorOptions, snifferFactoryFunc func(*PcapSnifferOptions) types.PacketSource, connectionFactory *ConnectionFactory, packetLoggerFactoryFunc func(string, *types.TcpIpFlow) types.PacketLogger) *BadgerSupervisor {
-	inquisitor := NewInquisitor(inquisitorOptions, connectionFactory, packetLoggerFactoryFunc)
-	snifferOptions.Dispatcher = inquisitor
+func NewBadgerSupervisor(snifferOptions *PcapSnifferOptions, dispatcherOptions DispatcherOptions, snifferFactoryFunc func(*PcapSnifferOptions) types.PacketSource, connectionFactory *ConnectionFactory, packetLoggerFactoryFunc func(string, *types.TcpIpFlow) types.PacketLogger) *BadgerSupervisor {
+	dispatcher := NewDispatcher(dispatcherOptions, connectionFactory, packetLoggerFactoryFunc)
+	snifferOptions.Dispatcher = dispatcher
 	sniffer := snifferFactoryFunc(snifferOptions)
 	supervisor := BadgerSupervisor{
 		forceQuitChan:    make(chan os.Signal, 1),
 		childStoppedChan: make(chan bool, 0),
-		inquisitor:       inquisitor,
+		dispatcher:       dispatcher,
 		sniffer:          sniffer,
 	}
 	sniffer.SetSupervisor(supervisor)
@@ -48,7 +49,7 @@ func NewBadgerSupervisor(snifferOptions *PcapSnifferOptions, inquisitorOptions *
 }
 
 func (b BadgerSupervisor) GetDispatcher() PacketDispatcher {
-	return b.inquisitor
+	return b.dispatcher
 }
 
 func (b BadgerSupervisor) GetSniffer() types.PacketSource {
@@ -63,7 +64,7 @@ func (b BadgerSupervisor) Stopped() {
 
 func (b BadgerSupervisor) Run() {
 	log.Println("HoneyBadger: comprehensive TCP injection attack detection.")
-	b.inquisitor.Start()
+	b.dispatcher.Start()
 	b.sniffer.Start()
 
 	signal.Notify(b.forceQuitChan, os.Interrupt)
@@ -71,7 +72,7 @@ func (b BadgerSupervisor) Run() {
 	select {
 	case <-b.forceQuitChan:
 		log.Print("graceful shutdown: user force quit")
-		b.inquisitor.Stop()
+		b.dispatcher.Stop()
 		b.sniffer.Stop()
 	case <-b.childStoppedChan:
 		log.Print("graceful shutdown: packet-source stopped")

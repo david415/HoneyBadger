@@ -2,12 +2,13 @@ package HoneyBadger
 
 import (
 	"fmt"
-	"github.com/david415/HoneyBadger/types"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/david415/HoneyBadger/types"
 )
 
 type DummyPacketLogger struct {
@@ -42,7 +43,7 @@ func (t *TestLogger) Log(event *types.Event) {
 
 func SetupAttackDetectionPcapInquisitor(pcapPath string, attackLogger *TestLogger) {
 	tcpIdleTimeout, _ := time.ParseDuration("10m")
-	inquisitorOptions := InquisitorOptions{
+	dispatcherOptions := DispatcherOptions{
 		BufferedPerConnection:    10,
 		BufferedTotal:            100,
 		LogDir:                   "",
@@ -69,7 +70,7 @@ func SetupAttackDetectionPcapInquisitor(pcapPath string, attackLogger *TestLogge
 		options:              &connOptions,
 		CreateConnectionFunc: NewConnection,
 	}
-	supervisor := NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, NewPcapSniffer, &connectionFactory, NewDummyPacketLogger)
+	supervisor := NewBadgerSupervisor(&snifferOptions, dispatcherOptions, NewPcapSniffer, &connectionFactory, NewDummyPacketLogger)
 	supervisor.Run()
 	return
 }
