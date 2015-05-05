@@ -21,11 +21,12 @@ package main
 
 import (
 	"flag"
+	"log"
+	"time"
+
 	"github.com/david415/HoneyBadger"
 	"github.com/david415/HoneyBadger/logging"
 	"github.com/david415/HoneyBadger/types"
-	"log"
-	"time"
 )
 
 func main() {
@@ -77,7 +78,7 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		logger = loggerInstance
 	}
 
-	inquisitorOptions := HoneyBadger.InquisitorOptions{
+	dispatcherOptions := HoneyBadger.DispatcherOptions{
 		BufferedPerConnection:    *bufferedPerConnection,
 		BufferedTotal:            *bufferedTotal,
 		LogDir:                   *logDir,
@@ -95,7 +96,7 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		Interface:    *iface,
 		Filename:     *pcapfile,
 		WireDuration: wireDuration,
-		Snaplen:      *snaplen,
+		Snaplen:      int32(*snaplen),
 		Filter:       *filter,
 	}
 
@@ -109,6 +110,6 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 	} else {
 		packetLoggerFunc = nil
 	}
-	supervisor := HoneyBadger.NewBadgerSupervisor(&snifferOptions, &inquisitorOptions, HoneyBadger.NewPcapSniffer, &connectionFactory, packetLoggerFunc)
+	supervisor := HoneyBadger.NewBadgerSupervisor(snifferOptions, dispatcherOptions, HoneyBadger.NewPcapSniffer, &connectionFactory, packetLoggerFunc)
 	supervisor.Run()
 }

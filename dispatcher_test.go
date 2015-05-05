@@ -17,7 +17,7 @@ type MockSniffer struct {
 	startedChan chan bool
 }
 
-func NewMockSniffer(options *PcapSnifferOptions) types.PacketSource {
+func NewMockSniffer(options PcapSnifferOptions) types.PacketSource {
 	var packetSource types.PacketSource = MockSniffer{
 		startedChan: make(chan bool, 0),
 	}
@@ -137,7 +137,7 @@ func SetupTestInquisitor() (*BadgerSupervisor, PacketDispatcher, types.PacketSou
 		options:              &connOptions,
 		CreateConnectionFunc: NewMockConnection,
 	}
-	supervisor := NewBadgerSupervisor(&snifferOptions, dispatcherOptions, NewMockSniffer, &connectionFactory, NewMockPacketLogger)
+	supervisor := NewBadgerSupervisor(snifferOptions, dispatcherOptions, NewMockSniffer, &connectionFactory, NewMockPacketLogger)
 
 	log.Print("supervisor before run")
 	go supervisor.Run()
@@ -313,7 +313,7 @@ func SetupRealConnectionInquisitor() (*BadgerSupervisor, PacketDispatcher, types
 		options:              &connOptions,
 		CreateConnectionFunc: NewConnection,
 	}
-	supervisor := NewBadgerSupervisor(&snifferOptions, dispatcherOptions, NewMockSniffer, &connectionFactory, NewMockPacketLogger)
+	supervisor := NewBadgerSupervisor(snifferOptions, dispatcherOptions, NewMockSniffer, &connectionFactory, NewMockPacketLogger)
 
 	log.Print("supervisor before run")
 	go supervisor.Run()

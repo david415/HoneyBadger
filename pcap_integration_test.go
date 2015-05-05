@@ -70,7 +70,7 @@ func SetupAttackDetectionPcapInquisitor(pcapPath string, attackLogger *TestLogge
 		options:              &connOptions,
 		CreateConnectionFunc: NewConnection,
 	}
-	supervisor := NewBadgerSupervisor(&snifferOptions, dispatcherOptions, NewPcapSniffer, &connectionFactory, NewDummyPacketLogger)
+	supervisor := NewBadgerSupervisor(snifferOptions, dispatcherOptions, NewPcapSniffer, &connectionFactory, NewDummyPacketLogger)
 	supervisor.Run()
 	return
 }

@@ -20,13 +20,14 @@
 package HoneyBadger
 
 import (
+	"io"
+	"log"
+	"time"
+
 	"github.com/david415/HoneyBadger/types"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"io"
-	"log"
-	"time"
 )
 
 /*type TimedRawPacket struct {
@@ -41,7 +42,7 @@ type PcapSnifferOptions struct {
 	Filename     string
 	WireDuration time.Duration
 	Filter       string
-	Snaplen      int
+	Snaplen      int32
 	Dispatcher   PacketDispatcher
 	Supervisor   types.Supervisor
 }
@@ -49,7 +50,7 @@ type PcapSnifferOptions struct {
 // PcapSniffer sets up the connection pool and is an abstraction layer for dealing
 // with incoming packets weather they be from a pcap file or directly off the wire.
 type PcapSniffer struct {
-	PcapSnifferOptions
+	options          PcapSnifferOptions
 	stopCaptureChan  chan bool
 	decodePacketChan chan TimedRawPacket
 	stopDecodeChan   chan bool
@@ -58,12 +59,12 @@ type PcapSniffer struct {
 }
 
 // NewPcapSniffer creates a new PcapSniffer struct
-func NewPcapSniffer(options *PcapSnifferOptions) types.PacketSource {
+func NewPcapSniffer(options PcapSnifferOptions) types.PacketSource {
 	i := PcapSniffer{
-		PcapSnifferOptions: *options,
-		stopCaptureChan:    make(chan bool),
-		decodePacketChan:   make(chan TimedRawPacket),
-		stopDecodeChan:     make(chan bool),
+		options:          options,
+		stopCaptureChan:  make(chan bool),
+		decodePacketChan: make(chan TimedRawPacket),
+		stopDecodeChan:   make(chan bool),
 	}
 	return &i
 }
@@ -92,17 +93,17 @@ func (i *PcapSniffer) Stop() {
 
 func (i *PcapSniffer) setupHandle() {
 	var err error
-	if i.Filename != "" {
-		log.Printf("Reading from pcap file %q", i.Filename)
-		i.handle, err = pcap.OpenOffline(i.Filename)
+	if i.options.Filename != "" {
+		log.Printf("Reading from pcap file %q", i.options.Filename)
+		i.handle, err = pcap.OpenOffline(i.options.Filename)
 	} else {
-		log.Printf("Starting capture on interface %q", i.Interface)
-		i.handle, err = pcap.OpenLive(i.Interface, int32(i.Snaplen), true, i.WireDuration)
+		log.Printf("Starting capture on interface %q", i.options.Interface)
+		i.handle, err = pcap.OpenLive(i.options.Interface, i.options.Snaplen, true, i.options.WireDuration)
 	}
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err = i.handle.SetBPFFilter(i.Filter); err != nil {
+	if err = i.handle.SetBPFFilter(i.options.Filter); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -170,7 +171,7 @@ func (i *PcapSniffer) decodePackets() {
 				TCP:       tcp,
 				Payload:   payload,
 			}
-			i.Dispatcher.ReceivePacket(&packetManifest)
+			i.options.Dispatcher.ReceivePacket(&packetManifest)
 		}
 	}
 }
