@@ -44,6 +44,7 @@ const (
 	TCP_CONNECTION_CLOSING     = 4
 	TCP_INVALID                = 5
 	TCP_CLOSED                 = 6
+	TCP_CLOSED_FINISHED        = 7
 
 	// initiating TCP closing finite state machine
 	TCP_FIN_WAIT1 = 0
@@ -209,7 +210,12 @@ func (c *Connection) Open() {
 }
 
 func (c *Connection) Close() {
-	close(c.receiveChan)
+	if c.state != TCP_CLOSED_FINISHED {
+		close(c.receiveChan)
+		c.state = TCP_CLOSED_FINISHED
+	} else {
+		log.Print("ignoring duplicate Close")
+	}
 }
 
 // shutdown is used by the Connection to shutdown itself.
