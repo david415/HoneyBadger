@@ -23,7 +23,7 @@ func TestStateDataTransfer(t *testing.T) {
 
 	f := &DefaultConnFactory{}
 	conn := f.Build(options).(*Connection)
-	conn.Start()
+	conn.Open()
 
 	conn.SetState(TCP_DATA_TRANSFER)
 	clientRingCount := 0
@@ -129,7 +129,7 @@ func TestTCPConnect(t *testing.T) {
 
 	f := &DefaultConnFactory{}
 	conn := f.Build(options).(*Connection)
-	conn.Start()
+	conn.Open()
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},
 		DstIP:    net.IP{2, 3, 4, 5},
@@ -255,7 +255,7 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 	f := &DefaultConnFactory{}
 	conn := f.Build(options).(*Connection)
 	conn.AttackLogger = attackLogger
-	conn.Start()
+	conn.Open()
 
 	conn.state = TCP_DATA_TRANSFER
 	conn.serverNextSeq = 4666
@@ -394,7 +394,7 @@ func TestTCPHijack(t *testing.T) {
 	f := &DefaultConnFactory{}
 	conn := f.Build(options).(*Connection)
 	conn.AttackLogger = attackLogger
-	conn.Start()
+	conn.Open()
 
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},

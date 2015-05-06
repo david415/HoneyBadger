@@ -74,13 +74,13 @@ func NewDispatcher(options DispatcherOptions, connectionFactory ConnectionFactor
 		closeConnectionChan:     make(chan ConnectionInterface),
 		pager:                   NewPager(),
 		pool:                    make(map[types.ConnectionHash]ConnectionInterface),
+		observeConnectionChan: make(chan bool, 0),
 	}
 	return &i
 }
 
 func (i *Dispatcher) GetObservedConnectionsChan(count int) chan bool {
 	i.observeConnectionCount = count
-	i.observeConnectionChan = make(chan bool, 0)
 	return i.observeConnectionChan
 }
 
@@ -172,7 +172,7 @@ func (i *Dispatcher) setupNewConnection(flow *types.TcpIpFlow) ConnectionInterfa
 		packetLogger.Start()
 	}
 	i.pool[flow.ConnectionHash()] = conn
-	conn.Start()
+	conn.Open()
 	if i.observeConnectionCount != 0 && i.observeConnectionCount == len(i.Connections()) {
 		i.observeConnectionChan <- true
 	}
@@ -210,8 +210,13 @@ func (i *Dispatcher) dispatchPackets() {
 				}
 				conn = i.setupNewConnection(packetManifest.Flow)
 			}
-
-			conn.ReceivePacket(packetManifest)
-		} // end of select {
-	} // end of for {
+			select {
+			case conn.GetReceiveChan() <- packetManifest:
+				continue
+			case conn = <-i.closeConnectionChan:
+				conn.Close()
+				delete(i.pool, conn.GetConnectionHash())
+			}
+		}
+	}
 }

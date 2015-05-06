@@ -45,18 +45,32 @@ type MockConnection struct {
 	lastSeen           time.Time
 	ClientStreamRing   *types.Ring
 	packetObserverChan chan bool
+	receiveChan        chan *types.PacketManifest
 }
 
-func (m *MockConnection) Start() {
-	log.Print("MockConnection.Start()")
+func (m *MockConnection) GetReceiveChan() chan *types.PacketManifest {
+	return m.receiveChan
 }
 
-func (m *MockConnection) Stop() {
-	log.Print("MockConnection.Stop()")
+func (m *MockConnection) Open() {
+	log.Print("MockConnection.Open()")
+	go func() {
+		//		for p := range m.receiveChan {
+		for _ = range m.receiveChan {
+			m.packetObserverChan <- true
+			//p
+		}
+		m.stop()
+	}()
+}
+
+func (m *MockConnection) stop() {
+	log.Print("MockConnection.stop()")
 }
 
 func (m MockConnection) Close() {
 	log.Print("MockConnection.Close()")
+	close(m.receiveChan)
 }
 
 func (m MockConnection) GetConnectionHash() types.ConnectionHash {
@@ -65,11 +79,6 @@ func (m MockConnection) GetConnectionHash() types.ConnectionHash {
 
 func (m MockConnection) GetLastSeen() time.Time {
 	return m.lastSeen
-}
-
-func (m MockConnection) ReceivePacket(p *types.PacketManifest) {
-	log.Print("MockConnection.ReceivePacket:")
-	m.packetObserverChan <- true
 }
 
 func (m MockConnection) SetPacketLogger(l types.PacketLogger) {
@@ -82,6 +91,7 @@ type mockConnFactory struct {
 func (m *mockConnFactory) Build(options ConnectionOptions) ConnectionInterface {
 	c := &MockConnection{
 		options:            options,
+		receiveChan:        make(chan *types.PacketManifest, 0),
 		packetObserverChan: make(chan bool, 0),
 	}
 
@@ -136,19 +146,13 @@ func SetupTestInquisitor() (*BadgerSupervisor, PacketDispatcher, types.PacketSou
 		Snaplen:      65536,
 		Filter:       "tcp",
 	}
-
 	factory := &mockConnFactory{}
 	supervisor := NewBadgerSupervisor(snifferOptions, dispatcherOptions, NewMockSniffer, factory, NewMockPacketLogger)
-
-	log.Print("supervisor before run")
 	go supervisor.Run()
-	log.Print("supervisor after run")
-
 	sniffer := supervisor.GetSniffer()
 	startedChan := sniffer.GetStartedChan()
 	dispatcher := supervisor.GetDispatcher()
 	<-startedChan
-	log.Print("started.")
 	return supervisor, dispatcher, sniffer
 }
 
@@ -189,25 +193,16 @@ func TestInquisitorSourceReceiveOne(t *testing.T) {
 		TCP:       tcp,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
-
 	connsChan := dispatcher.GetObservedConnectionsChan(1)
 	dispatcher.ReceivePacket(&p)
-
 	<-connsChan
-	// XXX we now have one connection
 	conns := dispatcher.Connections()
-
-	// assert conns len is 1
 	if len(conns) != 1 {
 		t.Fatalf("number of connections %d is not 1", len(conns))
 	}
-
 	conn := conns[0]
 	mockConn := conn.(*MockConnection)
-
-	log.Print("awaiting packet...")
 	<-mockConn.packetObserverChan
-
 	sniffer.Stop()
 }
 
@@ -261,27 +256,24 @@ func TestInquisitorResetTwice(t *testing.T) {
 		TCP:       tcp2,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
-
 	connsChan := dispatcher.GetObservedConnectionsChan(1)
 	dispatcher.ReceivePacket(&packet1)
 	<-connsChan
-	// XXX we now have one connection
 	conns := dispatcher.Connections()
-
-	// assert conns len is 1
 	if len(conns) != 1 {
 		t.Fatalf("number of connections %d is not 1", len(conns))
 	}
-
 	conn := conns[0]
 	mockConn := conn.(*MockConnection)
-
-	log.Print("awaiting packet...")
 	<-mockConn.packetObserverChan
-
+	conns = dispatcher.Connections()
+	if len(conns) != 1 {
+		t.Fatalf("number of connections %d is not 1", len(conns))
+	}
+	conn = conns[0]
+	mockConn = conn.(*MockConnection)
 	dispatcher.ReceivePacket(&packet2)
 	<-mockConn.packetObserverChan
-
 	sniffer.Stop()
 }
 
@@ -312,93 +304,10 @@ func SetupRealConnectionInquisitor() (*BadgerSupervisor, PacketDispatcher, types
 
 	factory := &DefaultConnFactory{}
 	supervisor := NewBadgerSupervisor(snifferOptions, dispatcherOptions, NewMockSniffer, factory, NewMockPacketLogger)
-
-	log.Print("supervisor before run")
 	go supervisor.Run()
-	log.Print("supervisor after run")
-
 	sniffer := supervisor.GetSniffer()
 	startedChan := sniffer.GetStartedChan()
 	dispatcher := supervisor.GetDispatcher()
 	<-startedChan
-	log.Print("started.")
 	return supervisor, dispatcher, sniffer
-}
-
-func TestRealConnectionResetTwice(t *testing.T) {
-
-	_, dispatcher, sniffer := SetupRealConnectionInquisitor()
-
-	startSeq := 3
-	ip1 := layers.IPv4{
-		SrcIP:    net.IP{1, 2, 3, 4},
-		DstIP:    net.IP{2, 3, 4, 5},
-		Version:  4,
-		TTL:      64,
-		Protocol: layers.IPProtocolTCP,
-	}
-	tcp1 := layers.TCP{
-		Seq:     uint32(startSeq),
-		SYN:     false,
-		RST:     true,
-		SrcPort: 1,
-		DstPort: 2,
-	}
-	flow1 := types.NewTcpIpFlowFromLayers(ip1, tcp1)
-	packet1 := types.PacketManifest{
-		Timestamp: time.Now(),
-		Flow:      flow1,
-		IP:        ip1,
-		TCP:       tcp1,
-		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
-	}
-
-	ip2 := layers.IPv4{
-		SrcIP:    net.IP{1, 2, 3, 4},
-		DstIP:    net.IP{2, 3, 4, 5},
-		Version:  4,
-		TTL:      64,
-		Protocol: layers.IPProtocolTCP,
-	}
-	tcp2 := layers.TCP{
-		Seq:     uint32(startSeq + len(packet1.Payload)),
-		SYN:     false,
-		RST:     true,
-		SrcPort: 1,
-		DstPort: 2,
-	}
-	flow2 := types.NewTcpIpFlowFromLayers(ip2, tcp2)
-	packet2 := types.PacketManifest{
-		Timestamp: time.Now(),
-		Flow:      flow2,
-		IP:        ip2,
-		TCP:       tcp2,
-		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
-	}
-
-	connsChan := dispatcher.GetObservedConnectionsChan(1)
-	dispatcher.ReceivePacket(&packet1)
-	<-connsChan
-	// XXX we now have one connection
-	conns := dispatcher.Connections()
-
-	// assert conns len is 1
-	if len(conns) != 1 {
-		t.Fatalf("number of connections %d is not 1", len(conns))
-	}
-
-	conn := conns[0]
-	realConn := conn.(*Connection)
-
-	log.Print("awaiting packet...")
-	dispatcher.ReceivePacket(&packet2)
-
-	mockPacketLogger := realConn.PacketLogger.(*MockPacketLogger)
-	<-mockPacketLogger.packetObserverChan
-	<-mockPacketLogger.packetObserverChan
-
-	if realConn.packetCount != 13 {
-		t.Fatalf("packetCount is wrong %d", realConn.packetCount)
-	}
-	sniffer.Stop()
 }

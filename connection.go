@@ -86,13 +86,13 @@ func (f *DefaultConnFactory) Build(options ConnectionOptions) ConnectionInterfac
 }
 
 type ConnectionInterface interface {
-	Start()
+	Open()
 	Close()
-	Stop()
+	stop()
 	SetPacketLogger(types.PacketLogger)
 	GetConnectionHash() types.ConnectionHash
-	ReceivePacket(*types.PacketManifest)
 	GetLastSeen() time.Time
+	GetReceiveChan() chan *types.PacketManifest
 }
 
 type PacketDispatcher interface {
@@ -142,6 +142,10 @@ type Connection struct {
 	ClientCoalesce   *OrderedCoalesce
 	ServerCoalesce   *OrderedCoalesce
 	PacketLogger     types.PacketLogger
+}
+
+func (c *Connection) GetReceiveChan() chan *types.PacketManifest {
+	return c.receiveChan
 }
 
 func (c *Connection) SetPacketLogger(logger types.PacketLogger) {
@@ -200,7 +204,7 @@ func (c *Connection) GetConnectionHash() types.ConnectionHash {
 // Start is used to start the packet receiving goroutine for
 // this connection... closeRequestChanListening shall be set to
 // false for many of the TCP FSM unit tests.
-func (c *Connection) Start() {
+func (c *Connection) Open() {
 	go c.startReceivingPackets()
 }
 
@@ -217,12 +221,12 @@ func (c *Connection) shutdown() {
 	if c.Dispatcher == nil {
 		close(c.receiveChan)
 	} else {
-		go c.Dispatcher.CloseRequest(c)
+		c.Dispatcher.CloseRequest(c)
 	}
 }
 
 // stop frees up all resources used by the connection
-func (c *Connection) Stop() {
+func (c *Connection) stop() {
 	if c.getAttackDetectedStatus() == false {
 		c.removeAllLogs()
 	} else {
@@ -603,10 +607,6 @@ func (c *Connection) stateConnectionClosing(p types.PacketManifest) {
 	}
 }
 
-func (c *Connection) ReceivePacket(p *types.PacketManifest) {
-	c.receiveChan <- p
-}
-
 // receivePacketState implements a TCP finite state machine
 // which is loosely based off of the simplified FSM in this paper:
 // http://ants.iis.sinica.edu.tw/3bkmj9ltewxtsrrvnoknfdxrm3zfwrr/17/p520460.pdf
@@ -638,5 +638,5 @@ func (c *Connection) startReceivingPackets() {
 	for p := range c.receiveChan {
 		c.receivePacketState(p)
 	}
-	c.Stop()
+	c.stop()
 }
