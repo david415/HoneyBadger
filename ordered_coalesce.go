@@ -269,7 +269,7 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 	}
 	if o.first.End {
 		o.ConnectionClose()
-		return 0 // after closing the connection our return value doesn't matter
+		return -1 // after closing the connection our return value doesn't matter
 	}
 	if len(o.first.Bytes) == 0 {
 		log.Print("zero length ordered coalesce packet not added to ring buffer\n")
@@ -322,6 +322,9 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 func (o *OrderedCoalesce) addContiguous(nextSeq types.Sequence) types.Sequence {
 	for o.first != nil && nextSeq.Difference(o.first.Seq) <= 0 {
 		nextSeq = o.addNext(nextSeq)
+		if nextSeq == -1 {
+			break
+		}
 	}
 	return nextSeq
 }
