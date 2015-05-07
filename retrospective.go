@@ -77,7 +77,7 @@ func injectionInStreamRing(p types.PacketManifest, flow *types.TcpIpFlow, ringPt
 // that is the contiguous data stored in our ring buffer
 // that overlaps with the stream segment specified by the start and end Sequence boundaries.
 // The other return values are the slice offsets of the original packet payload that can be used to derive
-// calculate the section of the packet that has overlapped with our Reassembly ring buffer.
+// the section of the packet that has overlapped with our Reassembly ring buffer.
 func getOverlapBytes(head, tail *types.Ring, start, end types.Sequence) ([]byte, int, int) {
 	var overlapStartSlice, overlapEndSlice int
 	var overlapBytes []byte
@@ -136,7 +136,12 @@ func getOverlapBytes(head, tail *types.Ring, start, end types.Sequence) ([]byte,
 				tailSlice = len(tail.Reassembly.Bytes) - (diff * -1)
 			}
 		} else {
-			overlapEndSlice = packetLength - diff
+			if diff > packetLength {
+				log.Printf("restrospective meow: diff %d len tail %d", diff, len(tail.Reassembly.Bytes))
+				overlapEndSlice = packetLength
+			} else {
+				overlapEndSlice = packetLength - diff
+			}
 			tailSlice = len(tail.Reassembly.Bytes)
 		}
 		overlapBytes = getRingSlice(head, tail, headOffset, tailSlice)
@@ -183,6 +188,8 @@ func getHeadFromRing(ringPtr *types.Ring, start, end types.Sequence) *types.Ring
 		if len(current.Reassembly.Bytes) == 0 {
 			continue
 		}
+
+		// XXX i think we can remove this.
 		if current.Reassembly.Skip != 0 {
 			log.Print("getHeadFromRing: stream skip encountered")
 			continue
