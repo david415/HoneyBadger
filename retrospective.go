@@ -189,11 +189,6 @@ func getHeadFromRing(ringPtr *types.Ring, start, end types.Sequence) *types.Ring
 			continue
 		}
 
-		// XXX i think we can remove this.
-		if current.Reassembly.Skip != 0 {
-			log.Print("getHeadFromRing: stream skip encountered")
-			continue
-		}
 		startDiff := current.Reassembly.Seq.Difference(start)
 		if startDiff == 0 {
 			return current
