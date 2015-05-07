@@ -44,7 +44,6 @@ func TestInjectionDetector(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		Dispatcher:                    nil,
 		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 		AttackLogger:                  attackLogger,
@@ -134,7 +133,6 @@ func TestGetRingSlice(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		Dispatcher:                    nil,
 		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 	}
@@ -461,7 +459,6 @@ func TestGetOverlapBytes(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		Dispatcher:                    nil,
 		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 	}
@@ -556,7 +553,6 @@ func TestGetOverlapRingsWithZeroRings(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		Dispatcher:                    nil,
 		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 	}
@@ -739,7 +735,6 @@ func TestGetOverlapRings(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		Dispatcher:                    nil,
 		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 	}

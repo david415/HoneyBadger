@@ -1,6 +1,7 @@
 package HoneyBadger
 
 import (
+	"log"
 	"net"
 	"testing"
 	"time"
@@ -15,7 +16,6 @@ func TestStateDataTransfer(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		Dispatcher:                    nil,
 		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 		AttackLogger:                  NewDummyAttackLogger(),
@@ -23,7 +23,6 @@ func TestStateDataTransfer(t *testing.T) {
 
 	f := &DefaultConnFactory{}
 	conn := f.Build(options).(*Connection)
-	conn.Open()
 
 	conn.SetState(TCP_DATA_TRANSFER)
 	clientRingCount := 0
@@ -53,7 +52,7 @@ func TestStateDataTransfer(t *testing.T) {
 	conn.clientNextSeq = 9666
 	conn.serverNextSeq = 3
 
-	conn.receivePacketState(&p)
+	conn.ReceivePacket(&p)
 	if conn.state != TCP_DATA_TRANSFER {
 		t.Error("invalid state transition\n")
 		t.Fail()
@@ -78,7 +77,7 @@ func TestStateDataTransfer(t *testing.T) {
 		TCP:       tcp,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
-	conn.receivePacketState(&p)
+	conn.ReceivePacket(&p)
 
 	if conn.state != TCP_DATA_TRANSFER {
 		t.Error("invalid state transition\n")
@@ -104,7 +103,7 @@ func TestStateDataTransfer(t *testing.T) {
 		TCP:       tcp,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
-	conn.receivePacketState(&p)
+	conn.ReceivePacket(&p)
 	if conn.state != TCP_DATA_TRANSFER {
 		t.Error("invalid state transition\n")
 		t.Fail()
@@ -122,14 +121,12 @@ func TestTCPConnect(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		Dispatcher:                    nil,
 		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 	}
 
 	f := &DefaultConnFactory{}
 	conn := f.Build(options).(*Connection)
-	conn.Open()
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},
 		DstIP:    net.IP{2, 3, 4, 5},
@@ -161,7 +158,7 @@ func TestTCPConnect(t *testing.T) {
 
 	conn.clientFlow = flow
 	conn.serverFlow = flowReversed
-	conn.receivePacketState(&p)
+	conn.ReceivePacket(&p)
 	if conn.state != TCP_CONNECTION_REQUEST {
 		t.Error("invalid state transition\n")
 		t.Fail()
@@ -190,7 +187,7 @@ func TestTCPConnect(t *testing.T) {
 		TCP:       tcp,
 		Payload:   []byte{},
 	}
-	conn.receivePacketState(&p)
+	conn.ReceivePacket(&p)
 
 	if conn.state != TCP_CONNECTION_ESTABLISHED {
 		t.Errorf("invalid state transition: current state %d\n", conn.state)
@@ -220,7 +217,7 @@ func TestTCPConnect(t *testing.T) {
 		TCP:       tcp,
 		Payload:   []byte{},
 	}
-	conn.receivePacketState(&p)
+	conn.ReceivePacket(&p)
 
 	if conn.state != TCP_DATA_TRANSFER {
 		t.Error("invalid state transition\n")
@@ -247,7 +244,6 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		Dispatcher:                    nil,
 		Pager:                         pager,
 		LogDir:                        "fake-log-dir",
 	}
@@ -255,7 +251,6 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 	f := &DefaultConnFactory{}
 	conn := f.Build(options).(*Connection)
 	conn.AttackLogger = attackLogger
-	conn.Open()
 
 	conn.state = TCP_DATA_TRANSFER
 	conn.serverNextSeq = 4666
@@ -282,9 +277,10 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 
 	tcp := layers.TCP{
 		Seq:     9666,
+		Ack:     4111,
 		FIN:     true,
 		SYN:     false,
-		ACK:     false,
+		ACK:     true,
 		SrcPort: 1,
 		DstPort: 2,
 	}
@@ -301,7 +297,8 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 	conn.clientFlow = flow
 	conn.serverFlow = flow.Reverse()
 
-	conn.receivePacketState(&p)
+	conn.ReceivePacket(&p)
+	log.Print("meow1")
 
 	if conn.state != TCP_CONNECTION_CLOSING {
 		t.Error("connection state must transition to TCP_CONNECTION_CLOSING\n")
@@ -325,7 +322,7 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		Protocol: layers.IPProtocolTCP,
 	}
 	tcp = layers.TCP{
-		Seq:     4666,
+		Seq:     4111,
 		SYN:     false,
 		FIN:     true,
 		ACK:     true,
@@ -344,7 +341,8 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		Payload:   []byte{},
 	}
 
-	conn.receivePacketState(&p)
+	conn.ReceivePacket(&p)
+	log.Print("meow2")
 
 	if conn.state != TCP_CONNECTION_CLOSING {
 		t.Error("connection state must transition to TCP_CONNECTION_CLOSING\n")
@@ -364,7 +362,7 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		SYN:     false,
 		FIN:     false,
 		ACK:     true,
-		Ack:     4667,
+		Ack:     4112,
 		SrcPort: 1,
 		DstPort: 2,
 	}
@@ -376,7 +374,8 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		Payload:   []byte{},
 	}
 
-	conn.receivePacketState(&p)
+	conn.ReceivePacket(&p)
+	log.Print("meow3")
 }
 
 func TestTCPHijack(t *testing.T) {
@@ -385,7 +384,6 @@ func TestTCPHijack(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		Dispatcher:                    nil,
 		Pager:                         nil,
 		LogDir:                        "fake-log-dir",
 		DetectHijack:                  true,
@@ -394,7 +392,6 @@ func TestTCPHijack(t *testing.T) {
 	f := &DefaultConnFactory{}
 	conn := f.Build(options).(*Connection)
 	conn.AttackLogger = attackLogger
-	conn.Open()
 
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},
@@ -428,7 +425,7 @@ func TestTCPHijack(t *testing.T) {
 	conn.clientFlow = flow
 	conn.serverFlow = flowReversed
 
-	conn.receivePacketState(&p)
+	conn.ReceivePacket(&p)
 
 	if conn.state != TCP_CONNECTION_REQUEST {
 		t.Error("invalid state transition\n")
@@ -458,7 +455,7 @@ func TestTCPHijack(t *testing.T) {
 		TCP:       tcp,
 		Payload:   []byte{},
 	}
-	conn.receivePacketState(&p)
+	conn.ReceivePacket(&p)
 
 	if conn.state != TCP_CONNECTION_ESTABLISHED {
 		t.Errorf("invalid state transition: current state %d\n", conn.state)
@@ -488,7 +485,7 @@ func TestTCPHijack(t *testing.T) {
 		TCP:       tcp,
 		Payload:   []byte{},
 	}
-	conn.receivePacketState(&p)
+	conn.ReceivePacket(&p)
 
 	if attackLogger.Count != 1 {
 		t.Error("hijack detection fail")
@@ -518,7 +515,7 @@ func TestTCPHijack(t *testing.T) {
 		TCP:       tcp,
 		Payload:   []byte{},
 	}
-	conn.receivePacketState(&p)
+	conn.ReceivePacket(&p)
 
 	if conn.state != TCP_DATA_TRANSFER {
 		t.Errorf("invalid state transition; state is %d\n", conn.state)
@@ -548,7 +545,7 @@ func TestTCPHijack(t *testing.T) {
 		TCP:       tcp,
 		Payload:   []byte{},
 	}
-	conn.receivePacketState(&p)
+	conn.ReceivePacket(&p)
 
 	if attackLogger.Count != 2 {
 		t.Error("hijack detection fail")

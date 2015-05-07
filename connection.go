@@ -44,7 +44,6 @@ const (
 	TCP_CONNECTION_CLOSING     = 4
 	TCP_INVALID                = 5
 	TCP_CLOSED                 = 6
-	TCP_CLOSED_FINISHED        = 7
 
 	// initiating TCP closing finite state machine
 	TCP_FIN_WAIT1 = 0
@@ -69,8 +68,6 @@ func (f *DefaultConnFactory) Build(options ConnectionOptions) ConnectionInterfac
 		packetCount:       0,
 		ConnectionOptions: options,
 		attackDetected:    false,
-		stopChan:          make(chan bool),
-		receiveChan:       make(chan *types.PacketManifest),
 		state:             TCP_UNKNOWN,
 		clientNextSeq:     types.InvalidSequence,
 		serverNextSeq:     types.InvalidSequence,
@@ -87,17 +84,14 @@ func (f *DefaultConnFactory) Build(options ConnectionOptions) ConnectionInterfac
 }
 
 type ConnectionInterface interface {
-	Open()
 	Close()
-	stop()
 	SetPacketLogger(types.PacketLogger)
 	GetConnectionHash() types.ConnectionHash
 	GetLastSeen() time.Time
-	GetReceiveChan() chan *types.PacketManifest
+	ReceivePacket(*types.PacketManifest)
 }
 
 type PacketDispatcher interface {
-	CloseRequest(ConnectionInterface)
 	ReceivePacket(*types.PacketManifest)
 	GetObservedConnectionsChan(int) chan bool
 	Connections() []ConnectionInterface
@@ -114,7 +108,7 @@ type ConnectionOptions struct {
 	DetectHijack                  bool
 	DetectInjection               bool
 	DetectCoalesceInjection       bool
-	Dispatcher                    PacketDispatcher
+	Pool                          *map[types.ConnectionHash]ConnectionInterface
 }
 
 // Connection is used to track client and server flows for a given TCP connection.
@@ -123,8 +117,6 @@ type ConnectionOptions struct {
 type Connection struct {
 	ConnectionOptions
 	attackDetected   bool
-	stopChan         chan bool
-	receiveChan      chan *types.PacketManifest
 	packetCount      uint64
 	lastSeen         time.Time
 	lastSeenMutex    sync.Mutex
@@ -143,10 +135,6 @@ type Connection struct {
 	ClientCoalesce   *OrderedCoalesce
 	ServerCoalesce   *OrderedCoalesce
 	PacketLogger     types.PacketLogger
-}
-
-func (c *Connection) GetReceiveChan() chan *types.PacketManifest {
-	return c.receiveChan
 }
 
 func (c *Connection) SetPacketLogger(logger types.PacketLogger) {
@@ -202,37 +190,16 @@ func (c *Connection) GetConnectionHash() types.ConnectionHash {
 	return c.clientFlow.ConnectionHash()
 }
 
-// Start is used to start the packet receiving goroutine for
-// this connection... closeRequestChanListening shall be set to
-// false for many of the TCP FSM unit tests.
-func (c *Connection) Open() {
-	go c.startReceivingPackets()
-}
-
+// Close can be used by the the connection or the dispatcher to close the connection
 func (c *Connection) Close() {
-	if c.state != TCP_CLOSED_FINISHED {
-		close(c.receiveChan)
-		c.state = TCP_CLOSED_FINISHED
-	} else {
-		log.Print("ignoring duplicate Close")
+	if c.Pool != nil {
+		delete(*c.Pool, c.GetConnectionHash())
 	}
-}
-
-// shutdown is used by the Connection to shutdown itself.
-func (c *Connection) shutdown() {
 	if c.state == TCP_CLOSED {
-		return // already
+		panic("already closed")
 	}
 	c.state = TCP_CLOSED
-	if c.Dispatcher == nil {
-		close(c.receiveChan)
-	} else {
-		c.Dispatcher.CloseRequest(c)
-	}
-}
 
-// stop frees up all resources used by the connection
-func (c *Connection) stop() {
 	if c.getAttackDetectedStatus() == false {
 		c.removeAllLogs()
 	} else {
@@ -242,6 +209,7 @@ func (c *Connection) stop() {
 	c.ServerCoalesce.Close()
 	if c.LogPackets {
 		c.PacketLogger.Stop()
+		c.PacketLogger = nil // just in case the state machine receives another packet...
 	}
 }
 
@@ -318,7 +286,7 @@ func (c *Connection) stateUnknown(p types.PacketManifest) {
 
 		if p.TCP.FIN || p.TCP.RST {
 			log.Print("got RST or FIN")
-			c.shutdown()
+			c.Close()
 		} else {
 			if len(p.Payload) > 0 {
 				c.clientNextSeq = c.ServerCoalesce.insert(p, c.clientNextSeq)
@@ -333,17 +301,17 @@ func (c *Connection) stateUnknown(p types.PacketManifest) {
 func (c *Connection) stateConnectionRequest(p types.PacketManifest) {
 	if !p.Flow.Equal(c.serverFlow) {
 		//handshake anomaly
-		c.shutdown()
+		c.Close()
 		return
 	}
 	if !(p.TCP.SYN && p.TCP.ACK) {
 		//handshake anomaly
-		c.shutdown()
+		c.Close()
 		return
 	}
 	if c.clientNextSeq.Difference(types.Sequence(p.TCP.Ack)) != 0 {
 		//handshake anomaly
-		c.shutdown()
+		c.Close()
 		return
 	}
 	c.state = TCP_CONNECTION_ESTABLISHED
@@ -365,22 +333,22 @@ func (c *Connection) stateConnectionEstablished(p types.PacketManifest) {
 	}
 	if !p.Flow.Equal(c.clientFlow) {
 		// handshake anomaly
-		c.shutdown()
+		c.Close()
 		return
 	}
 	if !p.TCP.ACK || p.TCP.SYN {
 		// handshake anomaly
-		c.shutdown()
+		c.Close()
 		return
 	}
 	if types.Sequence(p.TCP.Seq).Difference(c.clientNextSeq) != 0 {
 		// handshake anomaly
-		c.shutdown()
+		c.Close()
 		return
 	}
 	if types.Sequence(p.TCP.Ack).Difference(c.serverNextSeq) != 0 {
 		// handshake anomaly
-		c.shutdown()
+		c.Close()
 		return
 	}
 	c.state = TCP_DATA_TRANSFER
@@ -429,7 +397,7 @@ func (c *Connection) stateDataTransfer(p types.PacketManifest) {
 	} else if diff == 0 { // contiguous
 		if p.TCP.RST {
 			log.Print("got RST!\n")
-			c.shutdown()
+			c.Close()
 			return
 		}
 		if len(p.Payload) > 0 {
@@ -474,11 +442,11 @@ func (c *Connection) stateFinWait1(p types.PacketManifest, flow *types.TcpIpFlow
 		if p.TCP.FIN {
 			*statePtr = TCP_CLOSING
 			*otherStatePtr = TCP_LAST_ACK
-			*nextSeqPtr = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
+			*nextSeqPtr = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
 
 			if types.Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 {
 				log.Printf("FIN-WAIT-1: unexpected ACK: got %d expected %d TCP.Seq %d\n", p.TCP.Ack, *nextAckPtr, p.TCP.Seq)
-				c.shutdown()
+				c.Close()
 				return
 			}
 		} else {
@@ -487,7 +455,7 @@ func (c *Connection) stateFinWait1(p types.PacketManifest, flow *types.TcpIpFlow
 		}
 	} else {
 		log.Print("FIN-WAIT-1: non-ACK packet received.\n")
-		c.shutdown()
+		c.Close()
 	}
 }
 
@@ -497,7 +465,7 @@ func (c *Connection) stateFinWait2(p types.PacketManifest, flow *types.TcpIpFlow
 		if p.TCP.ACK && p.TCP.FIN {
 			if types.Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 {
 				log.Print("FIN-WAIT-2: out of order ACK packet received.\n")
-				c.shutdown()
+				c.Close()
 				return
 			}
 			*nextSeqPtr += 1
@@ -512,7 +480,7 @@ func (c *Connection) stateFinWait2(p types.PacketManifest, flow *types.TcpIpFlow
 	} else {
 		log.Print("FIN-WAIT-2: out of order packet received.\n")
 		log.Printf("got TCP.Seq %d expected %d\n", p.TCP.Seq, *nextSeqPtr)
-		c.shutdown()
+		c.Close()
 	}
 }
 
@@ -541,13 +509,13 @@ func (c *Connection) stateCloseWait(p types.PacketManifest) {
 // stateTimeWait represents the TCP FSM's CLOSE-WAIT state
 func (c *Connection) stateTimeWait(p types.PacketManifest) {
 	log.Print("TIME-WAIT: invalid protocol state\n")
-	c.shutdown()
+	c.Close()
 }
 
 // stateClosing represents the TCP FSM's CLOSING state
 func (c *Connection) stateClosing(p types.PacketManifest) {
 	log.Print("CLOSING: invalid protocol state\n")
-	c.shutdown()
+	c.Close()
 }
 
 // stateLastAck represents the TCP FSM's LAST-ACK state
@@ -564,7 +532,7 @@ func (c *Connection) stateLastAck(p types.PacketManifest, flow *types.TcpIpFlow,
 		log.Print("LAST-ACK: out of order packet received\n")
 		log.Printf("LAST-ACK: out of order packet received; got %d expected %d\n", p.TCP.Seq, *nextSeqPtr)
 	}
-	c.shutdown()
+	c.Close()
 }
 
 // stateConnectionClosing handles all the closing states until the closed state has been reached.
@@ -613,11 +581,11 @@ func (c *Connection) stateConnectionClosing(p types.PacketManifest) {
 	}
 }
 
-// receivePacketState implements a TCP finite state machine
+// ReceivePacket implements a TCP finite state machine
 // which is loosely based off of the simplified FSM in this paper:
 // http://ants.iis.sinica.edu.tw/3bkmj9ltewxtsrrvnoknfdxrm3zfwrr/17/p520460.pdf
 // The goal is to detect all manner of content injection.
-func (c *Connection) receivePacketState(p *types.PacketManifest) {
+func (c *Connection) ReceivePacket(p *types.PacketManifest) {
 	c.updateLastSeen(p.Timestamp)
 	if c.PacketLogger != nil {
 		c.PacketLogger.WritePacket(p.RawPacket, p.Timestamp)
@@ -638,11 +606,4 @@ func (c *Connection) receivePacketState(p *types.PacketManifest) {
 		log.Print("connection closed; ignoring received packet.")
 		return
 	}
-}
-
-func (c *Connection) startReceivingPackets() {
-	for p := range c.receiveChan {
-		c.receivePacketState(p)
-	}
-	c.stop()
 }

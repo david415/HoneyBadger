@@ -48,29 +48,13 @@ type MockConnection struct {
 	receiveChan        chan *types.PacketManifest
 }
 
-func (m *MockConnection) GetReceiveChan() chan *types.PacketManifest {
-	return m.receiveChan
-}
-
-func (m *MockConnection) Open() {
-	log.Print("MockConnection.Open()")
-	go func() {
-		//		for p := range m.receiveChan {
-		for _ = range m.receiveChan {
-			m.packetObserverChan <- true
-			//p
-		}
-		m.stop()
-	}()
-}
-
-func (m *MockConnection) stop() {
-	log.Print("MockConnection.stop()")
-}
-
 func (m MockConnection) Close() {
 	log.Print("MockConnection.Close()")
 	close(m.receiveChan)
+}
+
+func (m MockConnection) ReceivePacket(p *types.PacketManifest) {
+	m.packetObserverChan <- true
 }
 
 func (m MockConnection) GetConnectionHash() types.ConnectionHash {
@@ -91,7 +75,6 @@ type mockConnFactory struct {
 func (m *mockConnFactory) Build(options ConnectionOptions) ConnectionInterface {
 	c := &MockConnection{
 		options:            options,
-		receiveChan:        make(chan *types.PacketManifest, 0),
 		packetObserverChan: make(chan bool, 0),
 	}
 
