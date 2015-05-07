@@ -193,15 +193,23 @@ func TestInquisitorSourceReceiveOne(t *testing.T) {
 		TCP:       tcp,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
-	connsChan := dispatcher.GetObservedConnectionsChan(1)
+
+	log.Print("before receive packet")
 	dispatcher.ReceivePacket(&p)
+	log.Print("after receive packet")
+	connsChan := dispatcher.GetObservedConnectionsChan(1)
+	log.Print("fu1")
 	<-connsChan
+	log.Print("fu2")
+	log.Print("after connsChan receive")
 	conns := dispatcher.Connections()
+	log.Print("fu3")
 	if len(conns) != 1 {
 		t.Fatalf("number of connections %d is not 1", len(conns))
 	}
 	conn := conns[0]
 	mockConn := conn.(*MockConnection)
+	log.Print("listen to packet observer chan")
 	<-mockConn.packetObserverChan
 	sniffer.Stop()
 }

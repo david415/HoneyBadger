@@ -20,7 +20,10 @@
 package HoneyBadger
 
 import (
+	"container/list"
+	"errors"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/david415/HoneyBadger/types"
@@ -29,6 +32,60 @@ import (
 type TimedRawPacket struct {
 	Timestamp time.Time
 	RawPacket []byte
+}
+
+// CloseDeque is used by the dispatcher to close connections
+type CloseDeque struct {
+	sync.RWMutex
+	connectionList *list.List
+	set            map[ConnectionInterface]bool
+}
+
+// NewCloseDeque creates a Deque with the specified capacity limit.
+func NewCloseDeque() *CloseDeque {
+	return &CloseDeque{
+		connectionList: list.New(),
+		set:            make(map[ConnectionInterface]bool),
+	}
+}
+
+// Prepend inserts element at the Deques front in a O(1) time complexity,
+// returning true if successful or false if the deque is at capacity.
+func (c *CloseDeque) Prepend(item interface{}) error {
+	c.Lock()
+	defer c.Unlock()
+
+	conn, ok := item.(ConnectionInterface)
+	if !ok {
+		return errors.New("connection close deque prepend error: type assertion failure")
+	} else {
+		_, found := c.set[conn]
+		if !found {
+			c.connectionList.PushFront(item)
+			c.set[conn] = true
+		}
+		return nil
+	}
+}
+
+func (c *CloseDeque) CloseAllButLast() {
+	c.Lock()
+	defer c.Unlock()
+	var item interface{} = nil
+	var lastContainerItem *list.Element = nil
+
+	if c.connectionList.Len() >= 2 {
+		for i := c.connectionList.Len(); i >= 1; i-- {
+			lastContainerItem = c.connectionList.Back()
+			if lastContainerItem != nil {
+				item = c.connectionList.Remove(lastContainerItem)
+				conn := item.(ConnectionInterface)
+				delete(c.set, conn)
+			}
+			connection := item.(ConnectionInterface)
+			connection.Close()
+		}
+	}
 }
 
 // InquisitorOptions are user set parameters for specifying the
@@ -58,9 +115,10 @@ type Dispatcher struct {
 	dispatchPacketChan      chan *types.PacketManifest
 	stopDispatchChan        chan bool
 	closeConnectionChan     chan ConnectionInterface
-	pool                    map[types.ConnectionHash]ConnectionInterface
 	pager                   *Pager
 	PacketLoggerFactoryFunc func(string, *types.TcpIpFlow) types.PacketLogger
+	pool                    map[types.ConnectionHash]ConnectionInterface
+	poolMutex               sync.RWMutex
 }
 
 // NewInquisitor creates a new Inquisitor struct
@@ -73,8 +131,9 @@ func NewDispatcher(options DispatcherOptions, connectionFactory ConnectionFactor
 		stopDispatchChan:        make(chan bool),
 		closeConnectionChan:     make(chan ConnectionInterface),
 		pager:                   NewPager(),
-		pool:                    make(map[types.ConnectionHash]ConnectionInterface),
 		observeConnectionChan: make(chan bool, 0),
+		pool: make(map[types.ConnectionHash]ConnectionInterface),
+		//poolMutex: new(sync.RWMutex),
 	}
 	return &i
 }
@@ -100,6 +159,12 @@ func (i *Dispatcher) Stop() {
 
 // connectionsLocked returns a slice of Connection pointers.
 func (i *Dispatcher) Connections() []ConnectionInterface {
+	i.poolMutex.RLock()
+	defer i.poolMutex.RUnlock()
+	return i.connections()
+}
+
+func (i *Dispatcher) connections() []ConnectionInterface {
 	conns := make([]ConnectionInterface, 0, len(i.pool))
 	for _, conn := range i.pool {
 		conns = append(conns, conn)
@@ -118,6 +183,9 @@ func (i *Dispatcher) ReceivePacket(p *types.PacketManifest) {
 // CloseOlderThan takes a Time argument and closes all the connections
 // that have not received packet since that specified time
 func (i *Dispatcher) CloseOlderThan(t time.Time) int {
+	i.poolMutex.Lock()
+	defer i.poolMutex.Unlock()
+
 	closed := 0
 	conns := i.Connections()
 	if conns == nil {
@@ -136,6 +204,9 @@ func (i *Dispatcher) CloseOlderThan(t time.Time) int {
 
 // CloseAllConnections closes all connections in the pool.
 func (i *Dispatcher) CloseAllConnections() int {
+	i.poolMutex.Lock()
+	defer i.poolMutex.Unlock()
+
 	conns := i.Connections()
 	if conns == nil {
 		return 0
@@ -171,9 +242,10 @@ func (i *Dispatcher) setupNewConnection(flow *types.TcpIpFlow) ConnectionInterfa
 		conn.SetPacketLogger(packetLogger)
 		packetLogger.Start()
 	}
+
 	i.pool[flow.ConnectionHash()] = conn
 	conn.Open()
-	if i.observeConnectionCount != 0 && i.observeConnectionCount == len(i.Connections()) {
+	if i.observeConnectionCount != 0 && i.observeConnectionCount == len(i.connections()) {
 		i.observeConnectionChan <- true
 	}
 	return conn
@@ -183,11 +255,15 @@ func (i *Dispatcher) dispatchPackets() {
 	var conn ConnectionInterface
 	timeout := i.options.TcpIdleTimeout
 	ticker := time.Tick(timeout)
+	closeDeque := NewCloseDeque()
+
 	for {
 		select {
-		case conn := <-i.closeConnectionChan:
-			conn.Close()
+		case conn = <-i.closeConnectionChan:
+			i.poolMutex.Lock()
 			delete(i.pool, conn.GetConnectionHash())
+			i.poolMutex.Unlock()
+			closeDeque.Prepend(conn)
 		default:
 		}
 		select {
@@ -199,6 +275,7 @@ func (i *Dispatcher) dispatchPackets() {
 		case <-i.stopDispatchChan:
 			return
 		case packetManifest := <-i.dispatchPacketChan:
+			i.poolMutex.Lock()
 			_, ok := i.pool[packetManifest.Flow.ConnectionHash()]
 			if ok {
 				conn = i.pool[packetManifest.Flow.ConnectionHash()]
@@ -210,12 +287,15 @@ func (i *Dispatcher) dispatchPackets() {
 				}
 				conn = i.setupNewConnection(packetManifest.Flow)
 			}
+			i.poolMutex.Unlock()
 			select {
 			case conn.GetReceiveChan() <- packetManifest:
-				continue
+				closeDeque.CloseAllButLast()
 			case conn = <-i.closeConnectionChan:
-				conn.Close()
+				i.poolMutex.Lock()
 				delete(i.pool, conn.GetConnectionHash())
+				i.poolMutex.Unlock()
+				closeDeque.Prepend(conn)
 			}
 		}
 	}
