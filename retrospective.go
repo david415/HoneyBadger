@@ -41,6 +41,15 @@ func injectionInStreamRing(p types.PacketManifest, flow *types.TcpIpFlow, ringPt
 	if overlapBytes == nil {
 		return nil
 	}
+	if len(overlapBytes) > len(p.Payload) {
+		panic("impossible: overlapBytes length greater than payload length")
+	}
+	if startOffset >= endOffset {
+		panic("impossible: startOffset >= endOffset")
+	}
+	if endOffset > len(p.Payload) {
+		panic("impossible: endOffset greater than payload length")
+	}
 
 	log.Printf("len overlapBytes %d startOffset %d endOffset %d\n", len(overlapBytes), startOffset, endOffset)
 
@@ -103,6 +112,11 @@ func getOverlapBytes(head, tail *types.Ring, start, end types.Sequence) ([]byte,
 	if startDiff < 0 {
 		headOffset = 0
 		overlapStartSlice = -1 * startDiff
+		if overlapStartSlice > packetLength {
+			// XXX print a error message here or panic?
+			log.Print("getOverlapbytes: incorrect start/end head/tail parameters.")
+			return nil, 0, 0
+		}
 	} else if startDiff == 0 {
 		headOffset = 0
 		overlapStartSlice = 0
@@ -165,6 +179,9 @@ func getOverlapRings(p types.PacketManifest, flow *types.TcpIpFlow, ringPtr *typ
 		return nil, nil
 	}
 	tail = getTailFromRing(head, end)
+	if tail == nil {
+		return head, head
+	}
 	return head, tail
 }
 
@@ -218,32 +235,35 @@ func getHeadFromRing(ringPtr *types.Ring, start, end types.Sequence) *types.Ring
 // our sequence range (start - end) and whose range of ring segments all
 // have their Reassembly.Skip value set to 0 (zero).
 func getTailFromRing(head *types.Ring, end types.Sequence) *types.Ring {
-	if head.Reassembly == nil {
-		return nil
-	}
-	if len(head.Reassembly.Bytes) == 0 {
-		return nil
-	}
-	if head.Reassembly.Skip != 0 {
-		return nil
-	}
+	var ret *types.Ring
 
 	for r := head; r != head.Prev(); r = r.Next() {
 		if r.Reassembly == nil {
-			return r.Prev()
+			ret = r.Prev()
+			break
 		}
 		if len(r.Reassembly.Bytes) == 0 {
 			log.Print("getTailFromRing: zero payload ring segment encountered.")
-			return r.Prev()
+			ret = r.Prev()
+			break
 		}
 		if r.Reassembly.Skip != 0 {
 			log.Print("getTailFromRing: stream skip encountered.")
-			return r.Prev()
+			ret = r.Prev()
+			break
 		}
 		diff := r.Reassembly.Seq.Add(len(r.Reassembly.Bytes) - 1).Difference(end)
 		if diff <= 0 {
 			return r
 		}
+	}
+
+	// XXX
+	// prevent bug where the above sets ret to head.Prev()
+	if ret == head.Prev() {
+		return nil
+	} else {
+		return ret
 	}
 	return nil
 }
@@ -269,19 +289,19 @@ func getRingSlice(head, tail *types.Ring, sliceStart, sliceEnd int) []byte {
 	var overlapBytes []byte
 	if sliceStart < 0 || sliceEnd < 0 {
 		log.Printf("sliceStart %d sliceEnd %d", sliceStart, sliceEnd)
-		panic("sliceStart < 0 || sliceEnd < 0")
+		panic("getRingSlice: sliceStart < 0 || sliceEnd < 0")
 	}
 	if sliceStart >= len(head.Reassembly.Bytes) {
 		panic(fmt.Sprintf("getRingSlice: sliceStart %d >= head len %d", sliceStart, len(head.Reassembly.Bytes)))
 	}
 	if sliceEnd > len(tail.Reassembly.Bytes) {
-		panic("impossible; sliceEnd is greater than ring segment")
+		panic("getRingSlice: impossible; sliceEnd is greater than ring segment")
 	}
 	if head == nil || tail == nil {
-		panic("head or tail is nil")
+		panic("getRingSlice: head or tail is nil")
 	}
 	if head == tail {
-		panic("head == tail")
+		panic("getRingSlice: head == tail")
 	}
 	overlapBytes = append(overlapBytes, head.Reassembly.Bytes[sliceStart:]...)
 	current := head.Next()
