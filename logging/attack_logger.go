@@ -30,7 +30,7 @@ import (
 	"time"
 )
 
-type serializedEvent struct {
+type SerializedEvent struct {
 	Type                     string
 	Time                     time.Time
 	Flow                     string
@@ -84,7 +84,7 @@ func (a *AttackJsonLogger) Log(event *types.Event) {
 }
 
 func (a *AttackJsonLogger) SerializeAndWrite(event *types.Event) {
-	serialized := &serializedEvent{
+	serialized := &SerializedEvent{
 		Type:         event.Type,
 		Flow:         event.Flow.String(),
 		HijackSeq:    event.HijackSeq,
@@ -101,7 +101,7 @@ func (a *AttackJsonLogger) SerializeAndWrite(event *types.Event) {
 }
 
 // Publish writes a JSON report to the attack-report file for that flow.
-func (a *AttackJsonLogger) Publish(event *serializedEvent) {
+func (a *AttackJsonLogger) Publish(event *SerializedEvent) {
 	b, err := json.Marshal(event)
 	a.writer, err = os.OpenFile(filepath.Join(a.LogDir, fmt.Sprintf("%s.attackreport.json", event.Flow)), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {

@@ -71,7 +71,7 @@ func (a *AttackMetadataJsonLogger) Log(event *types.Event) {
 }
 
 func (a *AttackMetadataJsonLogger) SerializeAndWrite(event *types.Event) {
-	publishableEvent := &serializedEvent{
+	publishableEvent := &SerializedEvent{
 		Type:         event.Type,
 		Flow:         event.Flow.String(),
 		HijackSeq:    event.HijackSeq,
@@ -86,7 +86,7 @@ func (a *AttackMetadataJsonLogger) SerializeAndWrite(event *types.Event) {
 }
 
 // Publish writes a JSON report to the attack-report file for that flow.
-func (a *AttackMetadataJsonLogger) Publish(event *serializedEvent) {
+func (a *AttackMetadataJsonLogger) Publish(event *SerializedEvent) {
 	b, err := json.Marshal(*event)
 	a.writer, err = os.OpenFile(filepath.Join(a.LogDir, fmt.Sprintf("%s.metadata-attackreport.json", event.Flow)), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
