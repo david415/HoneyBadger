@@ -189,6 +189,9 @@ func (o *OrderedCoalesce) insert(packetManifest types.PacketManifest, nextSeq ty
 		}
 
 		nextSeq = o.addNext(nextSeq)
+		if nextSeq == -1 {
+			return nextSeq
+		}
 		nextSeq = o.addContiguous(nextSeq)
 	}
 	return nextSeq
