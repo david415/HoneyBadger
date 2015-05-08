@@ -43,12 +43,15 @@ func injectionInStreamRing(p types.PacketManifest, flow *types.TcpIpFlow, ringPt
 	}
 	if len(overlapBytes) > len(p.Payload) {
 		log.Print("impossible: overlapBytes length greater than payload length")
+		return nil
 	}
 	if startOffset >= endOffset {
 		log.Print("impossible: startOffset >= endOffset")
+		return nil
 	}
 	if endOffset > len(p.Payload) {
 		log.Print("impossible: endOffset greater than payload length")
+		return nil
 	}
 
 	log.Printf("len overlapBytes %d startOffset %d endOffset %d\n", len(overlapBytes), startOffset, endOffset)
