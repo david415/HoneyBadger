@@ -69,6 +69,7 @@ func (f *DefaultConnFactory) Build(options ConnectionOptions) ConnectionInterfac
 		ConnectionOptions: options,
 		attackDetected:    false,
 		state:             TCP_UNKNOWN,
+		skipHijackDetectionCount: FIRST_FEW_PACKETS,
 		clientNextSeq:     types.InvalidSequence,
 		serverNextSeq:     types.InvalidSequence,
 		ClientStreamRing:  types.NewRing(options.MaxRingPackets),
@@ -118,6 +119,7 @@ type Connection struct {
 	ConnectionOptions
 	attackDetected   bool
 	packetCount      uint64
+	skipHijackDetectionCount uint64
 	lastSeen         time.Time
 	lastSeenMutex    sync.Mutex
 	state            uint8
@@ -252,6 +254,7 @@ func (c *Connection) detectInjection(p types.PacketManifest, flow *types.TcpIpFl
 	if event != nil {
 		c.AttackLogger.Log(event)
 		c.setAttackDetectedStatus()
+		log.Printf("packet # %d\n", c.packetCount)
 	} else {
 		log.Print("not an attack attempt; a normal TCP retransmission.\n")
 	}
@@ -279,9 +282,8 @@ func (c *Connection) stateUnknown(p types.PacketManifest) {
 		c.clientFlow = p.Flow
 		c.serverFlow = p.Flow.Reverse()
 
-		// skip handshake hijack detection
-		c.packetCount = FIRST_FEW_PACKETS
-
+		// skip handshake hijack detection completely
+		c.skipHijackDetectionCount = 0
 		c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1) // XXX
 
 		if p.TCP.FIN || p.TCP.RST {
@@ -368,7 +370,7 @@ func (c *Connection) stateDataTransfer(p types.PacketManifest) {
 		c.serverNextSeq = c.ClientCoalesce.insert(p, c.serverNextSeq)
 		return
 	}
-	if c.packetCount < FIRST_FEW_PACKETS {
+	if c.packetCount < c.skipHijackDetectionCount {
 		if c.DetectHijack {
 			c.detectHijack(p, p.Flow)
 		}
