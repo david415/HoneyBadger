@@ -152,17 +152,18 @@ func getOverlapBytes(head, tail *types.Ring, start, end types.Sequence) ([]byte,
 		// if end is equal or less than tailLastSeq
 		if diff <= 0 {
 			overlapEndSlice = packetLength
-			if (-1 * diff) > len(tail.Reassembly.Bytes) {
-				tailSlice = len(tail.Reassembly.Bytes)
-			} else {
-				tailSlice = len(tail.Reassembly.Bytes) - (diff * -1)
+			tailSlice = len(tail.Reassembly.Bytes) - (diff * -1)
+			if tailSlice < 0 {
+				panic("regression in getTailFromRing")
 			}
 		} else {
 			if diff > packetLength {
-				log.Printf("restrospective meow: diff %d len tail %d", diff, len(tail.Reassembly.Bytes))
 				overlapEndSlice = packetLength
 			} else {
 				overlapEndSlice = packetLength - diff
+				if overlapEndSlice < overlapStartSlice {
+					panic("wtf")
+				}
 			}
 			tailSlice = len(tail.Reassembly.Bytes)
 		}
@@ -260,9 +261,9 @@ func getTailFromRing(head *types.Ring, end types.Sequence) *types.Ring {
 			ret = r.Prev()
 			break
 		}
-		diff := r.Reassembly.Seq.Add(len(r.Reassembly.Bytes) - 1).Difference(end)
-		if diff <= 0 {
-			return r
+		diff := r.Reassembly.Seq.Difference(end)
+		if diff < 0 {
+			return r.Prev()
 		}
 	}
 
