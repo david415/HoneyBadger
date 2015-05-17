@@ -78,8 +78,8 @@ func (f *DefaultConnFactory) Build(options ConnectionOptions) ConnectionInterfac
 		serverFlow:        &types.TcpIpFlow{},
 	}
 
-	conn.ClientCoalesce = NewOrderedCoalesce(conn.Close, conn.AttackLogger, conn.clientFlow, conn.Pager, conn.ClientStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection)
-	conn.ServerCoalesce = NewOrderedCoalesce(conn.Close, conn.AttackLogger, conn.serverFlow, conn.Pager, conn.ServerStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection)
+	conn.ClientCoalesce = NewOrderedCoalesce(conn.AttackLogger, conn.clientFlow, conn.Pager, conn.ClientStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection)
+	conn.ServerCoalesce = NewOrderedCoalesce(conn.AttackLogger, conn.serverFlow, conn.Pager, conn.ServerStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection)
 
 	return &conn
 }
@@ -412,7 +412,12 @@ func (c *Connection) stateDataTransfer(p types.PacketManifest) {
 				c.ServerStreamRing.Reassembly = &reassembly
 				c.ServerStreamRing = c.ServerStreamRing.Next()
 				*nextSeqPtr = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
-				*nextSeqPtr = c.ServerCoalesce.addContiguous(*nextSeqPtr)
+				maybeNextSeqPtr := c.ServerCoalesce.addContiguous(*nextSeqPtr)
+				if maybeNextSeqPtr == -1 {
+					c.Close()
+				} else {
+					*nextSeqPtr = maybeNextSeqPtr
+				}
 			} else {
 				c.ClientStreamRing.Reassembly = &reassembly
 				c.ClientStreamRing = c.ClientStreamRing.Next()

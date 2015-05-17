@@ -4,7 +4,6 @@ import (
 	"github.com/david415/HoneyBadger/types"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"log"
 	"net"
 	"testing"
 	"time"
@@ -22,10 +21,7 @@ func TestOrderedCoalesceUsedPages(t *testing.T) {
 
 	var nextSeq types.Sequence = types.Sequence(1)
 
-	dummyClose := func() {
-		log.Print("dummyClose\n")
-	}
-	coalesce := NewOrderedCoalesce(dummyClose, nil, flow, pager, streamRing, maxBufferedPagesTotal, maxBufferedPagesPerFlow, false)
+	coalesce := NewOrderedCoalesce(nil, flow, pager, streamRing, maxBufferedPagesTotal, maxBufferedPagesPerFlow, false)
 
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},

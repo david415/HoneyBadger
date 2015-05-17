@@ -130,8 +130,6 @@ type OrderedCoalesce struct {
 	// with any contiguous data.  If <= 0, this is ignored.
 	MaxBufferedPagesPerFlow int
 
-	ConnectionClose func()
-
 	Flow                    *types.TcpIpFlow
 	StreamRing              *types.Ring
 	log                     types.Logger
@@ -141,10 +139,8 @@ type OrderedCoalesce struct {
 	DetectCoalesceInjection bool
 }
 
-func NewOrderedCoalesce(ConnectionClose func(), log types.Logger, flow *types.TcpIpFlow, pager *Pager, streamRing *types.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int, DetectCoalesceInjection bool) *OrderedCoalesce {
+func NewOrderedCoalesce(log types.Logger, flow *types.TcpIpFlow, pager *Pager, streamRing *types.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int, DetectCoalesceInjection bool) *OrderedCoalesce {
 	return &OrderedCoalesce{
-		ConnectionClose: ConnectionClose,
-
 		log:        log,
 		Flow:       flow,
 		pager:      pager,
@@ -271,7 +267,6 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 		o.first.Skip = int(diff)
 	}
 	if o.first.End {
-		o.ConnectionClose()
 		return -1 // after closing the connection our return value doesn't matter
 	}
 	if len(o.first.Bytes) == 0 {
