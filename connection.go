@@ -250,7 +250,7 @@ func (c *Connection) detectInjection(p types.PacketManifest, flow *types.TcpIpFl
 	} else {
 		ringPtr = c.ClientStreamRing
 	}
-	event := injectionInStreamRing(p, flow, ringPtr, "ordered injection")
+	event := injectionInStreamRing(p, flow, ringPtr, "ordered injection", c.packetCount)
 	if event != nil {
 		c.AttackLogger.Log(event)
 		c.setAttackDetectedStatus()

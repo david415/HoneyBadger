@@ -27,7 +27,7 @@ import (
 	"time"
 )
 
-func injectionInStreamRing(p types.PacketManifest, flow *types.TcpIpFlow, ringPtr *types.Ring, eventType string) *types.Event {
+func injectionInStreamRing(p types.PacketManifest, flow *types.TcpIpFlow, ringPtr *types.Ring, eventType string, packetCount uint64) *types.Event {
 	start := types.Sequence(p.TCP.Seq)
 	end := start.Add(len(p.Payload) - 1)
 	head, tail := getOverlapRings(p, flow, ringPtr)
@@ -42,7 +42,7 @@ func injectionInStreamRing(p types.PacketManifest, flow *types.TcpIpFlow, ringPt
 		return nil
 	}
 	if len(overlapBytes) > len(p.Payload) {
-		log.Print("impossible: overlapBytes length greater than payload length")
+		log.Printf("impossible: overlapBytes length greater than payload length at packet # %d", packetCount)
 		return nil
 	}
 	if startOffset >= endOffset {
@@ -62,7 +62,7 @@ func injectionInStreamRing(p types.PacketManifest, flow *types.TcpIpFlow, ringPt
 	}
 
 	if !bytes.Equal(overlapBytes, p.Payload[startOffset:endOffset]) {
-		log.Print("injection attack detected\n")
+		log.Printf("injection attack detected at packet # %d\n", packetCount)
 		e := &types.Event{
 			Type:          eventType,
 			Time:          time.Now(),

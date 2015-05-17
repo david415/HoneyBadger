@@ -288,7 +288,7 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 					Seq: uint32(o.first.Seq),
 				},
 			}
-			event := injectionInStreamRing(p, o.Flow, o.StreamRing, "coalesce injection")
+			event := injectionInStreamRing(p, o.Flow, o.StreamRing, "coalesce injection", 0)
 			if event != nil {
 				o.log.Log(event)
 			} else {
