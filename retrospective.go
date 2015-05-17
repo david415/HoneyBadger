@@ -27,6 +27,18 @@ import (
 	"time"
 )
 
+
+func displayRingSummary(ringHeadPtr *types.Ring) {
+	log.Print("displayRingSummary: moving forwards")
+	i := 0
+	current := ringHeadPtr;
+	for current != ringHeadPtr.Prev() {
+		log.Printf("index: %d TCP.Seq %d Skip %d payload len %d\n", i, current.Reassembly.Seq, current.Reassembly.Skip, len(current.Reassembly.Bytes))
+		current = current.Next()
+		i += 1
+	}
+}
+
 func injectionInStreamRing(p types.PacketManifest, flow *types.TcpIpFlow, ringPtr *types.Ring, eventType string, packetCount uint64) *types.Event {
 	start := types.Sequence(p.TCP.Seq)
 	end := start.Add(len(p.Payload) - 1)
@@ -62,7 +74,8 @@ func injectionInStreamRing(p types.PacketManifest, flow *types.TcpIpFlow, ringPt
 	}
 
 	if !bytes.Equal(overlapBytes, p.Payload[startOffset:endOffset]) {
-		log.Printf("injection attack detected at packet # %d\n", packetCount)
+		log.Printf("injection attack detected at packet # %d with TCP.Seq %d\n", packetCount, p.TCP.Seq)
+		displayRingSummary(ringPtr)
 		e := &types.Event{
 			Type:          eventType,
 			Time:          time.Now(),
