@@ -291,12 +291,16 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 			}
 		}
 	}
-	o.first.Bytes, nextSeq = byteSpan(nextSeq, o.first.Seq, o.first.Bytes) // XXX injection happens here
-
-	// append reassembly to the reassembly ring buffer
-	if len(o.first.Reassembly.Bytes) > 0 {
-		o.StreamRing.Reassembly = &o.first.Reassembly
-		o.StreamRing = o.StreamRing.Next()
+	bytes, seq := byteSpan(nextSeq, o.first.Seq, o.first.Bytes) // XXX injection happens here
+	if bytes != nil {
+		o.first.Bytes = bytes
+		nextSeq = seq
+		log.Printf("adding from ordered-coalesce (%v, %v)", o.first.Seq, nextSeq)
+		// append reassembly to the reassembly ring buffer
+		if len(o.first.Bytes) > 0 {
+			o.StreamRing.Reassembly = &o.first.Reassembly
+			o.StreamRing = o.StreamRing.Next()
+		}
 	}
 
 	reclaim := o.first
