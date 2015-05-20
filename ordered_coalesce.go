@@ -160,18 +160,14 @@ func (o *OrderedCoalesce) insert(packetManifest types.PacketManifest, nextSeq ty
 	if o.first != nil && o.first.Seq == nextSeq {
 		panic("wtf")
 	}
-
 	// XXX for now we ignore zero size packets
 	if len(packetManifest.Payload) == 0 {
 		return nextSeq
 	}
-
 	if o.pageCount < 0 {
 		panic("OrderedCoalesce.insert pageCount less than zero")
 	}
-
 	// XXX todo: handle out of order FIN and RST packets
-
 	p, p2, pcount := o.pagesFromTcp(packetManifest)
 	prev, current := o.traverse(types.Sequence(packetManifest.TCP.Seq))
 	o.pushBetween(prev, current, p, p2)
@@ -179,11 +175,9 @@ func (o *OrderedCoalesce) insert(packetManifest types.PacketManifest, nextSeq ty
 	if (o.MaxBufferedPagesPerFlow > 0 && o.pageCount >= o.MaxBufferedPagesPerFlow) ||
 		(o.MaxBufferedPagesTotal > 0 && o.pager.Used() >= o.MaxBufferedPagesTotal) {
 		log.Printf("%v hit max buffer size: %d %d, %d, %d", packetManifest.Flow.String(), o.MaxBufferedPagesTotal, o.MaxBufferedPagesPerFlow, o.pageCount, o.pager.Used())
-
 		if o.pageCount < 0 {
 			panic("OrderedCoalesce.insert pageCount less than zero")
 		}
-
 		nextSeq = o.addNext(nextSeq)
 		if nextSeq == -1 {
 			return nextSeq
@@ -257,6 +251,23 @@ func (o *OrderedCoalesce) pushBetween(prev, next, first, last *page) {
 	}
 }
 
+func (o *OrderedCoalesce) freeNext() {
+	reclaim := o.first
+	if o.first == o.last {
+		o.first = nil
+		o.last = nil
+	} else {
+		o.first = o.first.next
+		o.first.prev = nil
+	}
+	o.pager.Replace(reclaim)
+	o.pageCount--
+	if o.pageCount < 0 {
+		// XXX wtf srsly
+		panic("pageCount less than zero")
+	}
+}
+
 // addNext pops the first page off our doubly-linked-list and
 // appends it to the reassembly-ring.
 func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
@@ -267,10 +278,20 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 		o.first.Skip = int(diff)
 	}
 	if o.first.End {
+		log.Print("addNext: End detected")
+		o.freeNext()
 		return -1 // after closing the connection our return value doesn't matter
 	}
 	if len(o.first.Bytes) == 0 {
 		log.Print("zero length ordered coalesce packet not added to ring buffer\n")
+		o.freeNext()
+		return nextSeq
+	}
+	// ensure we only add stream segments that contain data coming after
+	// our last stream segment
+	diff = o.first.Seq.Add(len(o.first.Bytes)).Difference(nextSeq)
+	if diff < 0 {
+		o.freeNext()
 		return nextSeq
 	}
 	if o.DetectCoalesceInjection && len(o.first.Bytes) > 0 {
@@ -302,21 +323,7 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 			o.StreamRing = o.StreamRing.Next()
 		}
 	}
-
-	reclaim := o.first
-	if o.first == o.last {
-		o.first = nil
-		o.last = nil
-	} else {
-		o.first = o.first.next
-		o.first.prev = nil
-	}
-	o.pager.Replace(reclaim)
-	o.pageCount--
-	if o.pageCount < 0 {
-		// XXX wtf srsly
-		panic("pageCount less than zero")
-	}
+	o.freeNext()
 	return nextSeq
 }
 
