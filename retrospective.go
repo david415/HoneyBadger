@@ -27,13 +27,14 @@ import (
 	"time"
 )
 
-
 func displayRingSummary(ringHeadPtr *types.Ring) {
 	log.Print("displayRingSummary: moving forwards")
 	i := 0
-	current := ringHeadPtr;
+	current := ringHeadPtr
 	for current != ringHeadPtr.Prev() {
-		log.Printf("index: %d TCP.Seq %d Skip %d payload len %d\n", i, current.Reassembly.Seq, current.Reassembly.Skip, len(current.Reassembly.Bytes))
+		if current.Reassembly != nil {
+			log.Printf("index: %d TCP.Seq %d Skip %d payload len %d\n", i, current.Reassembly.Seq, current.Reassembly.Skip, len(current.Reassembly.Bytes))
+		}
 		current = current.Next()
 		i += 1
 	}
