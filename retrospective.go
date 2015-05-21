@@ -21,6 +21,7 @@ package HoneyBadger
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"github.com/david415/HoneyBadger/types"
 	"log"
@@ -30,10 +31,12 @@ import (
 func displayRingSummary(ringHeadPtr *types.Ring) {
 	log.Print("displayRingSummary: moving forwards")
 	i := 0
-	current := ringHeadPtr
-	for current != ringHeadPtr.Prev() {
+	current := ringHeadPtr.Prev()
+	for current != ringHeadPtr.Prev().Prev() {
 		if current.Reassembly != nil {
 			log.Printf("index: %d TCP.Seq %d Skip %d payload len %d\n", i, current.Reassembly.Seq, current.Reassembly.Skip, len(current.Reassembly.Bytes))
+		} else {
+			log.Printf("index: %d nil\n", i)
 		}
 		current = current.Next()
 		i += 1
@@ -76,7 +79,13 @@ func injectionInStreamRing(p types.PacketManifest, flow *types.TcpIpFlow, ringPt
 
 	if !bytes.Equal(overlapBytes, p.Payload[startOffset:endOffset]) {
 		log.Printf("injection attack detected at packet # %d with TCP.Seq %d\n", packetCount, p.TCP.Seq)
+		log.Printf("len overlapBytes %d len Payload slice %d\n", len(overlapBytes), len(p.Payload[startOffset:endOffset]))
 		displayRingSummary(ringPtr)
+		log.Print("overlapBytes:")
+		log.Print(hex.Dump(overlapBytes))
+		log.Print("packet payload slice:")
+		log.Print(hex.Dump(p.Payload[startOffset:endOffset]))
+
 		e := &types.Event{
 			Type:          eventType,
 			Time:          time.Now(),
