@@ -54,7 +54,7 @@ func expandReport(reportPath string) {
 		var payload []byte
 		var overlap []byte
 
-		overlap, err = base64.StdEncoding.DecodeString(event.Payload)
+		overlap, err = base64.StdEncoding.DecodeString(event.Overlap)
 		if err != nil {
 			panic(err)
 		}
