@@ -22,19 +22,43 @@ package main
 import (
 	"bufio"
 	"flag"
-	"log"
+	"fmt"
 	"os"
+	"strings"
 
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"github.com/david415/HoneyBadger/logging"
+	"github.com/fatih/color"
 )
 
+func colorLineDiff(a, b string) {
+	aLines := strings.Split(a, "\n")
+	bLines := strings.Split(b, "\n")
+	for i := 0; i < len(aLines); i++ {
+		if aLines[i] == bLines[i] {
+			color.Cyan(aLines[i])
+		} else {
+			color.Red(aLines[i])
+		}
+	}
+
+	for i := 0; i < len(aLines); i++ {
+		if aLines[i] == bLines[i] {
+			color.Cyan(bLines[i])
+		} else {
+			color.Red(bLines[i])
+		}
+	}
+
+}
+
 func expandReport(reportPath string) {
-	log.Printf("expandReport: reportPath %s", reportPath)
+	fmt.Printf("expandReport: reportPath %s", reportPath)
 	file, err := os.Open(reportPath)
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 	defer file.Close()
 	reader := bufio.NewReader(file)
@@ -48,8 +72,8 @@ func expandReport(reportPath string) {
 			panic(err)
 		}
 
-		log.Printf("Event Type %s Flow %s Time %s\n", event.Type, event.Flow, event.Time)
-		log.Printf("HijackSeq %d HijackAck %d Start %d End %d OverlapStart %d OverlapEnd %d\n", event.HijackSeq, event.HijackAck, event.Start, event.End, event.OverlapStart, event.OverlapEnd)
+		fmt.Printf("Event Type %s Flow %s Time %s\n", event.Type, event.Flow, event.Time)
+		fmt.Printf("HijackSeq %d HijackAck %d Start %d End %d OverlapStart %d OverlapEnd %d\n", event.HijackSeq, event.HijackAck, event.Start, event.End, event.OverlapStart, event.OverlapEnd)
 
 		var payload []byte
 		var overlap []byte
@@ -58,14 +82,13 @@ func expandReport(reportPath string) {
 		if err != nil {
 			panic(err)
 		}
-		log.Printf("\n\noverlap: %s\n\n", overlap)
 
 		payload, err = base64.StdEncoding.DecodeString(event.Payload)
 		if err != nil {
 			panic(err)
 		}
-		log.Printf("\n\npayload: %s\n\n", payload)
 
+		colorLineDiff(hex.Dump(overlap), hex.Dump(payload))
 		line, err = reader.ReadString('\n')
 	}
 }
