@@ -36,14 +36,17 @@ import (
 func colorLineDiff(a, b string) {
 	aLines := strings.Split(a, "\n")
 	bLines := strings.Split(b, "\n")
+
+	fmt.Print("Overlapping portion of reassembled TCP Stream:\n")
 	for i := 0; i < len(aLines); i++ {
 		if aLines[i] == bLines[i] {
-			color.Cyan(aLines[i])
+			color.Blue(aLines[i])
 		} else {
-			color.Red(aLines[i])
+			color.Green(aLines[i])
 		}
 	}
 
+	fmt.Print("Injection packet whose contents did not coalesce into the TCP Stream:\n")
 	for i := 0; i < len(aLines); i++ {
 		if aLines[i] == bLines[i] {
 			color.Cyan(bLines[i])
@@ -55,7 +58,7 @@ func colorLineDiff(a, b string) {
 }
 
 func expandReport(reportPath string) {
-	fmt.Printf("expandReport: reportPath %s", reportPath)
+	fmt.Printf("attack report: %s\n", reportPath)
 	file, err := os.Open(reportPath)
 	if err != nil {
 		panic(err)
@@ -72,8 +75,8 @@ func expandReport(reportPath string) {
 			panic(err)
 		}
 
-		fmt.Printf("Event Type %s Flow %s Time %s\n", event.Type, event.Flow, event.Time)
-		fmt.Printf("HijackSeq %d HijackAck %d Start %d End %d OverlapStart %d OverlapEnd %d\n", event.HijackSeq, event.HijackAck, event.Start, event.End, event.OverlapStart, event.OverlapEnd)
+		fmt.Printf("Event Type: %s\nFlow: %s\nTime: %s\n", event.Type, event.Flow, event.Time)
+		fmt.Printf("HijackSeq: %d HijackAck: %d\nStart: %d End: %d\nOverlapStart: %d OverlapEnd: %d\n\n", event.HijackSeq, event.HijackAck, event.Start, event.End, event.OverlapStart, event.OverlapEnd)
 
 		var payload []byte
 		var overlap []byte
