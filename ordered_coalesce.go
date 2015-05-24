@@ -175,12 +175,11 @@ func (o *OrderedCoalesce) insert(packetManifest types.PacketManifest, nextSeq ty
 	o.pageCount += pcount
 	if (o.MaxBufferedPagesPerFlow > 0 && o.pageCount >= o.MaxBufferedPagesPerFlow) ||
 		(o.MaxBufferedPagesTotal > 0 && o.pager.Used() >= o.MaxBufferedPagesTotal) {
-		log.Printf("%v hit max buffer size: MaxBufferedPagesTotal %d, MaxBufferedPagesPerFlow %d, pageCount %d, pages Used %d", packetManifest.Flow.String(), o.MaxBufferedPagesTotal, o.MaxBufferedPagesPerFlow, o.pageCount, o.pager.Used())
 		if o.pageCount < 0 {
 			panic("OrderedCoalesce.insert pageCount less than zero")
 		}
 		nextSeq, isEnd = o.flushUntilThreshold(nextSeq)
-	} // end of if
+	}
 	return nextSeq, isEnd
 }
 
@@ -206,7 +205,7 @@ func (o *OrderedCoalesce) flushUntilThreshold(nextSeq types.Sequence) (types.Seq
 		if isEnd {
 			break
 		}
-	} // end of for
+	}
 	return nextSeq, isEnd
 }
 
