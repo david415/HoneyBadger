@@ -58,7 +58,7 @@ type Dispatcher struct {
 	dispatchPacketChan      chan *types.PacketManifest
 	stopDispatchChan        chan bool
 	closeConnectionChan     chan ConnectionInterface
-	pager                   *Pager
+	pageCache               *pageCache
 	PacketLoggerFactoryFunc func(string, *types.TcpIpFlow) types.PacketLogger
 	pool                    map[types.ConnectionHash]ConnectionInterface
 }
@@ -72,8 +72,8 @@ func NewDispatcher(options DispatcherOptions, connectionFactory ConnectionFactor
 		dispatchPacketChan:      make(chan *types.PacketManifest),
 		stopDispatchChan:        make(chan bool),
 		closeConnectionChan:     make(chan ConnectionInterface),
-		pager:                   NewPager(),
-		observeConnectionChan: make(chan bool, 0),
+		pageCache:               newPageCache(),
+		observeConnectionChan:   make(chan bool, 0),
 		pool: make(map[types.ConnectionHash]ConnectionInterface),
 	}
 	return &i
@@ -86,7 +86,6 @@ func (i *Dispatcher) GetObservedConnectionsChan(count int) chan bool {
 
 // Start... starts the TCP attack inquisition!
 func (i *Dispatcher) Start() {
-	i.pager.Start()
 	go i.dispatchPackets()
 }
 
@@ -95,7 +94,6 @@ func (i *Dispatcher) Stop() {
 	i.stopDispatchChan <- true
 	closedConns := i.CloseAllConnections()
 	log.Printf("%d connection(s) closed.", closedConns)
-	i.pager.Stop()
 }
 
 // connectionsLocked returns a slice of Connection pointers.
@@ -152,7 +150,7 @@ func (i *Dispatcher) setupNewConnection(flow *types.TcpIpFlow) ConnectionInterfa
 		MaxBufferedPagesTotal:         i.options.BufferedTotal,
 		MaxBufferedPagesPerConnection: i.options.BufferedPerConnection,
 		MaxRingPackets:                i.options.MaxRingPackets,
-		Pager:                         i.pager,
+		PageCache:                     i.pageCache,
 		LogDir:                        i.options.LogDir,
 		AttackLogger:                  i.options.Logger,
 		LogPackets:                    i.options.LogPackets,

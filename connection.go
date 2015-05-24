@@ -78,8 +78,8 @@ func (f *DefaultConnFactory) Build(options ConnectionOptions) ConnectionInterfac
 		serverFlow:               &types.TcpIpFlow{},
 	}
 
-	conn.ClientCoalesce = NewOrderedCoalesce(conn.AttackLogger, conn.clientFlow, conn.Pager, conn.ClientStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection)
-	conn.ServerCoalesce = NewOrderedCoalesce(conn.AttackLogger, conn.serverFlow, conn.Pager, conn.ServerStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection)
+	conn.ClientCoalesce = NewOrderedCoalesce(conn.AttackLogger, conn.clientFlow, conn.PageCache, conn.ClientStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection)
+	conn.ServerCoalesce = NewOrderedCoalesce(conn.AttackLogger, conn.serverFlow, conn.PageCache, conn.ServerStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection)
 
 	return &conn
 }
@@ -102,7 +102,7 @@ type ConnectionOptions struct {
 	MaxBufferedPagesTotal         int
 	MaxBufferedPagesPerConnection int
 	MaxRingPackets                int
-	Pager                         *Pager
+	PageCache                     *pageCache
 	LogDir                        string
 	LogPackets                    bool
 	AttackLogger                  types.Logger

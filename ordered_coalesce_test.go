@@ -13,7 +13,7 @@ func TestOrderedCoalesceUsedPages(t *testing.T) {
 	maxBufferedPagesTotal := 1024
 	maxBufferedPagesPerFlow := 1024
 	streamRing := types.NewRing(40)
-	pager := NewPager()
+	PageCache := newPageCache()
 
 	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
@@ -21,7 +21,7 @@ func TestOrderedCoalesceUsedPages(t *testing.T) {
 
 	var nextSeq types.Sequence = types.Sequence(1)
 
-	coalesce := NewOrderedCoalesce(nil, flow, pager, streamRing, maxBufferedPagesTotal, maxBufferedPagesPerFlow, false)
+	coalesce := NewOrderedCoalesce(nil, flow, PageCache, streamRing, maxBufferedPagesTotal, maxBufferedPagesPerFlow, false)
 
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},
@@ -44,13 +44,12 @@ func TestOrderedCoalesceUsedPages(t *testing.T) {
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
 
-	coalesce.pager.Start()
 	coalesce.insert(p, nextSeq)
 
-	if coalesce.pager.Used() != 1 {
+	if coalesce.PageCache.used != 1 {
 		t.Errorf("coalesce.pager.Used() not equal to 1\n")
 		t.Fail()
 	}
 
-	coalesce.pager.Stop()
+	coalesce.Close()
 }

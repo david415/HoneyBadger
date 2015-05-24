@@ -16,7 +16,7 @@ func TestStateDataTransfer(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		Pager:                         nil,
+		PageCache:                     nil,
 		LogDir:                        "fake-log-dir",
 		AttackLogger:                  NewDummyAttackLogger(),
 	}
@@ -121,7 +121,7 @@ func TestTCPConnect(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		Pager:                         nil,
+		PageCache:                     nil,
 		LogDir:                        "fake-log-dir",
 	}
 
@@ -235,8 +235,7 @@ func TestServerThreeWayClose(t *testing.T) {
 }
 
 func HelperTestThreeWayClose(isClient bool, t *testing.T) {
-	pager := NewPager()
-	pager.Start()
+	PageCache := newPageCache()
 
 	var closerState, remoteState *uint8
 	attackLogger := NewDummyAttackLogger()
@@ -244,7 +243,7 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		Pager:                         pager,
+		PageCache:                     PageCache,
 		LogDir:                        "fake-log-dir",
 	}
 
@@ -375,7 +374,7 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 	}
 
 	conn.ReceivePacket(&p)
-	log.Print("meow3")
+	log.Print("freeing page cache")
 }
 
 func TestTCPHijack(t *testing.T) {
@@ -384,7 +383,7 @@ func TestTCPHijack(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		Pager:                         nil,
+		PageCache:                     nil,
 		LogDir:                        "fake-log-dir",
 		DetectHijack:                  true,
 	}

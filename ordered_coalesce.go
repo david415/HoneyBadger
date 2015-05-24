@@ -134,16 +134,16 @@ type OrderedCoalesce struct {
 	StreamRing              *types.Ring
 	log                     types.Logger
 	pageCount               int
-	pager                   *Pager
+	PageCache               *pageCache
 	first, last             *page
 	DetectCoalesceInjection bool
 }
 
-func NewOrderedCoalesce(log types.Logger, flow *types.TcpIpFlow, pager *Pager, streamRing *types.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int, DetectCoalesceInjection bool) *OrderedCoalesce {
+func NewOrderedCoalesce(log types.Logger, flow *types.TcpIpFlow, pageCache *pageCache, streamRing *types.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int, DetectCoalesceInjection bool) *OrderedCoalesce {
 	return &OrderedCoalesce{
 		log:        log,
 		Flow:       flow,
-		pager:      pager,
+		PageCache:  pageCache,
 		StreamRing: streamRing,
 
 		MaxBufferedPagesTotal:   maxBufferedPagesTotal,
@@ -151,9 +151,11 @@ func NewOrderedCoalesce(log types.Logger, flow *types.TcpIpFlow, pager *Pager, s
 	}
 }
 
-// Close returns all used pages to the page cache via the Pager
+// Close returns all used pages to the page cache
 func (o *OrderedCoalesce) Close() {
-	o.pager.ReplaceAllFrom(o.first)
+	for c := o.first; c != nil; c = c.next {
+		o.PageCache.replace(c)
+	}
 }
 
 func (o *OrderedCoalesce) insert(packetManifest types.PacketManifest, nextSeq types.Sequence) (types.Sequence, bool) {
@@ -174,7 +176,7 @@ func (o *OrderedCoalesce) insert(packetManifest types.PacketManifest, nextSeq ty
 	o.pushBetween(prev, current, p, p2)
 	o.pageCount += pcount
 	if (o.MaxBufferedPagesPerFlow > 0 && o.pageCount >= o.MaxBufferedPagesPerFlow) ||
-		(o.MaxBufferedPagesTotal > 0 && o.pager.Used() >= o.MaxBufferedPagesTotal) {
+		(o.MaxBufferedPagesTotal > 0 && o.PageCache.used >= o.MaxBufferedPagesTotal) {
 		if o.pageCount < 0 {
 			panic("OrderedCoalesce.insert pageCount less than zero")
 		}
@@ -187,7 +189,7 @@ func (o *OrderedCoalesce) insert(packetManifest types.PacketManifest, nextSeq ty
 // our cache is empty.
 func (o *OrderedCoalesce) flushUntilThreshold(nextSeq types.Sequence) (types.Sequence, bool) {
 	isEnd := false
-	for o.first != nil && o.pageCount >= o.MaxBufferedPagesPerFlow || o.pager.Used() >= o.MaxBufferedPagesTotal {
+	for o.first != nil && o.pageCount >= o.MaxBufferedPagesPerFlow || o.PageCache.used >= o.MaxBufferedPagesTotal {
 		nextSeq, isEnd = o.addNext(nextSeq)
 		if isEnd {
 			break
@@ -205,7 +207,7 @@ func (o *OrderedCoalesce) flushUntilThreshold(nextSeq types.Sequence) (types.Seq
 //
 // It returns the first and last page in its doubly-linked list of new pages.
 func (o *OrderedCoalesce) pagesFromTcp(p types.PacketManifest) (*page, *page, int) {
-	first := o.pager.Next(p.Timestamp)
+	first := o.PageCache.next(p.Timestamp)
 	count := 1
 	current := first
 	seq, bytes := types.Sequence(p.TCP.Seq), p.Payload
@@ -219,7 +221,7 @@ func (o *OrderedCoalesce) pagesFromTcp(p types.PacketManifest) (*page, *page, in
 			break
 		}
 		seq = seq.Add(length)
-		current.next = o.pager.Next(p.Timestamp)
+		current.next = o.PageCache.next(p.Timestamp)
 		count++
 		current.next.prev = current
 		current = current.next
@@ -275,7 +277,7 @@ func (o *OrderedCoalesce) freeNext() {
 		o.first = o.first.next
 		o.first.prev = nil
 	}
-	o.pager.Replace(reclaim)
+	o.PageCache.replace(reclaim)
 	o.pageCount--
 	if o.pageCount < 0 {
 		// XXX wtf srsly

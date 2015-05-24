@@ -44,7 +44,7 @@ func TestInjectionDetector(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		Pager:                         nil,
+		PageCache:                     nil,
 		LogDir:                        "fake-log-dir",
 		AttackLogger:                  attackLogger,
 	}
@@ -133,7 +133,7 @@ func TestGetRingSlice(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		Pager:                         nil,
+		PageCache:                     nil,
 		LogDir:                        "fake-log-dir",
 	}
 
@@ -336,35 +336,35 @@ func TestGetOverlapBytes(t *testing.T) {
 		in   reassemblyInput
 		want TestOverlapBytesWant
 	}{
-		{//0
+		{ //0
 			reassemblyInput{3, []byte{2, 3, 4}}, TestOverlapBytesWant{
 				bytes:       []byte{6},
 				startOffset: 2,
 				endOffset:   3,
 			},
 		},
-		{//1
+		{ //1
 			reassemblyInput{4, []byte{2, 3, 4}}, TestOverlapBytesWant{
 				bytes:       []byte{6, 7},
 				startOffset: 1,
 				endOffset:   3,
 			},
 		},
-		{//2
+		{ //2
 			reassemblyInput{5, []byte{2, 3, 4}}, TestOverlapBytesWant{
 				bytes:       []byte{6, 7, 8},
 				startOffset: 0,
 				endOffset:   3,
 			},
 		},
-		{//3
+		{ //3
 			reassemblyInput{6, []byte{1, 2, 3}}, TestOverlapBytesWant{
 				bytes:       []byte{7, 8, 9},
 				startOffset: 0,
 				endOffset:   3,
 			},
 		},
-		{//4
+		{ //4
 			reassemblyInput{4, []byte{91, 92, 93, 94, 95, 96, 97}}, TestOverlapBytesWant{
 				bytes:       []byte{6, 7, 8, 9, 10, 11},
 				startOffset: 1,
@@ -459,7 +459,7 @@ func TestGetOverlapBytes(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		Pager:                         nil,
+		PageCache:                     nil,
 		LogDir:                        "fake-log-dir",
 	}
 
@@ -553,7 +553,7 @@ func TestGetOverlapRingsWithZeroRings(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		Pager:                         nil,
+		PageCache:                     nil,
 		LogDir:                        "fake-log-dir",
 	}
 
@@ -735,7 +735,7 @@ func TestGetOverlapRings(t *testing.T) {
 		MaxBufferedPagesTotal:         0,
 		MaxBufferedPagesPerConnection: 0,
 		MaxRingPackets:                40,
-		Pager:                         nil,
+		PageCache:                     nil,
 		LogDir:                        "fake-log-dir",
 	}
 
