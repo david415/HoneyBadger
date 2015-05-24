@@ -70,12 +70,12 @@ func (f *DefaultConnFactory) Build(options ConnectionOptions) ConnectionInterfac
 		attackDetected:    false,
 		state:             TCP_UNKNOWN,
 		skipHijackDetectionCount: FIRST_FEW_PACKETS,
-		clientNextSeq:     types.InvalidSequence,
-		serverNextSeq:     types.InvalidSequence,
-		ClientStreamRing:  types.NewRing(options.MaxRingPackets),
-		ServerStreamRing:  types.NewRing(options.MaxRingPackets),
-		clientFlow:        &types.TcpIpFlow{},
-		serverFlow:        &types.TcpIpFlow{},
+		clientNextSeq:            types.InvalidSequence,
+		serverNextSeq:            types.InvalidSequence,
+		ClientStreamRing:         types.NewRing(options.MaxRingPackets),
+		ServerStreamRing:         types.NewRing(options.MaxRingPackets),
+		clientFlow:               &types.TcpIpFlow{},
+		serverFlow:               &types.TcpIpFlow{},
 	}
 
 	conn.ClientCoalesce = NewOrderedCoalesce(conn.AttackLogger, conn.clientFlow, conn.Pager, conn.ClientStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection)
@@ -117,26 +117,26 @@ type ConnectionOptions struct {
 // hanshake hijack and other TCP attacks such as segment veto and sloppy injection.
 type Connection struct {
 	ConnectionOptions
-	attackDetected   bool
-	packetCount      uint64
+	attackDetected           bool
+	packetCount              uint64
 	skipHijackDetectionCount uint64
-	lastSeen         time.Time
-	lastSeenMutex    sync.Mutex
-	state            uint8
-	clientState      uint8
-	serverState      uint8
-	clientFlow       *types.TcpIpFlow
-	serverFlow       *types.TcpIpFlow
-	closingFlow      *types.TcpIpFlow
-	clientNextSeq    types.Sequence
-	serverNextSeq    types.Sequence
-	hijackNextAck    types.Sequence
-	firstSynAckSeq   uint32
-	ClientStreamRing *types.Ring
-	ServerStreamRing *types.Ring
-	ClientCoalesce   *OrderedCoalesce
-	ServerCoalesce   *OrderedCoalesce
-	PacketLogger     types.PacketLogger
+	lastSeen                 time.Time
+	lastSeenMutex            sync.Mutex
+	state                    uint8
+	clientState              uint8
+	serverState              uint8
+	clientFlow               *types.TcpIpFlow
+	serverFlow               *types.TcpIpFlow
+	closingFlow              *types.TcpIpFlow
+	clientNextSeq            types.Sequence
+	serverNextSeq            types.Sequence
+	hijackNextAck            types.Sequence
+	firstSynAckSeq           uint32
+	ClientStreamRing         *types.Ring
+	ServerStreamRing         *types.Ring
+	ClientCoalesce           *OrderedCoalesce
+	ServerCoalesce           *OrderedCoalesce
+	PacketLogger             types.PacketLogger
 }
 
 func (c *Connection) SetPacketLogger(logger types.PacketLogger) {
@@ -291,7 +291,11 @@ func (c *Connection) stateUnknown(p types.PacketManifest) {
 			c.Close()
 		} else {
 			if len(p.Payload) > 0 {
-				c.clientNextSeq = c.ServerCoalesce.insert(p, c.clientNextSeq)
+				isEnd := false
+				c.clientNextSeq, isEnd = c.ServerCoalesce.insert(p, c.clientNextSeq)
+				if isEnd {
+					c.Close()
+				}
 			}
 		}
 	}
@@ -362,12 +366,19 @@ func (c *Connection) stateConnectionEstablished(p types.PacketManifest) {
 func (c *Connection) stateDataTransfer(p types.PacketManifest) {
 	var nextSeqPtr *types.Sequence
 	var closerState, remoteState *uint8
+	isEnd := false
 
 	if c.clientNextSeq == types.InvalidSequence && p.Flow.Equal(c.clientFlow) {
-		c.clientNextSeq = c.ServerCoalesce.insert(p, c.clientNextSeq)
+		c.clientNextSeq, isEnd = c.ServerCoalesce.insert(p, c.clientNextSeq)
+		if isEnd {
+			c.Close()
+		}
 		return
 	} else if c.serverNextSeq == types.InvalidSequence && p.Flow.Equal(c.serverFlow) {
-		c.serverNextSeq = c.ClientCoalesce.insert(p, c.serverNextSeq)
+		c.serverNextSeq, isEnd = c.ClientCoalesce.insert(p, c.serverNextSeq)
+		if isEnd {
+			c.Close()
+		}
 		return
 	}
 	if c.packetCount < c.skipHijackDetectionCount {
@@ -412,17 +423,18 @@ func (c *Connection) stateDataTransfer(p types.PacketManifest) {
 				c.ServerStreamRing.Reassembly = &reassembly
 				c.ServerStreamRing = c.ServerStreamRing.Next()
 				*nextSeqPtr = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
-				maybeNextSeqPtr := c.ServerCoalesce.addContiguous(*nextSeqPtr)
-				if maybeNextSeqPtr == -1 {
+				*nextSeqPtr, isEnd = c.ServerCoalesce.addContiguous(*nextSeqPtr)
+				if isEnd {
 					c.Close()
-				} else {
-					*nextSeqPtr = maybeNextSeqPtr
 				}
 			} else {
 				c.ClientStreamRing.Reassembly = &reassembly
 				c.ClientStreamRing = c.ClientStreamRing.Next()
 				*nextSeqPtr = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
-				*nextSeqPtr = c.ClientCoalesce.addContiguous(*nextSeqPtr)
+				*nextSeqPtr, isEnd = c.ClientCoalesce.addContiguous(*nextSeqPtr)
+				if isEnd {
+					c.Close()
+				}
 			}
 		}
 		if p.TCP.FIN {
@@ -435,9 +447,12 @@ func (c *Connection) stateDataTransfer(p types.PacketManifest) {
 		}
 	} else if diff < 0 { // future-out-of-order packet case
 		if p.Flow.Equal(c.clientFlow) {
-			c.clientNextSeq = c.ServerCoalesce.insert(p, c.clientNextSeq)
+			c.clientNextSeq, isEnd = c.ServerCoalesce.insert(p, c.clientNextSeq)
 		} else {
-			c.serverNextSeq = c.ClientCoalesce.insert(p, c.serverNextSeq)
+			c.serverNextSeq, isEnd = c.ClientCoalesce.insert(p, c.serverNextSeq)
+		}
+		if isEnd {
+			c.Close()
 		}
 	}
 }

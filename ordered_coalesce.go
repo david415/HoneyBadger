@@ -156,13 +156,14 @@ func (o *OrderedCoalesce) Close() {
 	o.pager.ReplaceAllFrom(o.first)
 }
 
-func (o *OrderedCoalesce) insert(packetManifest types.PacketManifest, nextSeq types.Sequence) types.Sequence {
+func (o *OrderedCoalesce) insert(packetManifest types.PacketManifest, nextSeq types.Sequence) (types.Sequence, bool) {
+	isEnd := false
 	if o.first != nil && o.first.Seq == nextSeq {
 		panic("wtf")
 	}
 	// XXX for now we ignore zero size packets
 	if len(packetManifest.Payload) == 0 {
-		return nextSeq
+		return nextSeq, false
 	}
 	if o.pageCount < 0 {
 		panic("OrderedCoalesce.insert pageCount less than zero")
@@ -174,17 +175,39 @@ func (o *OrderedCoalesce) insert(packetManifest types.PacketManifest, nextSeq ty
 	o.pageCount += pcount
 	if (o.MaxBufferedPagesPerFlow > 0 && o.pageCount >= o.MaxBufferedPagesPerFlow) ||
 		(o.MaxBufferedPagesTotal > 0 && o.pager.Used() >= o.MaxBufferedPagesTotal) {
-		log.Printf("%v hit max buffer size: %d %d, %d, %d", packetManifest.Flow.String(), o.MaxBufferedPagesTotal, o.MaxBufferedPagesPerFlow, o.pageCount, o.pager.Used())
+		log.Printf("%v hit max buffer size: MaxBufferedPagesTotal %d, MaxBufferedPagesPerFlow %d, pageCount %d, pages Used %d", packetManifest.Flow.String(), o.MaxBufferedPagesTotal, o.MaxBufferedPagesPerFlow, o.pageCount, o.pager.Used())
 		if o.pageCount < 0 {
 			panic("OrderedCoalesce.insert pageCount less than zero")
 		}
-		nextSeq = o.addNext(nextSeq)
-		if nextSeq == -1 {
-			return nextSeq
-		}
-		nextSeq = o.addContiguous(nextSeq)
+		nextSeq, isEnd = o.flushUntilThreshold(nextSeq)
+	} // end of if
+	return nextSeq, isEnd
+}
+
+func (o *OrderedCoalesce) flushUntilThreshold(nextSeq types.Sequence) (types.Sequence, bool) {
+	isEnd := false
+	nextSeq, isEnd = o.addNext(nextSeq)
+	if isEnd {
+		return nextSeq, true
 	}
-	return nextSeq
+	nextSeq, isEnd = o.addContiguous(nextSeq)
+	if isEnd {
+		return nextSeq, true
+	}
+	for o.pageCount >= o.MaxBufferedPagesPerFlow || o.pager.Used() >= o.MaxBufferedPagesTotal {
+		if o.first == nil {
+			break
+		}
+		nextSeq, isEnd = o.addNext(nextSeq)
+		if isEnd {
+			break
+		}
+		nextSeq, isEnd = o.addContiguous(nextSeq)
+		if isEnd {
+			break
+		}
+	} // end of for
+	return nextSeq, isEnd
 }
 
 // pagesFromTcp creates a page (or set of pages) from a TCP packet.  Note that
@@ -270,7 +293,12 @@ func (o *OrderedCoalesce) freeNext() {
 
 // addNext pops the first page off our doubly-linked-list and
 // appends it to the reassembly-ring.
-func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
+// Here we also handle the case where the connection should be closed
+// by returning the bool value set to true.
+func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) (types.Sequence, bool) {
+	if o.first == nil {
+		return nextSeq, false
+	}
 	diff := nextSeq.Difference(o.first.Seq)
 	if nextSeq == types.InvalidSequence {
 		o.first.Skip = -1
@@ -278,21 +306,19 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 		o.first.Skip = int(diff)
 	}
 	if o.first.End {
-		log.Print("addNext: End detected")
 		o.freeNext()
-		return -1 // after closing the connection our return value doesn't matter
+		return -1, true // after closing the connection our Sequence return value doesn't matter
 	}
 	if len(o.first.Bytes) == 0 {
-		log.Print("zero length ordered coalesce packet not added to ring buffer\n")
 		o.freeNext()
-		return nextSeq
+		return nextSeq, false
 	}
 	// ensure we only add stream segments that contain data coming after
 	// our last stream segment
 	diff = o.first.Seq.Add(len(o.first.Bytes)).Difference(nextSeq)
 	if diff < 0 {
 		o.freeNext()
-		return nextSeq
+		return nextSeq, false
 	}
 	if o.DetectCoalesceInjection && len(o.first.Bytes) > 0 {
 		// XXX stream segment overlap condition
@@ -316,7 +342,6 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 	if bytes != nil {
 		o.first.Bytes = bytes
 		nextSeq = seq
-		log.Printf("adding from ordered-coalesce (%v, %v)", o.first.Seq, nextSeq)
 		// append reassembly to the reassembly ring buffer
 		if len(o.first.Bytes) > 0 {
 			o.StreamRing.Reassembly = &o.first.Reassembly
@@ -324,16 +349,19 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) types.Sequence {
 		}
 	}
 	o.freeNext()
-	return nextSeq
+	return nextSeq, false
 }
 
 // addContiguous adds contiguous byte-sets to a connection.
-func (o *OrderedCoalesce) addContiguous(nextSeq types.Sequence) types.Sequence {
+// returns the next Sequence number and a bool value set to
+// true if the end of connection was detected.
+func (o *OrderedCoalesce) addContiguous(nextSeq types.Sequence) (types.Sequence, bool) {
+	var isEnd bool
 	for o.first != nil && nextSeq.Difference(o.first.Seq) <= 0 {
-		nextSeq = o.addNext(nextSeq)
-		if nextSeq == -1 {
-			break
+		nextSeq, isEnd = o.addNext(nextSeq)
+		if isEnd {
+			return nextSeq, true
 		}
 	}
-	return nextSeq
+	return nextSeq, false
 }
