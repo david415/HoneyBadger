@@ -183,28 +183,18 @@ func (o *OrderedCoalesce) insert(packetManifest types.PacketManifest, nextSeq ty
 	return nextSeq, isEnd
 }
 
+// flushUntilThreshold will flush our cache until either we are within the threshold OR
+// our cache is empty.
 func (o *OrderedCoalesce) flushUntilThreshold(nextSeq types.Sequence) (types.Sequence, bool) {
 	isEnd := false
-	nextSeq, isEnd = o.addNext(nextSeq)
-	if isEnd {
-		return nextSeq, true
-	}
-	nextSeq, isEnd = o.addContiguous(nextSeq)
-	if isEnd {
-		return nextSeq, true
-	}
-	for o.pageCount >= o.MaxBufferedPagesPerFlow || o.pager.Used() >= o.MaxBufferedPagesTotal {
-		if o.first == nil {
-			break
-		}
+	for o.first != nil && o.pageCount >= o.MaxBufferedPagesPerFlow || o.pager.Used() >= o.MaxBufferedPagesTotal {
 		nextSeq, isEnd = o.addNext(nextSeq)
 		if isEnd {
 			break
 		}
+	}
+	if o.first != nil {
 		nextSeq, isEnd = o.addContiguous(nextSeq)
-		if isEnd {
-			break
-		}
 	}
 	return nextSeq, isEnd
 }
@@ -274,6 +264,9 @@ func (o *OrderedCoalesce) pushBetween(prev, next, first, last *page) {
 }
 
 func (o *OrderedCoalesce) freeNext() {
+	if o.first == nil {
+		panic("o.first is nil")
+	}
 	reclaim := o.first
 	if o.first == o.last {
 		o.first = nil
@@ -296,7 +289,7 @@ func (o *OrderedCoalesce) freeNext() {
 // by returning the bool value set to true.
 func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) (types.Sequence, bool) {
 	if o.first == nil {
-		return nextSeq, false
+		panic("o.first is nil")
 	}
 	diff := nextSeq.Difference(o.first.Seq)
 	if nextSeq == types.InvalidSequence {
@@ -312,10 +305,9 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) (types.Sequence, bool)
 		o.freeNext()
 		return nextSeq, false
 	}
-	// ensure we only add stream segments that contain data coming after
-	// our last stream segment
+	// ensure we do not add segments that end before nextSeq
 	diff = o.first.Seq.Add(len(o.first.Bytes)).Difference(nextSeq)
-	if diff < 0 {
+	if diff > 0 {
 		o.freeNext()
 		return nextSeq, false
 	}
