@@ -52,6 +52,7 @@ is infinite.`)
 		bufferedTotal = flag.Int("total_max_buffer", 0, `
 Max packets to buffer total before skipping over gaps in connections and
 continuing to stream connection data.  If zero or less, this is infinite`)
+		usePfRing = flag.Bool("pfring", true, "Use PF_RING")
 	)
 	flag.Parse()
 
@@ -98,6 +99,7 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		WireDuration: wireDuration,
 		Snaplen:      int32(*snaplen),
 		Filter:       *filter,
+		UsePfRing:    *usePfRing,
 	}
 
 	connectionFactory := &HoneyBadger.DefaultConnFactory{}
