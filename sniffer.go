@@ -98,16 +98,17 @@ func (i *Sniffer) setupHandle() {
 	var err error
 
 	if i.options.UseAfPacket { // sniff AF_PACKET interface
+		log.Printf("sniffing with AF_PACKET in-kernel socket from interface %q", i.options.Interface)
 		if i.tpacketHandle, err = afpacket.NewTPacket(afpacket.OptInterface(i.options.Interface)); err != nil {
 			log.Fatal(err)
 		}
 		i.packetDataSource = i.tpacketHandle
 	} else if i.options.Filename != "" { // sniff pcap file
-		log.Printf("Reading from pcap file %q", i.options.Filename)
+		log.Printf("sniffing with libpcap from file %q", i.options.Filename)
 		i.pcapHandle, err = pcap.OpenOffline(i.options.Filename)
 		i.packetDataSource = i.pcapHandle
 	} else { // sniff pcap wire interface
-		log.Printf("Starting pcap capture on interface %q", i.options.Interface)
+		log.Printf("sniffing with libpcap from interface %q", i.options.Interface)
 		i.pcapHandle, err = pcap.OpenLive(i.options.Interface, i.options.Snaplen, true, i.options.WireDuration)
 		if err != nil {
 			log.Fatal(err)
