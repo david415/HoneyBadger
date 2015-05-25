@@ -25,9 +25,9 @@ import (
 	"time"
 
 	"github.com/google/gopacket"
+	"github.com/google/gopacket/afpacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"github.com/google/gopacket/pfring"
 
 	"github.com/david415/HoneyBadger/types"
 )
@@ -41,6 +41,7 @@ type SnifferOptions struct {
 	Snaplen      int32
 	Dispatcher   PacketDispatcher
 	Supervisor   types.Supervisor
+	UseAfPacket  bool
 }
 
 // Sniffer sets up the connection pool and is an abstraction layer for dealing
@@ -52,7 +53,7 @@ type Sniffer struct {
 	stopDecodeChan   chan bool
 	packetDataSource gopacket.PacketDataSource
 	pcapHandle       *pcap.Handle
-	ringHandle       *pfring.Ring
+	tpacketHandle    *afpacket.TPacket
 	supervisor       types.Supervisor
 }
 
@@ -76,7 +77,7 @@ func (i *Sniffer) GetStartedChan() chan bool {
 
 // Start... starts the TCP attack inquisition!
 func (i *Sniffer) Start() {
-	if i.handle == nil {
+	if i.pcapHandle == nil && i.tpacketHandle == nil {
 		i.setupHandle()
 	}
 	go i.capturePackets()
@@ -86,26 +87,25 @@ func (i *Sniffer) Start() {
 func (i *Sniffer) Stop() {
 	i.stopCaptureChan <- true
 	i.stopDecodeChan <- true
-	i.handle.Close()
+	if i.pcapHandle != nil {
+		i.pcapHandle.Close()
+	} else {
+		i.tpacketHandle.Close()
+	}
 }
 
 func (i *Sniffer) setupHandle() {
 	var err error
 
-	if i.options.UsePfRing { // sniff AF_RING interface
-		if i.ringHandle, err = pfring.NewRing(i.options.Interface, i.options.Snaplen, pfring.FlagPromisc); err != nil {
+	if i.options.UseAfPacket { // sniff AF_PACKET interface
+		if i.tpacketHandle, err = afpacket.NewTPacket(afpacket.OptInterface(i.options.Interface)); err != nil {
 			log.Fatal(err)
 		}
-		i.ringHandle.SetSocketMode(pfring.ReadOnly)
-		if err := ring.Enable(); err != nil {
-			log.Fatal(err)
-		}
-		if err = i.handle.SetBPFFilter(i.options.Filter); err != nil {
-			log.Fatal(err)
-		}
+		i.packetDataSource = i.tpacketHandle
 	} else if i.options.Filename != "" { // sniff pcap file
 		log.Printf("Reading from pcap file %q", i.options.Filename)
 		i.pcapHandle, err = pcap.OpenOffline(i.options.Filename)
+		i.packetDataSource = i.pcapHandle
 	} else { // sniff pcap wire interface
 		log.Printf("Starting pcap capture on interface %q", i.options.Interface)
 		i.pcapHandle, err = pcap.OpenLive(i.options.Interface, i.options.Snaplen, true, i.options.WireDuration)
@@ -115,6 +115,7 @@ func (i *Sniffer) setupHandle() {
 		if err = i.pcapHandle.SetBPFFilter(i.options.Filter); err != nil {
 			log.Fatal(err)
 		}
+		i.packetDataSource = i.pcapHandle
 	}
 }
 

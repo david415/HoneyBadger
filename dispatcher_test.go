@@ -17,7 +17,7 @@ type MockSniffer struct {
 	startedChan chan bool
 }
 
-func NewMockSniffer(options PcapSnifferOptions) types.PacketSource {
+func NewMockSniffer(options SnifferOptions) types.PacketSource {
 	var packetSource types.PacketSource = MockSniffer{
 		startedChan: make(chan bool, 0),
 	}
@@ -122,7 +122,7 @@ func SetupTestInquisitor() (*BadgerSupervisor, PacketDispatcher, types.PacketSou
 	}
 
 	wireDuration, _ := time.ParseDuration("3s")
-	snifferOptions := PcapSnifferOptions{
+	snifferOptions := SnifferOptions{
 		Interface:    "myInterface",
 		Filename:     "",
 		WireDuration: wireDuration,
@@ -285,7 +285,7 @@ func SetupRealConnectionInquisitor() (*BadgerSupervisor, PacketDispatcher, types
 	}
 
 	wireDuration, _ := time.ParseDuration("3s")
-	snifferOptions := PcapSnifferOptions{
+	snifferOptions := SnifferOptions{
 		Interface:    "myInterface",
 		Filename:     "",
 		WireDuration: wireDuration,

@@ -58,7 +58,7 @@ func SetupAttackDetectionPcapInquisitor(pcapPath string, attackLogger *TestLogge
 	}
 
 	wireDuration, _ := time.ParseDuration("3s")
-	snifferOptions := PcapSnifferOptions{
+	snifferOptions := SnifferOptions{
 		Interface:    "",
 		Filename:     pcapPath,
 		WireDuration: wireDuration,
@@ -68,7 +68,7 @@ func SetupAttackDetectionPcapInquisitor(pcapPath string, attackLogger *TestLogge
 
 	factory := &DefaultConnFactory{}
 
-	supervisor := NewBadgerSupervisor(snifferOptions, dispatcherOptions, NewPcapSniffer, factory, NewDummyPacketLogger)
+	supervisor := NewBadgerSupervisor(snifferOptions, dispatcherOptions, NewSniffer, factory, NewDummyPacketLogger)
 	supervisor.Run()
 	return
 }
