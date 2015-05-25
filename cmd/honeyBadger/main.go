@@ -52,7 +52,7 @@ is infinite.`)
 		bufferedTotal = flag.Int("total_max_buffer", 0, `
 Max packets to buffer total before skipping over gaps in connections and
 continuing to stream connection data.  If zero or less, this is infinite`)
-		usePfRing = flag.Bool("pfring", true, "Use PF_RING")
+		useAfPacket = flag.Bool("afpacket", true, "Use AF_PACKET")
 	)
 	flag.Parse()
 
@@ -93,13 +93,13 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		MaxConcurrentConnections: *maxConcurrentConnections,
 	}
 
-	snifferOptions := HoneyBadger.PcapSnifferOptions{
+	snifferOptions := HoneyBadger.SnifferOptions{
 		Interface:    *iface,
 		Filename:     *pcapfile,
 		WireDuration: wireDuration,
 		Snaplen:      int32(*snaplen),
 		Filter:       *filter,
-		UsePfRing:    *usePfRing,
+		UseAfPacket:  *useAfPacket,
 	}
 
 	connectionFactory := &HoneyBadger.DefaultConnFactory{}
@@ -110,6 +110,6 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 	} else {
 		packetLoggerFunc = nil
 	}
-	supervisor := HoneyBadger.NewBadgerSupervisor(snifferOptions, dispatcherOptions, HoneyBadger.NewPcapSniffer, connectionFactory, packetLoggerFunc)
+	supervisor := HoneyBadger.NewBadgerSupervisor(snifferOptions, dispatcherOptions, HoneyBadger.NewSniffer, connectionFactory, packetLoggerFunc)
 	supervisor.Run()
 }
