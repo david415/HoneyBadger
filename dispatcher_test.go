@@ -85,7 +85,7 @@ type MockPacketLogger struct {
 	packetObserverChan chan bool
 }
 
-func NewMockPacketLogger(str string, flow *types.TcpIpFlow) types.PacketLogger {
+func NewMockPacketLogger(str string, flow *types.TcpIpFlow, pcapNum int, pcapSize int) types.PacketLogger {
 	m := MockPacketLogger{
 		packetObserverChan: make(chan bool, 0),
 	}
@@ -103,6 +103,9 @@ func (m MockPacketLogger) Start() {
 
 func (m MockPacketLogger) Stop() {
 	log.Print("MockPacketLogger.Stop")
+}
+
+func (m MockPacketLogger) Remove() {
 }
 
 func SetupTestInquisitor() (*BadgerSupervisor, PacketDispatcher, types.PacketSource) {

@@ -39,6 +39,8 @@ type DispatcherOptions struct {
 	BufferedTotal            int
 	LogDir                   string
 	LogPackets               bool
+	MaxPcapLogRotations      int
+	MaxPcapLogSize           int
 	TcpIdleTimeout           time.Duration
 	MaxRingPackets           int
 	Logger                   types.Logger
@@ -59,12 +61,12 @@ type Dispatcher struct {
 	stopDispatchChan        chan bool
 	closeConnectionChan     chan ConnectionInterface
 	pageCache               *pageCache
-	PacketLoggerFactoryFunc func(string, *types.TcpIpFlow) types.PacketLogger
+	PacketLoggerFactoryFunc func(string, *types.TcpIpFlow, int, int) types.PacketLogger
 	pool                    map[types.ConnectionHash]ConnectionInterface
 }
 
 // NewInquisitor creates a new Inquisitor struct
-func NewDispatcher(options DispatcherOptions, connectionFactory ConnectionFactory, packetLoggerFactoryFunc func(string, *types.TcpIpFlow) types.PacketLogger) *Dispatcher {
+func NewDispatcher(options DispatcherOptions, connectionFactory ConnectionFactory, packetLoggerFactoryFunc func(string, *types.TcpIpFlow, int, int) types.PacketLogger) *Dispatcher {
 	i := Dispatcher{
 		PacketLoggerFactoryFunc: packetLoggerFactoryFunc,
 		connectionFactory:       connectionFactory,
@@ -163,7 +165,7 @@ func (i *Dispatcher) setupNewConnection(flow *types.TcpIpFlow) ConnectionInterfa
 	conn := i.connectionFactory.Build(options)
 
 	if i.options.LogPackets {
-		packetLogger := i.PacketLoggerFactoryFunc(i.options.LogDir, flow)
+		packetLogger := i.PacketLoggerFactoryFunc(i.options.LogDir, flow, i.options.MaxPcapLogRotations, i.options.MaxPcapLogSize)
 		conn.SetPacketLogger(packetLogger)
 		packetLogger.Start()
 	}

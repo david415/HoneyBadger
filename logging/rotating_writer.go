@@ -30,7 +30,7 @@ type RotatingQuotaWriter struct {
 	fp              *os.File
 	numLogs         int
 	logSize         int
-	quotaSize       int
+	quotaSizeBytes  int
 	sizes           []int
 	headerFunc      func()
 	mustWriteHeader bool
@@ -39,14 +39,11 @@ type RotatingQuotaWriter struct {
 // NewRotatingQuotaWriter takes a "starting filename" and a quota size in bytes...
 // and guarantees to behave as an io.Writer who will write no more than quotaSize
 // bytes to disk. `headerFunc` is executed upon the new file, after each rotation.
-func NewRotatingQuotaWriter(filename string, quotaSize int, headerFunc func()) *RotatingQuotaWriter {
-	// XXX make this a user configurable option?
-	numLogs := 10
+func NewRotatingQuotaWriter(filename string, quotaSize int, numLogs int, headerFunc func()) *RotatingQuotaWriter {
+	quotaSizeBytes := quotaSize * 1024 * 1024
+	logSize := int(math.Floor(float64(quotaSizeBytes) / float64(numLogs)))
 
-	// XXX correcto?
-	logSize := int(math.Floor(float64(quotaSize) / float64(numLogs)))
-
-	if logSize*numLogs > quotaSize {
+	if logSize*numLogs > quotaSizeBytes {
 		panic("wtf: logSize * numLogs > quotaSize")
 	}
 
@@ -54,7 +51,7 @@ func NewRotatingQuotaWriter(filename string, quotaSize int, headerFunc func()) *
 		filename:        filename,
 		numLogs:         numLogs,
 		logSize:         logSize,
-		quotaSize:       quotaSize,
+		quotaSizeBytes:  quotaSizeBytes,
 		headerFunc:      headerFunc,
 		sizes:           make([]int, numLogs),
 		fp:              nil,
@@ -81,7 +78,7 @@ func (w *RotatingQuotaWriter) Write(output []byte) (int, error) {
 		return w.fp.Write(output)
 	}
 
-	if w.getCurrentSize()+len(output) > w.quotaSize {
+	if w.getCurrentSize()+len(output) > w.quotaSizeBytes {
 		w.rotate()
 		w.sizes = w.sizes[1 : len(w.sizes)-1]
 		new := make([]int, 1)

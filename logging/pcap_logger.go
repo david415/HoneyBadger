@@ -26,6 +26,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcapgo"
 	"io"
+	"os"
 	"path/filepath"
 	"time"
 )
@@ -43,16 +44,22 @@ type PcapLogger struct {
 	Flow       *types.TcpIpFlow
 	writer     *pcapgo.Writer
 	fileWriter io.WriteCloser
+	pcapLogNum int
+	pcapQuota  int
+	basename   string
 }
 
 // NewPcapLogger returns a PcapLogger struct...
 // and in doing so writes a pcap header to the beginning of the file.
-func NewPcapLogger(dir string, flow *types.TcpIpFlow) types.PacketLogger {
+func NewPcapLogger(dir string, flow *types.TcpIpFlow, pcapLogNum int, pcapQuota int) types.PacketLogger {
 	p := PcapLogger{
 		packetChan: make(chan TimedPacket),
 		stopChan:   make(chan bool),
 		Flow:       flow,
 		Dir:        dir,
+		pcapLogNum: pcapLogNum,
+		pcapQuota:  pcapQuota,
+		basename:   filepath.Join(dir, fmt.Sprintf("%s.pcap", flow.String())),
 	}
 	return types.PacketLogger(&p)
 }
@@ -66,9 +73,9 @@ func (p *PcapLogger) WriteHeader() {
 
 func (p *PcapLogger) Start() {
 	if p.fileWriter == nil {
-		fullname := filepath.Join(p.Dir, fmt.Sprintf("%s.pcap", p.Flow.String()))
+
 		// XXX
-		p.fileWriter = NewRotatingQuotaWriter(fullname, 1000000, p.WriteHeader)
+		p.fileWriter = NewRotatingQuotaWriter(p.basename, p.pcapQuota, p.pcapLogNum, p.WriteHeader)
 		p.writer = pcapgo.NewWriter(p.fileWriter)
 	}
 
@@ -90,6 +97,10 @@ func (p *PcapLogger) logPackets() {
 			p.WritePacketToFile(timedPacket.RawPacket, timedPacket.Timestamp)
 		}
 	}
+}
+
+func (p *PcapLogger) Remove() {
+	os.Remove(p.basename)
 }
 
 func (p *PcapLogger) WritePacket(rawPacket []byte, timestamp time.Time) {
