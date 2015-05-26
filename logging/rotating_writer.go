@@ -121,7 +121,7 @@ func (w *RotatingQuotaWriter) rotate() {
 			panic(err)
 		}
 	}
-	for i := w.numLogs; i > 0; i-- {
+	for i := w.numLogs; i > 1; i-- {
 		w.shiftLog(i)
 	}
 
