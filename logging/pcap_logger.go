@@ -59,7 +59,6 @@ func NewPcapLogger(dir string, flow *types.TcpIpFlow, pcapLogNum int, pcapQuota 
 		Dir:        dir,
 		pcapLogNum: pcapLogNum,
 		pcapQuota:  pcapQuota,
-		basename:   filepath.Join(dir, fmt.Sprintf("%s.pcap", flow.String())),
 	}
 	return types.PacketLogger(&p)
 }
@@ -73,6 +72,7 @@ func (p *PcapLogger) WriteHeader() {
 
 func (p *PcapLogger) Start() {
 	if p.fileWriter == nil {
+		p.basename = filepath.Join(p.Dir, fmt.Sprintf("%s.pcap", p.Flow.String()))
 
 		// XXX
 		p.fileWriter = NewRotatingQuotaWriter(p.basename, p.pcapQuota, p.pcapLogNum, p.WriteHeader)
@@ -101,6 +101,9 @@ func (p *PcapLogger) logPackets() {
 
 func (p *PcapLogger) Remove() {
 	os.Remove(p.basename)
+	for i := 1; i < p.pcapLogNum+1; i++ {
+		os.Remove(filepath.Join(p.Dir, fmt.Sprintf("%s.pcap.%d", p.Flow.String(), i)))
+	}
 }
 
 func (p *PcapLogger) WritePacket(rawPacket []byte, timestamp time.Time) {
