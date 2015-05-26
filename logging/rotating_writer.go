@@ -80,10 +80,13 @@ func (w *RotatingQuotaWriter) Write(output []byte) (int, error) {
 
 	if w.getCurrentSize()+len(output) > w.quotaSizeBytes {
 		w.rotate()
-		w.sizes = w.sizes[1 : len(w.sizes)-1]
-		new := make([]int, 1)
+		// pop
+		w.sizes = w.sizes[0 : len(w.sizes)-1]
+		// push
+		new := make([]int, 1, 10)
 		new[0] = len(output)
 		w.sizes = append(new, w.sizes...)
+
 		w.fp, err = os.Create(w.filename)
 		if err != nil {
 			panic(err)
