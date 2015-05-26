@@ -20,24 +20,26 @@
 package logging
 
 import (
+	"fmt"
 	"math"
 	"os"
-	"time"
 )
 
 type RotatingQuotaWriter struct {
-	filename  string
-	fp        *os.File
-	numLogs   int
-	logSize   int
-	quotaSize int
-	sizes     []int
+	filename        string
+	fp              *os.File
+	numLogs         int
+	logSize         int
+	quotaSize       int
+	sizes           []int
+	headerFunc      func()
+	mustWriteHeader bool
 }
 
 // NewRotatingQuotaWriter takes a "starting filename" and a quota size in bytes...
 // and guarantees to behave as an io.Writer who will write no more than quotaSize
-// bytes to disk.
-func NewRotatingQuotaWriter(filename string, quotaSize int) *RotatingQuotaWriter {
+// bytes to disk. `headerFunc` is executed upon the new file, after each rotation.
+func NewRotatingQuotaWriter(filename string, quotaSize int, headerFunc func()) *RotatingQuotaWriter {
 	// XXX make this a user configurable option?
 	numLogs := 10
 
@@ -49,22 +51,59 @@ func NewRotatingQuotaWriter(filename string, quotaSize int) *RotatingQuotaWriter
 	}
 
 	w := &RotatingQuotaWriter{
-		filename:  filename,
-		numLogs:   numLogs,
-		logSize:   logSize,
-		quotaSize: quotaSize,
+		filename:        filename,
+		numLogs:         numLogs,
+		logSize:         logSize,
+		quotaSize:       quotaSize,
+		headerFunc:      headerFunc,
+		sizes:           make([]int, numLogs),
+		fp:              nil,
+		mustWriteHeader: true,
 	}
 	return w
 }
 
 func (w *RotatingQuotaWriter) Write(output []byte) (int, error) {
-	if w.GetCurrentSize()+len(output) > w.quotaSize {
-		w.Rotate()
+	var err error
+
+	if w.fp == nil {
+		w.fp, err = os.Create(w.filename)
+		if err != nil {
+			panic(err)
+		}
+		w.mustWriteHeader = true
+		w.headerFunc()
+		return w.fp.Write(output)
+	}
+
+	if w.mustWriteHeader {
+		w.mustWriteHeader = false
+		return w.fp.Write(output)
+	}
+
+	if w.getCurrentSize()+len(output) > w.quotaSize {
+		w.rotate()
+		w.sizes = w.sizes[1 : len(w.sizes)-1]
+		new := make([]int, 1)
+		new[0] = len(output)
+		w.sizes = append(new, w.sizes...)
+		w.fp, err = os.Create(w.filename)
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		w.sizes[0] += len(output)
 	}
 	return w.fp.Write(output)
 }
 
-func (w *RotatingQuotaWriter) GetCurrentSize() int {
+func (w *RotatingQuotaWriter) Close() error {
+	err := w.fp.Close()
+	w.fp = nil
+	return err
+}
+
+func (w *RotatingQuotaWriter) getCurrentSize() int {
 	total := 0
 	for i := 0; i < len(w.sizes); i++ {
 		total += w.sizes[i]
@@ -72,7 +111,7 @@ func (w *RotatingQuotaWriter) GetCurrentSize() int {
 	return total
 }
 
-func (w *RotatingQuotaWriter) Rotate() {
+func (w *RotatingQuotaWriter) rotate() {
 	var err error
 
 	if w.fp != nil {
@@ -82,7 +121,6 @@ func (w *RotatingQuotaWriter) Rotate() {
 			panic(err)
 		}
 	}
-
 	for i := w.numLogs; i > 0; i-- {
 		w.shiftLog(i)
 	}
@@ -92,21 +130,16 @@ func (w *RotatingQuotaWriter) Rotate() {
 	if err != nil {
 		panic(err)
 	}
-
-	w.fp, err = os.Create(w.filename)
-	if err != nil {
-		panic(err)
-	}
 }
 
 func (w *RotatingQuotaWriter) shiftLog(logNum int) {
+	var err error
 	oldName := fmt.Sprintf("%s.%d", w.filename, logNum)
 
 	if logNum == w.numLogs {
 		os.Remove(oldName)
 		return
 	}
-
 	_, err = os.Stat(oldName)
 	if os.IsNotExist(err) {
 		// if not exit then no-op
