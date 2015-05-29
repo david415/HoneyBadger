@@ -24,16 +24,20 @@ import (
 	"log"
 	"time"
 
+	"github.com/david415/HoneyBadger/types"
 	"github.com/google/gopacket"
-	"github.com/google/gopacket/afpacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-
-	"github.com/david415/HoneyBadger/types"
 )
 
-// SnifferOptions are user set parameters for specifying how to receive packets.
-type SnifferOptions struct {
+/*type TimedRawPacket struct {
+	Timestamp time.Time
+	RawPacket []byte
+}
+*/
+// PcapSnifferOptions are user set parameters for specifying how to
+// receive packets.
+type PcapSnifferOptions struct {
 	Interface    string
 	Filename     string
 	WireDuration time.Duration
@@ -41,25 +45,22 @@ type SnifferOptions struct {
 	Snaplen      int32
 	Dispatcher   PacketDispatcher
 	Supervisor   types.Supervisor
-	UseAfPacket  bool
 }
 
-// Sniffer sets up the connection pool and is an abstraction layer for dealing
+// PcapSniffer sets up the connection pool and is an abstraction layer for dealing
 // with incoming packets weather they be from a pcap file or directly off the wire.
-type Sniffer struct {
-	options          SnifferOptions
+type PcapSniffer struct {
+	options          PcapSnifferOptions
 	stopCaptureChan  chan bool
 	decodePacketChan chan TimedRawPacket
 	stopDecodeChan   chan bool
-	packetDataSource gopacket.PacketDataSource
-	pcapHandle       *pcap.Handle
-	tpacketHandle    *afpacket.TPacket
+	handle           *pcap.Handle
 	supervisor       types.Supervisor
 }
 
-// NewSniffer creates a new Sniffer struct
-func NewSniffer(options SnifferOptions) types.PacketSource {
-	i := Sniffer{
+// NewPcapSniffer creates a new PcapSniffer struct
+func NewPcapSniffer(options PcapSnifferOptions) types.PacketSource {
+	i := PcapSniffer{
 		options:          options,
 		stopCaptureChan:  make(chan bool),
 		decodePacketChan: make(chan TimedRawPacket),
@@ -68,65 +69,52 @@ func NewSniffer(options SnifferOptions) types.PacketSource {
 	return &i
 }
 
-func (i *Sniffer) SetSupervisor(supervisor types.Supervisor) {
+func (i *PcapSniffer) SetSupervisor(supervisor types.Supervisor) {
 	i.supervisor = supervisor
 }
-func (i *Sniffer) GetStartedChan() chan bool {
+func (i *PcapSniffer) GetStartedChan() chan bool {
 	return make(chan bool)
 }
 
 // Start... starts the TCP attack inquisition!
-func (i *Sniffer) Start() {
-	if i.pcapHandle == nil && i.tpacketHandle == nil {
+func (i *PcapSniffer) Start() {
+	if i.handle == nil {
 		i.setupHandle()
 	}
 	go i.capturePackets()
 	go i.decodePackets()
 }
 
-func (i *Sniffer) Stop() {
+func (i *PcapSniffer) Stop() {
 	i.stopCaptureChan <- true
 	i.stopDecodeChan <- true
-	if i.pcapHandle != nil {
-		i.pcapHandle.Close()
-	} else {
-		i.tpacketHandle.Close()
-	}
+	i.handle.Close()
 }
 
-func (i *Sniffer) setupHandle() {
+func (i *PcapSniffer) setupHandle() {
 	var err error
-
-	if i.options.UseAfPacket { // sniff AF_PACKET interface
-		log.Printf("sniffing with AF_PACKET in-kernel socket from interface %q", i.options.Interface)
-		if i.tpacketHandle, err = afpacket.NewTPacket(afpacket.OptInterface(i.options.Interface)); err != nil {
-			log.Fatal(err)
-		}
-		i.packetDataSource = i.tpacketHandle
-	} else if i.options.Filename != "" { // sniff pcap file
-		log.Printf("sniffing with libpcap from file %q", i.options.Filename)
-		i.pcapHandle, err = pcap.OpenOffline(i.options.Filename)
-		i.packetDataSource = i.pcapHandle
-	} else { // sniff pcap wire interface
-		log.Printf("sniffing with libpcap from interface %q", i.options.Interface)
-		i.pcapHandle, err = pcap.OpenLive(i.options.Interface, i.options.Snaplen, true, i.options.WireDuration)
-		if err != nil {
-			log.Fatal(err)
-		}
-		if err = i.pcapHandle.SetBPFFilter(i.options.Filter); err != nil {
-			log.Fatal(err)
-		}
-		i.packetDataSource = i.pcapHandle
+	if i.options.Filename != "" {
+		log.Printf("Reading from pcap file %q", i.options.Filename)
+		i.handle, err = pcap.OpenOffline(i.options.Filename)
+	} else {
+		log.Printf("Starting capture on interface %q", i.options.Interface)
+		i.handle, err = pcap.OpenLive(i.options.Interface, i.options.Snaplen, true, i.options.WireDuration)
+	}
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err = i.handle.SetBPFFilter(i.options.Filter); err != nil {
+		log.Fatal(err)
 	}
 }
 
-func (i *Sniffer) capturePackets() {
+func (i *PcapSniffer) capturePackets() {
 
 	tchan := make(chan TimedRawPacket, 0)
 	// XXX does this need a shutdown code path?
 	go func() {
 		for {
-			rawPacket, captureInfo, err := i.packetDataSource.ReadPacketData()
+			rawPacket, captureInfo, err := i.handle.ReadPacketData()
 			if err == io.EOF {
 				log.Print("ReadPacketData got EOF\n")
 				i.Stop()
@@ -154,7 +142,7 @@ func (i *Sniffer) capturePackets() {
 	}
 }
 
-func (i *Sniffer) decodePackets() {
+func (i *PcapSniffer) decodePackets() {
 	var eth layers.Ethernet
 	var ip layers.IPv4
 	var tcp layers.TCP

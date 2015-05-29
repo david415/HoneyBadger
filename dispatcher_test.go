@@ -17,7 +17,7 @@ type MockSniffer struct {
 	startedChan chan bool
 }
 
-func NewMockSniffer(options SnifferOptions) types.PacketSource {
+func NewMockSniffer(options PcapSnifferOptions) types.PacketSource {
 	var packetSource types.PacketSource = MockSniffer{
 		startedChan: make(chan bool, 0),
 	}
@@ -85,7 +85,7 @@ type MockPacketLogger struct {
 	packetObserverChan chan bool
 }
 
-func NewMockPacketLogger(str string, flow *types.TcpIpFlow, pcapNum int, pcapSize int) types.PacketLogger {
+func NewMockPacketLogger(str string, flow *types.TcpIpFlow) types.PacketLogger {
 	m := MockPacketLogger{
 		packetObserverChan: make(chan bool, 0),
 	}
@@ -105,9 +105,6 @@ func (m MockPacketLogger) Stop() {
 	log.Print("MockPacketLogger.Stop")
 }
 
-func (m MockPacketLogger) Remove() {
-}
-
 func SetupTestInquisitor() (*BadgerSupervisor, PacketDispatcher, types.PacketSource) {
 	tcpIdleTimeout, _ := time.ParseDuration("10m")
 	dispatcherOptions := DispatcherOptions{
@@ -125,7 +122,7 @@ func SetupTestInquisitor() (*BadgerSupervisor, PacketDispatcher, types.PacketSou
 	}
 
 	wireDuration, _ := time.ParseDuration("3s")
-	snifferOptions := SnifferOptions{
+	snifferOptions := PcapSnifferOptions{
 		Interface:    "myInterface",
 		Filename:     "",
 		WireDuration: wireDuration,
@@ -288,7 +285,7 @@ func SetupRealConnectionInquisitor() (*BadgerSupervisor, PacketDispatcher, types
 	}
 
 	wireDuration, _ := time.ParseDuration("3s")
-	snifferOptions := SnifferOptions{
+	snifferOptions := PcapSnifferOptions{
 		Interface:    "myInterface",
 		Filename:     "",
 		WireDuration: wireDuration,

@@ -14,7 +14,7 @@ import (
 type DummyPacketLogger struct {
 }
 
-func NewDummyPacketLogger(str string, flow *types.TcpIpFlow, pcapNum int, pcapSize int) types.PacketLogger {
+func NewDummyPacketLogger(str string, flow *types.TcpIpFlow) types.PacketLogger {
 	m := DummyPacketLogger{}
 	return types.PacketLogger(&m)
 }
@@ -26,9 +26,6 @@ func (m DummyPacketLogger) Start() {
 }
 
 func (m DummyPacketLogger) Stop() {
-}
-
-func (m DummyPacketLogger) Remove() {
 }
 
 type TestLogger struct {
@@ -61,7 +58,7 @@ func SetupAttackDetectionPcapInquisitor(pcapPath string, attackLogger *TestLogge
 	}
 
 	wireDuration, _ := time.ParseDuration("3s")
-	snifferOptions := SnifferOptions{
+	snifferOptions := PcapSnifferOptions{
 		Interface:    "",
 		Filename:     pcapPath,
 		WireDuration: wireDuration,
@@ -71,7 +68,7 @@ func SetupAttackDetectionPcapInquisitor(pcapPath string, attackLogger *TestLogge
 
 	factory := &DefaultConnFactory{}
 
-	supervisor := NewBadgerSupervisor(snifferOptions, dispatcherOptions, NewSniffer, factory, NewDummyPacketLogger)
+	supervisor := NewBadgerSupervisor(snifferOptions, dispatcherOptions, NewPcapSniffer, factory, NewDummyPacketLogger)
 	supervisor.Run()
 	return
 }

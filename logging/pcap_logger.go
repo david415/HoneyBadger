@@ -44,41 +44,33 @@ type PcapLogger struct {
 	Flow       *types.TcpIpFlow
 	writer     *pcapgo.Writer
 	fileWriter io.WriteCloser
-	pcapLogNum int
-	pcapQuota  int
-	basename   string
 }
 
 // NewPcapLogger returns a PcapLogger struct...
 // and in doing so writes a pcap header to the beginning of the file.
-func NewPcapLogger(dir string, flow *types.TcpIpFlow, pcapLogNum int, pcapQuota int) types.PacketLogger {
+func NewPcapLogger(dir string, flow *types.TcpIpFlow) types.PacketLogger {
 	p := PcapLogger{
 		packetChan: make(chan TimedPacket),
 		stopChan:   make(chan bool),
 		Flow:       flow,
 		Dir:        dir,
-		pcapLogNum: pcapLogNum,
-		pcapQuota:  pcapQuota,
 	}
 	return types.PacketLogger(&p)
 }
 
-func (p *PcapLogger) WriteHeader() {
-	err := p.writer.WriteFileHeader(65536, layers.LinkTypeEthernet)
+func (p *PcapLogger) Start() {
+	var err error
+	if p.fileWriter == nil {
+		p.fileWriter, err = os.OpenFile(filepath.Join(p.Dir, fmt.Sprintf("%s.pcap", p.Flow.String())), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+			panic(fmt.Sprintf("error opening file: %v", err))
+		}
+	}
+	p.writer = pcapgo.NewWriter(p.fileWriter)
+	err = p.writer.WriteFileHeader(65536, layers.LinkTypeEthernet) // XXX
 	if err != nil {
 		panic(err)
 	}
-}
-
-func (p *PcapLogger) Start() {
-	if p.fileWriter == nil {
-		p.basename = filepath.Join(p.Dir, fmt.Sprintf("%s.pcap", p.Flow.String()))
-
-		// XXX
-		p.fileWriter = NewRotatingQuotaWriter(p.basename, p.pcapQuota, p.pcapLogNum, p.WriteHeader)
-		p.writer = pcapgo.NewWriter(p.fileWriter)
-	}
-
 	go p.logPackets()
 }
 
@@ -99,13 +91,6 @@ func (p *PcapLogger) logPackets() {
 	}
 }
 
-func (p *PcapLogger) Remove() {
-	os.Remove(p.basename)
-	for i := 1; i < p.pcapLogNum+1; i++ {
-		os.Remove(filepath.Join(p.Dir, fmt.Sprintf("%s.pcap.%d", p.Flow.String(), i)))
-	}
-}
-
 func (p *PcapLogger) WritePacket(rawPacket []byte, timestamp time.Time) {
 	p.packetChan <- TimedPacket{
 		RawPacket: rawPacket,
@@ -121,7 +106,6 @@ func (p *PcapLogger) WritePacketToFile(rawPacket []byte, timestamp time.Time) {
 		CaptureLength: len(rawPacket),
 		Length:        len(rawPacket),
 	}, rawPacket)
-
 	if err != nil {
 		panic(err)
 	}

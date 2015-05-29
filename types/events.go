@@ -31,7 +31,6 @@ type PacketLogger interface {
 	WritePacket(rawPacket []byte, timestamp time.Time)
 	Start()
 	Stop()
-	Remove()
 }
 
 type Event struct {
