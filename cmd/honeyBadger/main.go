@@ -54,6 +54,7 @@ Max packets to buffer total before skipping over gaps in connections and
 continuing to stream connection data.  If zero or less, this is infinite`)
 		maxPcapLogSize      = flag.Int("max_pcap_log_size", 1, "maximum pcap size per rotation in megabytes")
 		maxNumPcapRotations = flag.Int("max_pcap_rotations", 10, "maximum number of pcap rotations per connection")
+		archiveDir          = flag.String("archive_dir", "", "archive directory for storing attack logs and related pcap files")
 	)
 	flag.Parse()
 
@@ -69,12 +70,12 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 	var logger types.Logger
 
 	if *metadataAttackLog {
-		loggerInstance := logging.NewAttackMetadataJsonLogger(*logDir)
+		loggerInstance := logging.NewAttackMetadataJsonLogger(*logDir, *archiveDir)
 		loggerInstance.Start()
 		defer func() { loggerInstance.Stop() }()
 		logger = loggerInstance
 	} else {
-		loggerInstance := logging.NewAttackJsonLogger(*logDir)
+		loggerInstance := logging.NewAttackJsonLogger(*logDir, *archiveDir)
 		loggerInstance.Start()
 		defer func() { loggerInstance.Stop() }()
 		logger = loggerInstance
@@ -105,13 +106,12 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 	}
 
 	connectionFactory := &HoneyBadger.DefaultConnFactory{}
-
-	var packetLoggerFunc func(string, *types.TcpIpFlow, int, int) types.PacketLogger
+	var packetLoggerFactory types.PacketLoggerFactory
 	if *logPackets {
-		packetLoggerFunc = logging.NewPcapLogger
+		packetLoggerFactory = logging.NewPcapLoggerFactory(*logDir, *archiveDir, *maxNumPcapRotations, *maxPcapLogSize)
 	} else {
-		packetLoggerFunc = nil
+		packetLoggerFactory = nil
 	}
-	supervisor := HoneyBadger.NewBadgerSupervisor(snifferOptions, dispatcherOptions, HoneyBadger.NewSniffer, connectionFactory, packetLoggerFunc)
+	supervisor := HoneyBadger.NewBadgerSupervisor(snifferOptions, dispatcherOptions, HoneyBadger.NewSniffer, connectionFactory, packetLoggerFactory)
 	supervisor.Run()
 }

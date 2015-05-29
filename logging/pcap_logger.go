@@ -26,6 +26,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcapgo"
 	"io"
+	"os"
 	"path/filepath"
 	"time"
 )
@@ -39,7 +40,8 @@ type TimedPacket struct {
 type PcapLogger struct {
 	packetChan chan TimedPacket
 	stopChan   chan bool
-	Dir        string
+	LogDir     string
+	ArchiveDir string
 	Flow       *types.TcpIpFlow
 	writer     *pcapgo.Writer
 	fileWriter io.WriteCloser
@@ -50,16 +52,37 @@ type PcapLogger struct {
 
 // NewPcapLogger returns a PcapLogger struct...
 // and in doing so writes a pcap header to the beginning of the file.
-func NewPcapLogger(dir string, flow *types.TcpIpFlow, pcapLogNum int, pcapQuota int) types.PacketLogger {
+func NewPcapLogger(logDir, archiveDir string, flow *types.TcpIpFlow, pcapLogNum int, pcapQuota int) types.PacketLogger {
 	p := PcapLogger{
 		packetChan: make(chan TimedPacket),
 		stopChan:   make(chan bool),
 		Flow:       flow,
-		Dir:        dir,
+		LogDir:     logDir,
+		ArchiveDir: archiveDir,
 		pcapLogNum: pcapLogNum,
 		pcapQuota:  pcapQuota,
 	}
 	return types.PacketLogger(&p)
+}
+
+type PcapLoggerFactory struct {
+	LogDir     string
+	ArchiveDir string
+	PcapLogNum int
+	PcapQuota  int
+}
+
+func NewPcapLoggerFactory(logDir, archiveDir string, pcapLogNum, pcapQuota int) PcapLoggerFactory {
+	return PcapLoggerFactory{
+		LogDir:     logDir,
+		ArchiveDir: archiveDir,
+		PcapLogNum: pcapLogNum,
+		PcapQuota:  pcapQuota,
+	}
+}
+
+func (f PcapLoggerFactory) Build(flow *types.TcpIpFlow) types.PacketLogger {
+	return NewPcapLogger(f.LogDir, f.ArchiveDir, flow, f.PcapLogNum, f.PcapQuota)
 }
 
 func (p *PcapLogger) WriteHeader() {
@@ -71,10 +94,11 @@ func (p *PcapLogger) WriteHeader() {
 
 func (p *PcapLogger) Start() {
 	if p.fileWriter == nil {
-		p.basename = filepath.Join(p.Dir, fmt.Sprintf("%s.pcap", p.Flow.String()))
+		p.basename = filepath.Join(p.LogDir, fmt.Sprintf("%s.pcap", p.Flow))
 		p.fileWriter = NewRotatingQuotaWriter(p.basename, p.pcapQuota, p.pcapLogNum, p.WriteHeader)
 		p.writer = pcapgo.NewWriter(p.fileWriter)
 	}
+
 	go p.logPackets()
 }
 
@@ -82,6 +106,16 @@ func (p *PcapLogger) Start() {
 func (p *PcapLogger) Stop() {
 	p.stopChan <- true
 	p.fileWriter.Close()
+}
+
+// XXX Rename mail fail in when used with multiple filesystems.
+// should we rewrite this?
+func (p *PcapLogger) Archive() {
+	newBasename := filepath.Join(p.LogDir, filepath.Base(p.basename))
+	os.Rename(p.basename, newBasename)
+	for i := 1; i < p.pcapLogNum+1; i++ {
+		os.Rename(filepath.Join(p.LogDir, fmt.Sprintf("%s.pcap.%d", p.Flow.String(), i)), fmt.Sprintf("%s.%d", newBasename, i))
+	}
 }
 
 func (p *PcapLogger) logPackets() {
@@ -92,6 +126,13 @@ func (p *PcapLogger) logPackets() {
 		case timedPacket := <-p.packetChan:
 			p.WritePacketToFile(timedPacket.RawPacket, timedPacket.Timestamp)
 		}
+	}
+}
+
+func (p *PcapLogger) Remove() {
+	os.Remove(p.basename)
+	for i := 1; i < p.pcapLogNum+1; i++ {
+		os.Remove(filepath.Join(p.LogDir, fmt.Sprintf("%s.pcap.%d", p.Flow, i)))
 	}
 }
 
@@ -110,6 +151,7 @@ func (p *PcapLogger) WritePacketToFile(rawPacket []byte, timestamp time.Time) {
 		CaptureLength: len(rawPacket),
 		Length:        len(rawPacket),
 	}, rawPacket)
+
 	if err != nil {
 		panic(err)
 	}

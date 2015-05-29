@@ -18,23 +18,23 @@ type MockSniffer struct {
 }
 
 func NewMockSniffer(options SnifferOptions) types.PacketSource {
-	var packetSource types.PacketSource = MockSniffer{
+	var packetSource types.PacketSource = &MockSniffer{
 		startedChan: make(chan bool, 0),
 	}
 	return packetSource
 }
 
-func (s MockSniffer) Start() {
+func (s *MockSniffer) Start() {
 	log.Print("MockSniffer Start()")
 	s.startedChan <- true
 }
-func (s MockSniffer) Stop() {
+func (s *MockSniffer) Stop() {
 	log.Print("MockSniffer Stop()")
 }
-func (s MockSniffer) SetSupervisor(supervisor types.Supervisor) {
+func (s *MockSniffer) SetSupervisor(supervisor types.Supervisor) {
 	s.supervisor = supervisor
 }
-func (s MockSniffer) GetStartedChan() chan bool {
+func (s *MockSniffer) GetStartedChan() chan bool {
 	return s.startedChan
 }
 
@@ -81,11 +81,20 @@ func (m *mockConnFactory) Build(options ConnectionOptions) ConnectionInterface {
 	return c
 }
 
+type MockPacketLoggerFactory struct {
+	pcapNum  int
+	pcapSize int
+}
+
+func (f MockPacketLoggerFactory) Build(flow *types.TcpIpFlow) types.PacketLogger {
+	return NewMockPacketLogger("str", flow, 10, 50)
+}
+
 type MockPacketLogger struct {
 	packetObserverChan chan bool
 }
 
-func NewMockPacketLogger(str string, flow *types.TcpIpFlow, a int, b int) types.PacketLogger {
+func NewMockPacketLogger(str string, flow *types.TcpIpFlow, pcapNum int, pcapSize int) types.PacketLogger {
 	m := MockPacketLogger{
 		packetObserverChan: make(chan bool, 0),
 	}
@@ -97,12 +106,18 @@ func (m *MockPacketLogger) WritePacket(rawPacket []byte, timestamp time.Time) {
 	m.packetObserverChan <- true
 }
 
-func (m MockPacketLogger) Start() {
+func (m *MockPacketLogger) Start() {
 	log.Print("MockPacketLogger.Start")
 }
 
-func (m MockPacketLogger) Stop() {
+func (m *MockPacketLogger) Stop() {
 	log.Print("MockPacketLogger.Stop")
+}
+
+func (m *MockPacketLogger) Archive() {
+}
+
+func (m *MockPacketLogger) Remove() {
 }
 
 func SetupTestInquisitor() (*BadgerSupervisor, PacketDispatcher, types.PacketSource) {
@@ -114,7 +129,7 @@ func SetupTestInquisitor() (*BadgerSupervisor, PacketDispatcher, types.PacketSou
 		LogPackets:               true,
 		TcpIdleTimeout:           tcpIdleTimeout,
 		MaxRingPackets:           40,
-		Logger:                   logging.NewAttackMetadataJsonLogger("."),
+		Logger:                   logging.NewAttackMetadataJsonLogger(".", "archives"),
 		DetectHijack:             true,
 		DetectInjection:          true,
 		DetectCoalesceInjection:  true,
@@ -129,8 +144,9 @@ func SetupTestInquisitor() (*BadgerSupervisor, PacketDispatcher, types.PacketSou
 		Snaplen:      65536,
 		Filter:       "tcp",
 	}
-	factory := &mockConnFactory{}
-	supervisor := NewBadgerSupervisor(snifferOptions, dispatcherOptions, NewMockSniffer, factory, NewMockPacketLogger)
+	factory := mockConnFactory{}
+	mockPacketLoggerFactory := MockPacketLoggerFactory{}
+	supervisor := NewBadgerSupervisor(snifferOptions, dispatcherOptions, NewMockSniffer, &factory, mockPacketLoggerFactory)
 	go supervisor.Run()
 	sniffer := supervisor.GetSniffer()
 	startedChan := sniffer.GetStartedChan()
@@ -277,7 +293,7 @@ func SetupRealConnectionInquisitor() (*BadgerSupervisor, PacketDispatcher, types
 		LogPackets:               true,
 		TcpIdleTimeout:           tcpIdleTimeout,
 		MaxRingPackets:           40,
-		Logger:                   logging.NewAttackMetadataJsonLogger("."),
+		Logger:                   logging.NewAttackMetadataJsonLogger(".", "archives"),
 		DetectHijack:             true,
 		DetectInjection:          true,
 		DetectCoalesceInjection:  true,
@@ -294,7 +310,8 @@ func SetupRealConnectionInquisitor() (*BadgerSupervisor, PacketDispatcher, types
 	}
 
 	factory := &DefaultConnFactory{}
-	supervisor := NewBadgerSupervisor(snifferOptions, dispatcherOptions, NewMockSniffer, factory, NewMockPacketLogger)
+	mockPacketLoggerFactory := MockPacketLoggerFactory{}
+	supervisor := NewBadgerSupervisor(snifferOptions, dispatcherOptions, NewMockSniffer, factory, mockPacketLoggerFactory)
 	go supervisor.Run()
 	sniffer := supervisor.GetSniffer()
 	startedChan := sniffer.GetStartedChan()

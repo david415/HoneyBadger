@@ -39,6 +39,8 @@ type DispatcherOptions struct {
 	BufferedTotal            int
 	LogDir                   string
 	LogPackets               bool
+	MaxPcapLogRotations      int
+	MaxPcapLogSize           int
 	TcpIdleTimeout           time.Duration
 	MaxRingPackets           int
 	Logger                   types.Logger
@@ -46,36 +48,34 @@ type DispatcherOptions struct {
 	DetectInjection          bool
 	DetectCoalesceInjection  bool
 	MaxConcurrentConnections int
-	MaxPcapLogRotations      int
-	MaxPcapLogSize           int
 }
 
 // Inquisitor sets up the connection pool and is an abstraction layer for dealing
 // with incoming packets weather they be from a pcap file or directly off the wire.
 type Dispatcher struct {
-	options                 DispatcherOptions
-	connectionFactory       ConnectionFactory
-	observeConnectionCount  int
-	observeConnectionChan   chan bool
-	dispatchPacketChan      chan *types.PacketManifest
-	stopDispatchChan        chan bool
-	closeConnectionChan     chan ConnectionInterface
-	pageCache               *pageCache
-	PacketLoggerFactoryFunc func(string, *types.TcpIpFlow, int, int) types.PacketLogger
-	pool                    map[types.ConnectionHash]ConnectionInterface
+	options                DispatcherOptions
+	connectionFactory      ConnectionFactory
+	observeConnectionCount int
+	observeConnectionChan  chan bool
+	dispatchPacketChan     chan *types.PacketManifest
+	stopDispatchChan       chan bool
+	closeConnectionChan    chan ConnectionInterface
+	pageCache              *pageCache
+	PacketLoggerFactory    types.PacketLoggerFactory
+	pool                   map[types.ConnectionHash]ConnectionInterface
 }
 
 // NewInquisitor creates a new Inquisitor struct
-func NewDispatcher(options DispatcherOptions, connectionFactory ConnectionFactory, packetLoggerFactoryFunc func(string, *types.TcpIpFlow, int, int) types.PacketLogger) *Dispatcher {
+func NewDispatcher(options DispatcherOptions, connectionFactory ConnectionFactory, packetLoggerFactory types.PacketLoggerFactory) *Dispatcher {
 	i := Dispatcher{
-		PacketLoggerFactoryFunc: packetLoggerFactoryFunc,
-		connectionFactory:       connectionFactory,
-		options:                 options,
-		dispatchPacketChan:      make(chan *types.PacketManifest),
-		stopDispatchChan:        make(chan bool),
-		closeConnectionChan:     make(chan ConnectionInterface),
-		pageCache:               newPageCache(),
-		observeConnectionChan:   make(chan bool, 0),
+		PacketLoggerFactory:   packetLoggerFactory,
+		connectionFactory:     connectionFactory,
+		options:               options,
+		dispatchPacketChan:    make(chan *types.PacketManifest),
+		stopDispatchChan:      make(chan bool),
+		closeConnectionChan:   make(chan ConnectionInterface),
+		pageCache:             newPageCache(),
+		observeConnectionChan: make(chan bool, 0),
 		pool: make(map[types.ConnectionHash]ConnectionInterface),
 	}
 	return &i
@@ -163,9 +163,8 @@ func (i *Dispatcher) setupNewConnection(flow *types.TcpIpFlow) ConnectionInterfa
 	}
 
 	conn := i.connectionFactory.Build(options)
-
 	if i.options.LogPackets {
-		packetLogger := i.PacketLoggerFactoryFunc(i.options.LogDir, flow, i.options.MaxPcapLogRotations, i.options.MaxPcapLogSize)
+		packetLogger := i.PacketLoggerFactory.Build(flow)
 		conn.SetPacketLogger(packetLogger)
 		packetLogger.Start()
 	}

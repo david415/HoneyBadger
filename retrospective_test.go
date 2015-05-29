@@ -37,6 +37,9 @@ func (d *DummyAttackLogger) Log(event *types.Event) {
 	d.Count += 1
 }
 
+func (d *DummyAttackLogger) Archive() {
+}
+
 func TestInjectionDetector(t *testing.T) {
 	log.Print("TestInjectionDetector")
 	attackLogger := NewDummyAttackLogger()

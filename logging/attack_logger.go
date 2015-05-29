@@ -46,14 +46,17 @@ type SerializedEvent struct {
 type AttackJsonLogger struct {
 	writer           io.WriteCloser
 	LogDir           string
+	ArchiveDir       string
 	stopChan         chan bool
 	attackReportChan chan *types.Event
+	logName          string
 }
 
 // NewAttackJsonLogger returns a pointer to a AttackJsonLogger struct
-func NewAttackJsonLogger(logDir string) *AttackJsonLogger {
+func NewAttackJsonLogger(logDir string, archiveDir string) *AttackJsonLogger {
 	a := AttackJsonLogger{
 		LogDir:           logDir,
+		ArchiveDir:       archiveDir,
 		stopChan:         make(chan bool),
 		attackReportChan: make(chan *types.Event),
 	}
@@ -66,6 +69,11 @@ func (a *AttackJsonLogger) Start() {
 
 func (a *AttackJsonLogger) Stop() {
 	a.stopChan <- true
+}
+
+func (a *AttackJsonLogger) Archive() {
+	archiveFile := filepath.Join(a.ArchiveDir, filepath.Base(a.logName))
+	os.Rename(a.logName, archiveFile)
 }
 
 func (a *AttackJsonLogger) receiveReports() {
@@ -103,7 +111,10 @@ func (a *AttackJsonLogger) SerializeAndWrite(event *types.Event) {
 // Publish writes a JSON report to the attack-report file for that flow.
 func (a *AttackJsonLogger) Publish(event *SerializedEvent) {
 	b, err := json.Marshal(event)
-	a.writer, err = os.OpenFile(filepath.Join(a.LogDir, fmt.Sprintf("%s.attackreport.json", event.Flow)), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if a.logName == "" {
+		a.logName = filepath.Join(a.LogDir, fmt.Sprintf("%s.attackreport.json", event.Flow))
+	}
+	a.writer, err = os.OpenFile(a.logName, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		panic(fmt.Sprintf("error opening file: %v", err))
 	}

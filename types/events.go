@@ -25,12 +25,19 @@ import (
 
 type Logger interface {
 	Log(r *Event)
+	Archive()
 }
 
 type PacketLogger interface {
 	WritePacket(rawPacket []byte, timestamp time.Time)
 	Start()
 	Stop()
+	Remove()
+	Archive()
+}
+
+type PacketLoggerFactory interface {
+	Build(*TcpIpFlow) PacketLogger
 }
 
 type Event struct {

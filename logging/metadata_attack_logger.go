@@ -33,14 +33,17 @@ import (
 type AttackMetadataJsonLogger struct {
 	writer           io.WriteCloser
 	LogDir           string
+	logName          string
+	ArchiveDir       string
 	stopChan         chan bool
 	attackReportChan chan *types.Event
 }
 
 // NewAttackMetadataJsonLogger returns a pointer to a AttackMetadataJsonLogger struct
-func NewAttackMetadataJsonLogger(logDir string) *AttackMetadataJsonLogger {
+func NewAttackMetadataJsonLogger(logDir string, archiveDir string) *AttackMetadataJsonLogger {
 	a := AttackMetadataJsonLogger{
 		LogDir:           logDir,
+		ArchiveDir:       archiveDir,
 		stopChan:         make(chan bool),
 		attackReportChan: make(chan *types.Event),
 	}
@@ -53,6 +56,11 @@ func (a *AttackMetadataJsonLogger) Start() {
 
 func (a *AttackMetadataJsonLogger) Stop() {
 	a.stopChan <- true
+}
+
+func (a *AttackMetadataJsonLogger) Archive() {
+	archiveFile := filepath.Join(a.ArchiveDir, filepath.Base(a.logName))
+	os.Rename(a.logName, archiveFile)
 }
 
 func (a *AttackMetadataJsonLogger) receiveReports() {
@@ -88,7 +96,10 @@ func (a *AttackMetadataJsonLogger) SerializeAndWrite(event *types.Event) {
 // Publish writes a JSON report to the attack-report file for that flow.
 func (a *AttackMetadataJsonLogger) Publish(event *SerializedEvent) {
 	b, err := json.Marshal(*event)
-	a.writer, err = os.OpenFile(filepath.Join(a.LogDir, fmt.Sprintf("%s.metadata-attackreport.json", event.Flow)), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if a.logName == "" {
+		a.logName = filepath.Join(a.LogDir, fmt.Sprintf("%s.metadata-attackreport.json", event.Flow))
+	}
+	a.writer, err = os.OpenFile(a.logName, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		panic(fmt.Sprintf("error opening file: %v", err))
 	}
