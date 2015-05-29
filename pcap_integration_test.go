@@ -14,7 +14,7 @@ import (
 type DummyPacketLogger struct {
 }
 
-func NewDummyPacketLogger(str string, flow *types.TcpIpFlow) types.PacketLogger {
+func NewDummyPacketLogger(str string, flow *types.TcpIpFlow, a int, b int) types.PacketLogger {
 	m := DummyPacketLogger{}
 	return types.PacketLogger(&m)
 }

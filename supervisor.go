@@ -34,7 +34,7 @@ type BadgerSupervisor struct {
 	forceQuitChan    chan os.Signal
 }
 
-func NewBadgerSupervisor(snifferOptions SnifferOptions, dispatcherOptions DispatcherOptions, snifferFactoryFunc func(SnifferOptions) types.PacketSource, connectionFactory ConnectionFactory, packetLoggerFactoryFunc func(string, *types.TcpIpFlow) types.PacketLogger) *BadgerSupervisor {
+func NewBadgerSupervisor(snifferOptions SnifferOptions, dispatcherOptions DispatcherOptions, snifferFactoryFunc func(SnifferOptions) types.PacketSource, connectionFactory ConnectionFactory, packetLoggerFactoryFunc func(string, *types.TcpIpFlow, int, int) types.PacketLogger) *BadgerSupervisor {
 	dispatcher := NewDispatcher(dispatcherOptions, connectionFactory, packetLoggerFactoryFunc)
 	snifferOptions.Dispatcher = dispatcher
 	sniffer := snifferFactoryFunc(snifferOptions)

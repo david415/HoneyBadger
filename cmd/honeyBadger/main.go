@@ -52,6 +52,8 @@ is infinite.`)
 		bufferedTotal = flag.Int("total_max_buffer", 0, `
 Max packets to buffer total before skipping over gaps in connections and
 continuing to stream connection data.  If zero or less, this is infinite`)
+		maxPcapLogSize      = flag.Int("max_pcap_log_size", 1, "maximum pcap size per rotation in megabytes")
+		maxNumPcapRotations = flag.Int("max_pcap_rotations", 10, "maximum number of pcap rotations per connection")
 	)
 	flag.Parse()
 
@@ -83,6 +85,8 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		BufferedTotal:            *bufferedTotal,
 		LogDir:                   *logDir,
 		LogPackets:               *logPackets,
+		MaxPcapLogRotations:      *maxNumPcapRotations,
+		MaxPcapLogSize:           *maxPcapLogSize,
 		TcpIdleTimeout:           *tcpTimeout,
 		MaxRingPackets:           *maxRingPackets,
 		Logger:                   logger,
@@ -92,7 +96,7 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		MaxConcurrentConnections: *maxConcurrentConnections,
 	}
 
-	snifferOptions := HoneyBadger.PcapSnifferOptions{
+	snifferOptions := HoneyBadger.SnifferOptions{
 		Interface:    *iface,
 		Filename:     *pcapfile,
 		WireDuration: wireDuration,
@@ -102,12 +106,12 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 
 	connectionFactory := &HoneyBadger.DefaultConnFactory{}
 
-	var packetLoggerFunc func(string, *types.TcpIpFlow) types.PacketLogger
+	var packetLoggerFunc func(string, *types.TcpIpFlow, int, int) types.PacketLogger
 	if *logPackets {
 		packetLoggerFunc = logging.NewPcapLogger
 	} else {
 		packetLoggerFunc = nil
 	}
-	supervisor := HoneyBadger.NewBadgerSupervisor(snifferOptions, dispatcherOptions, HoneyBadger.NewPcapSniffer, connectionFactory, packetLoggerFunc)
+	supervisor := HoneyBadger.NewBadgerSupervisor(snifferOptions, dispatcherOptions, HoneyBadger.NewSniffer, connectionFactory, packetLoggerFunc)
 	supervisor.Run()
 }

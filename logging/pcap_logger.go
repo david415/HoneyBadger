@@ -26,7 +26,6 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcapgo"
 	"io"
-	"os"
 	"path/filepath"
 	"time"
 )
@@ -44,32 +43,37 @@ type PcapLogger struct {
 	Flow       *types.TcpIpFlow
 	writer     *pcapgo.Writer
 	fileWriter io.WriteCloser
+	pcapLogNum int
+	pcapQuota  int
+	basename   string
 }
 
 // NewPcapLogger returns a PcapLogger struct...
 // and in doing so writes a pcap header to the beginning of the file.
-func NewPcapLogger(dir string, flow *types.TcpIpFlow) types.PacketLogger {
+func NewPcapLogger(dir string, flow *types.TcpIpFlow, pcapLogNum int, pcapQuota int) types.PacketLogger {
 	p := PcapLogger{
 		packetChan: make(chan TimedPacket),
 		stopChan:   make(chan bool),
 		Flow:       flow,
 		Dir:        dir,
+		pcapLogNum: pcapLogNum,
+		pcapQuota:  pcapQuota,
 	}
 	return types.PacketLogger(&p)
 }
 
-func (p *PcapLogger) Start() {
-	var err error
-	if p.fileWriter == nil {
-		p.fileWriter, err = os.OpenFile(filepath.Join(p.Dir, fmt.Sprintf("%s.pcap", p.Flow.String())), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-		if err != nil {
-			panic(fmt.Sprintf("error opening file: %v", err))
-		}
-	}
-	p.writer = pcapgo.NewWriter(p.fileWriter)
-	err = p.writer.WriteFileHeader(65536, layers.LinkTypeEthernet) // XXX
+func (p *PcapLogger) WriteHeader() {
+	err := p.writer.WriteFileHeader(65536, layers.LinkTypeEthernet)
 	if err != nil {
 		panic(err)
+	}
+}
+
+func (p *PcapLogger) Start() {
+	if p.fileWriter == nil {
+		p.basename = filepath.Join(p.Dir, fmt.Sprintf("%s.pcap", p.Flow.String()))
+		p.fileWriter = NewRotatingQuotaWriter(p.basename, p.pcapQuota, p.pcapLogNum, p.WriteHeader)
+		p.writer = pcapgo.NewWriter(p.fileWriter)
 	}
 	go p.logPackets()
 }

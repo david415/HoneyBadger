@@ -85,7 +85,7 @@ type MockPacketLogger struct {
 	packetObserverChan chan bool
 }
 
-func NewMockPacketLogger(str string, flow *types.TcpIpFlow) types.PacketLogger {
+func NewMockPacketLogger(str string, flow *types.TcpIpFlow, a int, b int) types.PacketLogger {
 	m := MockPacketLogger{
 		packetObserverChan: make(chan bool, 0),
 	}
