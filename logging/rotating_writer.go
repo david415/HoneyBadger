@@ -42,11 +42,9 @@ type RotatingQuotaWriter struct {
 func NewRotatingQuotaWriter(filename string, quotaSize int, numLogs int, headerFunc func()) *RotatingQuotaWriter {
 	quotaSizeBytes := quotaSize * 1024 * 1024
 	logSize := int(math.Floor(float64(quotaSizeBytes) / float64(numLogs)))
-
 	if logSize*numLogs > quotaSizeBytes {
 		panic("wtf: logSize * numLogs > quotaSize")
 	}
-
 	w := &RotatingQuotaWriter{
 		filename:        filename,
 		numLogs:         numLogs,
@@ -62,7 +60,6 @@ func NewRotatingQuotaWriter(filename string, quotaSize int, numLogs int, headerF
 
 func (w *RotatingQuotaWriter) Write(output []byte) (int, error) {
 	var err error
-
 	if w.fp == nil {
 		w.fp, err = os.Create(w.filename)
 		if err != nil {
@@ -70,15 +67,15 @@ func (w *RotatingQuotaWriter) Write(output []byte) (int, error) {
 		}
 		w.mustWriteHeader = true
 		w.headerFunc()
+		w.sizes[0] += len(output)
 		return w.fp.Write(output)
 	}
-
 	if w.mustWriteHeader {
 		w.mustWriteHeader = false
+		w.sizes[0] += len(output)
 		return w.fp.Write(output)
 	}
-
-	if w.getCurrentSize()+len(output) > w.quotaSizeBytes {
+	if w.sizes[0]+len(output) > w.logSize {
 		w.rotate()
 		// pop
 		w.sizes = w.sizes[0 : len(w.sizes)-1]
@@ -86,7 +83,6 @@ func (w *RotatingQuotaWriter) Write(output []byte) (int, error) {
 		new := make([]int, 1, 10)
 		new[0] = len(output)
 		w.sizes = append(new, w.sizes...)
-
 		w.fp, err = os.Create(w.filename)
 		if err != nil {
 			panic(err)
@@ -103,17 +99,8 @@ func (w *RotatingQuotaWriter) Close() error {
 	return err
 }
 
-func (w *RotatingQuotaWriter) getCurrentSize() int {
-	total := 0
-	for i := 0; i < len(w.sizes); i++ {
-		total += w.sizes[i]
-	}
-	return total
-}
-
 func (w *RotatingQuotaWriter) rotate() {
 	var err error
-
 	if w.fp != nil {
 		err = w.fp.Close()
 		w.fp = nil
@@ -121,10 +108,9 @@ func (w *RotatingQuotaWriter) rotate() {
 			panic(err)
 		}
 	}
-	for i := w.numLogs; i > 1; i-- {
+	for i := w.numLogs; i > 0; i-- {
 		w.shiftLog(i)
 	}
-
 	newName := fmt.Sprintf("%s.1", w.filename)
 	err = os.Rename(w.filename, newName)
 	if err != nil {
@@ -135,21 +121,17 @@ func (w *RotatingQuotaWriter) rotate() {
 func (w *RotatingQuotaWriter) shiftLog(logNum int) {
 	var err error
 	oldName := fmt.Sprintf("%s.%d", w.filename, logNum)
-
 	if logNum == w.numLogs {
 		os.Remove(oldName)
 		return
 	}
 	_, err = os.Stat(oldName)
 	if os.IsNotExist(err) {
-		// if not exit then no-op
 		return
 	} else if err != nil {
 		panic(err)
 	}
-
 	newName := fmt.Sprintf("%s.%d", w.filename, logNum+1)
-
 	err = os.Rename(oldName, newName)
 	if err != nil {
 		panic(err)

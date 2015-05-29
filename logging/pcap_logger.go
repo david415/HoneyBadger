@@ -21,14 +21,16 @@ package logging
 
 import (
 	"fmt"
-	"github.com/david415/HoneyBadger/types"
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pcapgo"
 	"io"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcapgo"
+	
+	"github.com/david415/HoneyBadger/types"
 )
 
 type TimedPacket struct {
@@ -50,8 +52,6 @@ type PcapLogger struct {
 	basename   string
 }
 
-// NewPcapLogger returns a PcapLogger struct...
-// and in doing so writes a pcap header to the beginning of the file.
 func NewPcapLogger(logDir, archiveDir string, flow *types.TcpIpFlow, pcapLogNum int, pcapQuota int) types.PacketLogger {
 	p := PcapLogger{
 		packetChan: make(chan TimedPacket),
@@ -98,18 +98,14 @@ func (p *PcapLogger) Start() {
 		p.fileWriter = NewRotatingQuotaWriter(p.basename, p.pcapQuota, p.pcapLogNum, p.WriteHeader)
 		p.writer = pcapgo.NewWriter(p.fileWriter)
 	}
-
 	go p.logPackets()
 }
 
-// Close causes the file to be closed.
 func (p *PcapLogger) Stop() {
 	p.stopChan <- true
 	p.fileWriter.Close()
 }
 
-// XXX Rename mail fail in when used with multiple filesystems.
-// should we rewrite this?
 func (p *PcapLogger) Archive() {
 	newBasename := filepath.Join(p.LogDir, filepath.Base(p.basename))
 	os.Rename(p.basename, newBasename)
@@ -143,8 +139,6 @@ func (p *PcapLogger) WritePacket(rawPacket []byte, timestamp time.Time) {
 	}
 }
 
-// WritePacket receives a raw packet and a timestamp. It writes this
-// info to the pcap log file.
 func (p *PcapLogger) WritePacketToFile(rawPacket []byte, timestamp time.Time) {
 	err := p.writer.WritePacket(gopacket.CaptureInfo{
 		Timestamp:     timestamp,
