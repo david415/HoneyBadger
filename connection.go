@@ -20,10 +20,7 @@
 package HoneyBadger
 
 import (
-	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -203,9 +200,15 @@ func (c *Connection) Close() {
 	c.state = TCP_CLOSED
 
 	if c.getAttackDetectedStatus() == false {
-		c.removeAllLogs()
+		if c.PacketLogger != nil {
+			c.PacketLogger.Remove()
+		}
 	} else {
-		log.Print("not removing logs. attack detected.\n")
+		log.Print("attack detected; archiving connection's logs\n")
+		if c.LogPackets {
+			c.PacketLogger.Archive()
+		}
+		c.AttackLogger.Archive()
 	}
 	c.ClientCoalesce.Close()
 	c.ServerCoalesce.Close()
@@ -213,12 +216,6 @@ func (c *Connection) Close() {
 		c.PacketLogger.Stop()
 		c.PacketLogger = nil // just in case the state machine receives another packet...
 	}
-}
-
-// removeAllLogs removes pcap logs associated with this Connection instance
-func (c *Connection) removeAllLogs() {
-	os.Remove(filepath.Join(c.LogDir, fmt.Sprintf("%s.pcap", c.clientFlow)))
-	os.Remove(filepath.Join(c.LogDir, fmt.Sprintf("%s.pcap", c.serverFlow)))
 }
 
 // detectHijack checks for duplicate SYN/ACK indicating handshake hijake
