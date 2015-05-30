@@ -55,7 +55,7 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		maxPcapLogSize      = flag.Int("max_pcap_log_size", 1, "maximum pcap size per rotation in megabytes")
 		maxNumPcapRotations = flag.Int("max_pcap_rotations", 10, "maximum number of pcap rotations per connection")
 		archiveDir          = flag.String("archive_dir", "", "archive directory for storing attack logs and related pcap files")
-		useAfPacket = flag.Bool("afpacket", true, "Use AF_PACKET")
+		useAfPacket         = flag.Bool("afpacket", true, "Use AF_PACKET")
 	)
 	flag.Parse()
 
@@ -71,12 +71,12 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 	var logger types.Logger
 
 	if *metadataAttackLog {
-		loggerInstance := logging.NewAttackMetadataJsonLogger(*logDir, *archiveDir)
+		loggerInstance := logging.NewAttackMetadataJsonLogger(*archiveDir)
 		loggerInstance.Start()
 		defer func() { loggerInstance.Stop() }()
 		logger = loggerInstance
 	} else {
-		loggerInstance := logging.NewAttackJsonLogger(*logDir, *archiveDir)
+		loggerInstance := logging.NewAttackJsonLogger(*archiveDir)
 		loggerInstance.Start()
 		defer func() { loggerInstance.Stop() }()
 		logger = loggerInstance

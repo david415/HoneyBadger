@@ -208,7 +208,6 @@ func (c *Connection) Close() {
 		if c.LogPackets {
 			c.PacketLogger.Archive()
 		}
-		c.AttackLogger.Archive()
 	}
 	c.ClientCoalesce.Close()
 	c.ServerCoalesce.Close()

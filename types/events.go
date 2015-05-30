@@ -25,7 +25,6 @@ import (
 
 type Logger interface {
 	Log(r *Event)
-	Archive()
 }
 
 type PacketLogger interface {
