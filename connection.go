@@ -41,6 +41,7 @@ const (
 	TCP_CONNECTION_CLOSING     = 4
 	TCP_INVALID                = 5
 	TCP_CLOSED                 = 6
+	TCP_ANOMALY                = 7
 
 	// initiating TCP closing finite state machine
 	TCP_FIN_WAIT1 = 0
@@ -125,6 +126,7 @@ type Connection struct {
 	clientFlow               *types.TcpIpFlow
 	serverFlow               *types.TcpIpFlow
 	closingFlow              *types.TcpIpFlow
+	closingSeq               types.Sequence
 	clientNextSeq            types.Sequence
 	serverNextSeq            types.Sequence
 	hijackNextAck            types.Sequence
@@ -195,11 +197,6 @@ func (c *Connection) Close() {
 	if c.Pool != nil {
 		delete(*c.Pool, c.GetConnectionHash())
 	}
-	if c.state == TCP_CLOSED {
-		panic("already closed")
-	}
-	c.state = TCP_CLOSED
-
 	if c.getAttackDetectedStatus() == false {
 		if c.PacketLogger != nil {
 			c.PacketLogger.Remove()
@@ -283,15 +280,21 @@ func (c *Connection) stateUnknown(p *types.PacketManifest) {
 		c.skipHijackDetectionCount = 0
 		c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1) // XXX
 
+		// XXX can we improve this section
 		if p.TCP.FIN || p.TCP.RST {
-			log.Print("got RST or FIN")
-			c.Close()
+			c.state = TCP_CLOSED
+			c.closingFlow = p.Flow
+			c.closingSeq = types.Sequence(p.TCP.Seq)
+			return
 		} else {
 			if len(p.Payload) > 0 {
 				isEnd := false
 				c.clientNextSeq, isEnd = c.ServerCoalesce.insert(p, c.clientNextSeq)
 				if isEnd {
-					c.Close()
+					c.state = TCP_CLOSED
+					c.closingFlow = p.Flow
+					c.closingSeq = types.Sequence(p.TCP.Seq)
+					return
 				}
 			}
 		}
@@ -303,18 +306,18 @@ func (c *Connection) stateUnknown(p *types.PacketManifest) {
 // a SYN/ACK packet.
 func (c *Connection) stateConnectionRequest(p *types.PacketManifest) {
 	if !p.Flow.Equal(c.serverFlow) {
-		//handshake anomaly
-		c.Close()
+		log.Print("handshake anomaly")
+		c.state = TCP_ANOMALY
 		return
 	}
 	if !(p.TCP.SYN && p.TCP.ACK) {
-		//handshake anomaly
-		c.Close()
+		log.Print("handshake anomaly")
+		c.state = TCP_ANOMALY
 		return
 	}
 	if c.clientNextSeq.Difference(types.Sequence(p.TCP.Ack)) != 0 {
-		//handshake anomaly
-		c.Close()
+		log.Print("handshake anomaly")
+		c.state = TCP_ANOMALY
 		return
 	}
 	c.state = TCP_CONNECTION_ESTABLISHED
@@ -335,23 +338,23 @@ func (c *Connection) stateConnectionEstablished(p *types.PacketManifest) {
 		}
 	}
 	if !p.Flow.Equal(c.clientFlow) {
-		// handshake anomaly
-		c.Close()
+		log.Print("handshake anomaly")
+		c.state = TCP_ANOMALY
 		return
 	}
 	if !p.TCP.ACK || p.TCP.SYN {
-		// handshake anomaly
-		c.Close()
+		log.Print("handshake anomaly")
+		c.state = TCP_ANOMALY
 		return
 	}
 	if types.Sequence(p.TCP.Seq).Difference(c.clientNextSeq) != 0 {
-		// handshake anomaly
-		c.Close()
+		log.Print("handshake anomaly")
+		c.state = TCP_ANOMALY
 		return
 	}
 	if types.Sequence(p.TCP.Ack).Difference(c.serverNextSeq) != 0 {
-		// handshake anomaly
-		c.Close()
+		log.Print("handshake anomaly")
+		c.state = TCP_ANOMALY
 		return
 	}
 	c.state = TCP_DATA_TRANSFER
@@ -368,13 +371,17 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 	if c.clientNextSeq == types.InvalidSequence && p.Flow.Equal(c.clientFlow) {
 		c.clientNextSeq, isEnd = c.ServerCoalesce.insert(p, c.clientNextSeq)
 		if isEnd {
-			c.Close()
+			c.state = TCP_CLOSED
+			c.closingFlow = p.Flow
+			c.closingSeq = types.Sequence(p.TCP.Seq)
 		}
 		return
 	} else if c.serverNextSeq == types.InvalidSequence && p.Flow.Equal(c.serverFlow) {
 		c.serverNextSeq, isEnd = c.ClientCoalesce.insert(p, c.serverNextSeq)
 		if isEnd {
-			c.Close()
+			c.state = TCP_CLOSED
+			c.closingFlow = p.Flow
+			c.closingSeq = types.Sequence(p.TCP.Seq)
 		}
 		return
 	}
@@ -407,11 +414,6 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 			// possibly RST or FIN
 		}
 	} else if diff == 0 { // contiguous
-		if p.TCP.RST {
-			log.Print("got RST!\n")
-			c.Close()
-			return
-		}
 		if len(p.Payload) > 0 {
 			reassembly := types.Reassembly{
 				Seq:   types.Sequence(p.TCP.Seq),
@@ -424,7 +426,10 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 				c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
 				c.clientNextSeq, isEnd = c.ServerCoalesce.addContiguous(c.clientNextSeq)
 				if isEnd {
-					c.Close()
+					c.state = TCP_CLOSED
+					c.closingFlow = p.Flow
+					c.closingSeq = types.Sequence(p.TCP.Seq)
+					return
 				}
 			} else {
 				c.ClientStreamRing.Reassembly = &reassembly
@@ -432,12 +437,21 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 				c.serverNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
 				c.serverNextSeq, isEnd = c.ClientCoalesce.addContiguous(c.serverNextSeq)
 				if isEnd {
-					c.Close()
+					c.state = TCP_CLOSED
+					c.closingFlow = p.Flow
+					c.closingSeq = types.Sequence(p.TCP.Seq)
+					return
 				}
 			}
 		}
+		if p.TCP.RST {
+			log.Print("got RST!\n")
+			c.state = TCP_CLOSED
+			c.closingFlow = p.Flow
+			c.closingSeq = types.Sequence(p.TCP.Seq)
+			return
+		}
 		if p.TCP.FIN {
-			log.Print("out of order")
 			c.closingFlow = p.Flow
 			c.state = TCP_CONNECTION_CLOSING
 			*closerState = TCP_FIN_WAIT1
@@ -451,7 +465,9 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 			c.serverNextSeq, isEnd = c.ClientCoalesce.insert(p, c.serverNextSeq)
 		}
 		if isEnd {
-			c.Close()
+			c.state = TCP_CLOSED
+			c.closingFlow = p.Flow
+			c.closingSeq = types.Sequence(p.TCP.Seq)
 		}
 	}
 }
@@ -478,7 +494,9 @@ func (c *Connection) stateFinWait1(p *types.PacketManifest, flow *types.TcpIpFlo
 			*nextSeqPtr = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
 			if types.Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 {
 				log.Printf("FIN-WAIT-1: unexpected ACK: got %d expected %d TCP.Seq %d\n", p.TCP.Ack, *nextAckPtr, p.TCP.Seq)
-				c.Close()
+				c.state = TCP_ANOMALY
+				c.closingFlow = p.Flow
+				c.closingSeq = types.Sequence(p.TCP.Seq)
 				return
 			}
 		} else {
@@ -487,7 +505,10 @@ func (c *Connection) stateFinWait1(p *types.PacketManifest, flow *types.TcpIpFlo
 		}
 	} else {
 		log.Print("FIN-WAIT-1: non-ACK packet received.\n")
-		c.Close()
+		c.state = TCP_ANOMALY
+		c.closingFlow = p.Flow
+		c.closingSeq = types.Sequence(p.TCP.Seq)
+		return
 	}
 }
 
@@ -549,30 +570,44 @@ func (c *Connection) stateCloseWait(p *types.PacketManifest) {
 // stateTimeWait represents the TCP FSM's CLOSE-WAIT state
 func (c *Connection) stateTimeWait(p *types.PacketManifest) {
 	log.Print("TIME-WAIT: invalid protocol state\n")
-	c.Close()
+	c.state = TCP_ANOMALY
+	c.closingFlow = p.Flow
+	c.closingSeq = types.Sequence(p.TCP.Seq)
 }
 
 // stateClosing represents the TCP FSM's CLOSING state
 func (c *Connection) stateClosing(p *types.PacketManifest) {
 	log.Print("CLOSING: invalid protocol state\n")
-	c.Close()
+	c.state = TCP_ANOMALY
+
 }
 
 // stateLastAck represents the TCP FSM's LAST-ACK state
 func (c *Connection) stateLastAck(p *types.PacketManifest, flow *types.TcpIpFlow, nextSeqPtr *types.Sequence, nextAckPtr *types.Sequence, statePtr *uint8) {
-	if types.Sequence(p.TCP.Seq).Difference(*nextSeqPtr) == 0 { //XXX
+	if types.Sequence(p.TCP.Seq).Difference(*nextSeqPtr) == 0 {
 		if p.TCP.ACK && (!p.TCP.FIN && !p.TCP.SYN) {
 			if types.Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 {
 				log.Printf("LAST-ACK: out of order ACK packet received. seq %d != nextAck %d\n", p.TCP.Ack, *nextAckPtr)
+				c.state = TCP_ANOMALY
 			}
 		} else {
 			log.Print("LAST-ACK: protocol anamoly\n")
+			c.state = TCP_ANOMALY
 		}
 	} else {
 		log.Print("LAST-ACK: out of order packet received\n")
 		log.Printf("LAST-ACK: out of order packet received; got %d expected %d\n", p.TCP.Seq, *nextSeqPtr)
+		c.state = TCP_ANOMALY
 	}
-	c.Close()
+	c.state = TCP_CLOSED
+}
+
+func (c *Connection) stateClosed(p *types.PacketManifest) {
+
+}
+
+func (c *Connection) stateAnomaly(p *types.PacketManifest) {
+
 }
 
 // stateConnectionClosing handles all the closing states until the closed state has been reached.
@@ -634,7 +669,8 @@ func (c *Connection) ReceivePacket(p *types.PacketManifest) {
 	case TCP_CONNECTION_CLOSING:
 		c.stateConnectionClosing(p)
 	case TCP_CLOSED:
-		log.Print("connection closed; ignoring received packet.")
-		return
+		c.stateClosed(p)
+	case TCP_ANOMALY:
+		c.stateAnomaly(p)
 	}
 }
