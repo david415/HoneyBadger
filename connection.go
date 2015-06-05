@@ -443,6 +443,7 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 // stateFinWait1 handles packets for the FIN-WAIT-1 state
 //func (c *Connection) stateFinWait1(p *types.PacketManifest) {
 func (c *Connection) stateFinWait1(p *types.PacketManifest, flow *types.TcpIpFlow, nextSeqPtr *types.Sequence, nextAckPtr *types.Sequence, statePtr, otherStatePtr *uint8) {
+	c.detectCensorInjection(p)
 	diff := nextSeqPtr.Difference(types.Sequence(p.TCP.Seq))
 	if diff < 0 {
 		// overlap
@@ -480,6 +481,7 @@ func (c *Connection) stateFinWait1(p *types.PacketManifest, flow *types.TcpIpFlo
 
 // stateFinWait2 handles packets for the FIN-WAIT-2 state
 func (c *Connection) stateFinWait2(p *types.PacketManifest, flow *types.TcpIpFlow, nextSeqPtr *types.Sequence, nextAckPtr *types.Sequence, statePtr *uint8) {
+	c.detectCensorInjection(p)
 	diff := nextSeqPtr.Difference(types.Sequence(p.TCP.Seq))
 	if diff < 0 {
 		// overlap
