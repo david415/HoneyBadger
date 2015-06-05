@@ -44,9 +44,6 @@ func displayRingSummary(ringHeadPtr *types.Ring) {
 }
 
 func injectionInStreamRing(p *types.PacketManifest, flow *types.TcpIpFlow, ringPtr *types.Ring, eventType string, packetCount uint64) *types.Event {
-
-	log.Printf("injectionInStreamRing: packetCount %d", packetCount)
-
 	start := types.Sequence(p.TCP.Seq)
 	end := start.Add(len(p.Payload) - 1)
 	head, tail := getOverlapRings(p, flow, ringPtr)
