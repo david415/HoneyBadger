@@ -73,6 +73,7 @@ func (a *AttackMetadataJsonLogger) Log(event *types.Event) {
 func (a *AttackMetadataJsonLogger) SerializeAndWrite(event *types.Event) {
 	publishableEvent := &SerializedEvent{
 		Type:         event.Type,
+		PacketCount:  event.PacketCount,
 		Flow:         event.Flow.String(),
 		HijackSeq:    event.HijackSeq,
 		HijackAck:    event.HijackAck,

@@ -198,7 +198,12 @@ func (c *Connection) detectHijack(p *types.PacketManifest, flow *types.TcpIpFlow
 		if types.Sequence(p.TCP.Ack).Difference(c.hijackNextAck) == 0 {
 			if p.TCP.Seq != c.firstSynAckSeq {
 				log.Print("handshake hijack detected\n")
-				c.AttackLogger.Log(&types.Event{Time: time.Now(), Flow: flow, HijackSeq: p.TCP.Seq, HijackAck: p.TCP.Ack})
+				c.AttackLogger.Log(&types.Event{
+					Time:        time.Now(),
+					PacketCount: c.packetCount,
+					Flow:        flow,
+					HijackSeq:   p.TCP.Seq,
+					HijackAck:   p.TCP.Ack})
 				c.attackDetected = true
 			} else {
 				log.Print("SYN/ACK retransmission\n")
@@ -584,6 +589,7 @@ func (c *Connection) detectCensorInjection(p *types.PacketManifest) {
 	}
 	event := types.Event{
 		Type:          attackType,
+		PacketCount:   c.packetCount,
 		Time:          time.Now(),
 		Flow:          p.Flow,
 		StartSequence: types.Sequence(p.TCP.Seq),
