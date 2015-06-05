@@ -126,6 +126,8 @@ type Connection struct {
 	clientFlow               *types.TcpIpFlow
 	serverFlow               *types.TcpIpFlow
 	closingFlow              *types.TcpIpFlow
+	closingRST               bool
+	closingFIN               bool
 	closingSeq               types.Sequence
 	clientNextSeq            types.Sequence
 	serverNextSeq            types.Sequence
@@ -398,8 +400,6 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 				c.clientNextSeq, isEnd = c.ServerCoalesce.addContiguous(c.clientNextSeq)
 				if isEnd {
 					c.state = TCP_CLOSED
-					c.closingFlow = p.Flow
-					c.closingSeq = types.Sequence(p.TCP.Seq)
 					return
 				}
 			} else {
@@ -409,20 +409,20 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 				c.serverNextSeq, isEnd = c.ClientCoalesce.addContiguous(c.serverNextSeq)
 				if isEnd {
 					c.state = TCP_CLOSED
-					c.closingFlow = p.Flow
-					c.closingSeq = types.Sequence(p.TCP.Seq)
 					return
 				}
 			}
 		}
 		if p.TCP.RST {
 			log.Print("got RST!\n")
+			c.closingRST = true
 			c.state = TCP_CLOSED
 			c.closingFlow = p.Flow
 			c.closingSeq = types.Sequence(p.TCP.Seq)
 			return
 		}
 		if p.TCP.FIN {
+			c.closingFIN = true
 			c.closingFlow = p.Flow
 			c.state = TCP_CONNECTION_CLOSING
 			*closerState = TCP_FIN_WAIT1
@@ -573,12 +573,55 @@ func (c *Connection) stateLastAck(p *types.PacketManifest, flow *types.TcpIpFlow
 	c.state = TCP_CLOSED
 }
 
-func (c *Connection) stateClosed(p *types.PacketManifest) {
+func (c *Connection) detectCensorInjection(p *types.PacketManifest) {
+	var attackType string
+	if p.TCP.FIN || p.TCP.RST {
+		// ignore "closing" retransmissions
+		return
+	}
+	if len(p.Payload) == 0 {
+		return
+	}
+	if c.closingRST {
+		attackType = "RST-injection_"
+	} else if c.closingFIN {
+		attackType = "FIN-injection_"
+	} else {
+		attackType = ""
+	}
+	if c.closingFlow != nil {
+		if p.Flow.Equal(c.closingFlow) && types.Sequence(p.TCP.Seq).Difference(c.closingSeq) == 0 {
+			attackType += "closing-sequence-overlap"
+		} else {
+			return
+		}
+	} else {
+		return
+	}
+	event := types.Event{
+		Type:          attackType,
+		Time:          time.Now(),
+		Flow:          p.Flow,
+		StartSequence: types.Sequence(p.TCP.Seq),
+	}
+	c.AttackLogger.Log(&event)
+	c.attackDetected = true
+}
 
+func (c *Connection) stateClosed(p *types.PacketManifest) {
+	var nextSeqPtr *types.Sequence
+	if p.Flow.Equal(c.clientFlow) {
+		nextSeqPtr = &c.clientNextSeq
+	} else {
+		nextSeqPtr = &c.serverNextSeq
+	}
+	if *nextSeqPtr != types.InvalidSequence {
+		c.detectCensorInjection(p)
+	}
 }
 
 func (c *Connection) stateAnomaly(p *types.PacketManifest) {
-
+	// XXX ignore packets?
 }
 
 // stateConnectionClosing handles all the closing states until the closed state has been reached.
