@@ -41,7 +41,6 @@ const (
 	TCP_CONNECTION_CLOSING     = 4
 	TCP_INVALID                = 5
 	TCP_CLOSED                 = 6
-	TCP_ANOMALY                = 7
 
 	// initiating TCP closing finite state machine
 	TCP_FIN_WAIT1 = 0
@@ -280,17 +279,14 @@ func (c *Connection) stateUnknown(p *types.PacketManifest) {
 func (c *Connection) stateConnectionRequest(p *types.PacketManifest) {
 	if !p.Flow.Equal(c.serverFlow) {
 		log.Print("handshake anomaly")
-		c.state = TCP_ANOMALY
 		return
 	}
 	if !(p.TCP.SYN && p.TCP.ACK) {
 		log.Print("handshake anomaly")
-		c.state = TCP_ANOMALY
 		return
 	}
 	if c.clientNextSeq.Difference(types.Sequence(p.TCP.Ack)) != 0 {
 		log.Print("handshake anomaly")
-		c.state = TCP_ANOMALY
 		return
 	}
 	c.state = TCP_CONNECTION_ESTABLISHED
@@ -312,22 +308,18 @@ func (c *Connection) stateConnectionEstablished(p *types.PacketManifest) {
 	}
 	if !p.Flow.Equal(c.clientFlow) {
 		log.Print("handshake anomaly")
-		c.state = TCP_ANOMALY
 		return
 	}
 	if !p.TCP.ACK || p.TCP.SYN {
 		log.Print("handshake anomaly")
-		c.state = TCP_ANOMALY
 		return
 	}
 	if types.Sequence(p.TCP.Seq).Difference(c.clientNextSeq) != 0 {
 		log.Print("handshake anomaly")
-		c.state = TCP_ANOMALY
 		return
 	}
 	if types.Sequence(p.TCP.Ack).Difference(c.serverNextSeq) != 0 {
 		log.Print("handshake anomaly")
-		c.state = TCP_ANOMALY
 		return
 	}
 	c.state = TCP_DATA_TRANSFER
@@ -465,7 +457,6 @@ func (c *Connection) stateFinWait1(p *types.PacketManifest, flow *types.TcpIpFlo
 			*nextSeqPtr = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
 			if types.Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 {
 				log.Printf("FIN-WAIT-1: unexpected ACK: got %d expected %d TCP.Seq %d\n", p.TCP.Ack, *nextAckPtr, p.TCP.Seq)
-				c.state = TCP_ANOMALY
 				c.closingFlow = p.Flow
 				c.closingSeq = types.Sequence(p.TCP.Seq)
 				return
@@ -476,7 +467,6 @@ func (c *Connection) stateFinWait1(p *types.PacketManifest, flow *types.TcpIpFlo
 		}
 	} else {
 		log.Print("FIN-WAIT-1: non-ACK packet received.\n")
-		c.state = TCP_ANOMALY
 		c.closingFlow = p.Flow
 		c.closingSeq = types.Sequence(p.TCP.Seq)
 		return
@@ -541,7 +531,6 @@ func (c *Connection) stateCloseWait(p *types.PacketManifest) {
 // stateTimeWait represents the TCP FSM's CLOSE-WAIT state
 func (c *Connection) stateTimeWait(p *types.PacketManifest) {
 	log.Print("TIME-WAIT: invalid protocol state\n")
-	c.state = TCP_ANOMALY
 	c.closingFlow = p.Flow
 	c.closingSeq = types.Sequence(p.TCP.Seq)
 }
@@ -549,8 +538,6 @@ func (c *Connection) stateTimeWait(p *types.PacketManifest) {
 // stateClosing represents the TCP FSM's CLOSING state
 func (c *Connection) stateClosing(p *types.PacketManifest) {
 	log.Print("CLOSING: invalid protocol state\n")
-	c.state = TCP_ANOMALY
-
 }
 
 // stateLastAck represents the TCP FSM's LAST-ACK state
@@ -559,16 +546,13 @@ func (c *Connection) stateLastAck(p *types.PacketManifest, flow *types.TcpIpFlow
 		if p.TCP.ACK && (!p.TCP.FIN && !p.TCP.SYN) {
 			if types.Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 {
 				log.Printf("LAST-ACK: out of order ACK packet received. seq %d != nextAck %d\n", p.TCP.Ack, *nextAckPtr)
-				c.state = TCP_ANOMALY
 			}
 		} else {
 			log.Print("LAST-ACK: protocol anamoly\n")
-			c.state = TCP_ANOMALY
 		}
 	} else {
 		log.Print("LAST-ACK: out of order packet received\n")
 		log.Printf("LAST-ACK: out of order packet received; got %d expected %d\n", p.TCP.Seq, *nextSeqPtr)
-		c.state = TCP_ANOMALY
 	}
 	c.state = TCP_CLOSED
 }
@@ -618,10 +602,6 @@ func (c *Connection) stateClosed(p *types.PacketManifest) {
 	if *nextSeqPtr != types.InvalidSequence {
 		c.detectCensorInjection(p)
 	}
-}
-
-func (c *Connection) stateAnomaly(p *types.PacketManifest) {
-	// XXX ignore packets?
 }
 
 // stateConnectionClosing handles all the closing states until the closed state has been reached.
@@ -684,7 +664,5 @@ func (c *Connection) ReceivePacket(p *types.PacketManifest) {
 		c.stateConnectionClosing(p)
 	case TCP_CLOSED:
 		c.stateClosed(p)
-	case TCP_ANOMALY:
-		c.stateAnomaly(p)
 	}
 }
