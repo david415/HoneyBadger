@@ -516,21 +516,18 @@ func (c *Connection) stateFinWait2(p *types.PacketManifest, flow *types.TcpIpFlo
 // stateCloseWait represents the TCP FSM's CLOSE-WAIT state
 func (c *Connection) stateCloseWait(p *types.PacketManifest) {
 	var nextSeqPtr *types.Sequence
-
 	if p.Flow.Equal(c.clientFlow) {
 		nextSeqPtr = &c.clientNextSeq
 	} else {
 		nextSeqPtr = &c.serverNextSeq
 	}
-
 	diff := types.Sequence(p.TCP.Seq).Difference(*nextSeqPtr)
 	// stream overlap case
 	if diff > 0 {
-		if len(p.Payload) == 0 {
-			// XXX perhaps we should count this as an injection?
-			// there hasn't been any content injection however this
-			// does indicate an attempt to inject a FIN packet
-			log.Print("CLOSE-WAIT: out of order payload len 0\n")
+		if len(p.Payload) > 0 {
+			c.detectInjection(p, p.Flow)
+		} else {
+			c.detectCensorInjection(p)
 		}
 	}
 }
