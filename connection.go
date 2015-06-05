@@ -200,6 +200,7 @@ func (c *Connection) detectHijack(p *types.PacketManifest, flow *types.TcpIpFlow
 				log.Print("handshake hijack detected\n")
 				c.AttackLogger.Log(&types.Event{
 					Time:        time.Now(),
+					Type:        "handshake-hijack",
 					PacketCount: c.packetCount,
 					Flow:        flow,
 					HijackSeq:   p.TCP.Seq,
@@ -571,11 +572,11 @@ func (c *Connection) detectCensorInjection(p *types.PacketManifest) {
 		return
 	}
 	if c.closingRST {
-		attackType = "RST-injection_"
+		attackType = "censor-injection-RST_"
 	} else if c.closingFIN {
-		attackType = "FIN-injection_"
+		attackType = "censor-injection-FIN_"
 	} else {
-		attackType = ""
+		attackType = "censor-injection-coalesce_"
 	}
 	if c.closingFlow != nil {
 		if p.Flow.Equal(c.closingFlow) && types.Sequence(p.TCP.Seq).Difference(c.closingSeq) == 0 {
