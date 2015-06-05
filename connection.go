@@ -142,35 +142,6 @@ func (c *Connection) SetPacketLogger(logger types.PacketLogger) {
 	c.PacketLogger = logger
 }
 
-func (c *Connection) GetClientStreamRing() *types.Ring {
-	return c.ClientStreamRing
-}
-
-func (c *Connection) AppendToClientStreamRing(reassembly *types.Reassembly) {
-	c.ClientStreamRing.Reassembly = reassembly
-	c.ClientStreamRing = c.ClientStreamRing.Next()
-}
-
-func (c *Connection) SetServerFlow(flow *types.TcpIpFlow) {
-	c.serverFlow = flow
-}
-
-func (c *Connection) SetClientFlow(flow *types.TcpIpFlow) {
-	c.clientFlow = flow
-}
-
-func (c *Connection) getAttackDetectedStatus() bool {
-	return c.attackDetected
-}
-
-func (c *Connection) setAttackDetectedStatus() {
-	c.attackDetected = true
-}
-
-func (c *Connection) SetState(state uint8) {
-	c.state = state
-}
-
 // GetLastSeen returns the lastSeen timestamp after grabbing the lock
 func (c *Connection) GetLastSeen() time.Time {
 	c.lastSeenMutex.Lock()
@@ -197,7 +168,7 @@ func (c *Connection) Close() {
 	if c.Pool != nil {
 		delete(*c.Pool, c.GetConnectionHash())
 	}
-	if c.getAttackDetectedStatus() == false {
+	if c.attackDetected == false {
 		if c.PacketLogger != nil {
 			c.PacketLogger.Remove()
 		}
@@ -227,7 +198,7 @@ func (c *Connection) detectHijack(p *types.PacketManifest, flow *types.TcpIpFlow
 			if p.TCP.Seq != c.firstSynAckSeq {
 				log.Print("handshake hijack detected\n")
 				c.AttackLogger.Log(&types.Event{Time: time.Now(), Flow: flow, HijackSeq: p.TCP.Seq, HijackAck: p.TCP.Ack})
-				c.setAttackDetectedStatus()
+				c.attackDetected = true
 			} else {
 				log.Print("SYN/ACK retransmission\n")
 			}
@@ -247,7 +218,7 @@ func (c *Connection) detectInjection(p *types.PacketManifest, flow *types.TcpIpF
 	event := injectionInStreamRing(p, flow, ringPtr, "ordered injection", c.packetCount)
 	if event != nil {
 		c.AttackLogger.Log(event)
-		c.setAttackDetectedStatus()
+		c.attackDetected = true
 		log.Printf("packet # %d\n", c.packetCount)
 	} else {
 		log.Print("not an attack attempt; a normal TCP retransmission.\n")

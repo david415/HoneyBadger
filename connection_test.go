@@ -24,7 +24,7 @@ func TestStateDataTransfer(t *testing.T) {
 	f := &DefaultConnFactory{}
 	conn := f.Build(options).(*Connection)
 
-	conn.SetState(TCP_DATA_TRANSFER)
+	conn.state = TCP_DATA_TRANSFER
 	clientRingCount := 0
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},
@@ -47,8 +47,8 @@ func TestStateDataTransfer(t *testing.T) {
 		TCP:       tcp,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
-	conn.SetServerFlow(flow)
-	conn.SetClientFlow(flow.Reverse())
+	conn.serverFlow = flow
+	conn.clientFlow = flow.Reverse()
 	conn.clientNextSeq = 9666
 	conn.serverNextSeq = 3
 

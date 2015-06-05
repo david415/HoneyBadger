@@ -58,7 +58,8 @@ func TestInjectionDetector(t *testing.T) {
 		Seq:   types.Sequence(5),
 		Bytes: []byte{1, 2, 3, 4, 5},
 	}
-	conn.AppendToClientStreamRing(&reassembly)
+	conn.ClientStreamRing.Reassembly = &reassembly
+	conn.ClientStreamRing = conn.ClientStreamRing.Next()
 
 	p := types.PacketManifest{
 		IP: layers.IPv4{
@@ -79,9 +80,9 @@ func TestInjectionDetector(t *testing.T) {
 	ipFlow, _ := gopacket.FlowFromEndpoints(layers.NewIPEndpoint(net.IPv4(1, 2, 3, 4)), layers.NewIPEndpoint(net.IPv4(2, 3, 4, 5)))
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
 	serverFlow := types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
-	conn.SetServerFlow(serverFlow)
+	conn.serverFlow = serverFlow
 	clientFlow := serverFlow.Reverse()
-	conn.SetClientFlow(clientFlow)
+	conn.clientFlow = clientFlow
 	conn.detectInjection(&p, serverFlow)
 
 	if attackLogger.Count != 1 {
@@ -147,7 +148,9 @@ func TestGetRingSlice(t *testing.T) {
 			Seq:   types.Sequence(j),
 			Bytes: []byte{1, 2, 3, 4, 5},
 		}
-		conn.AppendToClientStreamRing(&reassembly)
+
+		conn.ClientStreamRing.Reassembly = &reassembly
+		conn.ClientStreamRing = conn.ClientStreamRing.Next()
 	}
 	var startSeq uint32 = 5
 	p := types.PacketManifest{
@@ -170,10 +173,10 @@ func TestGetRingSlice(t *testing.T) {
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
 	serverFlow := types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 	clientFlow := serverFlow.Reverse()
-	conn.SetServerFlow(serverFlow)
-	conn.SetClientFlow(clientFlow)
+	conn.serverFlow = serverFlow
+	conn.clientFlow = clientFlow
 
-	head, tail := getOverlapRings(&p, serverFlow, conn.GetClientStreamRing())
+	head, tail := getOverlapRings(&p, serverFlow, conn.ClientStreamRing)
 
 	if head == nil {
 		t.Fatal()
@@ -240,7 +243,7 @@ func TestGetRingSlice(t *testing.T) {
 		Payload: []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
 	}
 
-	head, tail = getOverlapRings(&p, serverFlow, conn.GetClientStreamRing())
+	head, tail = getOverlapRings(&p, serverFlow, conn.ClientStreamRing)
 
 	log.Printf("sequence of head %d", head.Reassembly.Seq)
 	log.Printf("and tail %d", tail.Reassembly.Seq)
@@ -474,7 +477,8 @@ func TestGetOverlapBytes(t *testing.T) {
 			Seq:   types.Sequence(j),
 			Bytes: []byte{byte(j + 1), byte(j + 2), byte(j + 3), byte(j + 4), byte(j + 5)},
 		}
-		conn.AppendToClientStreamRing(&reassembly)
+		conn.ClientStreamRing.Reassembly = &reassembly
+		conn.ClientStreamRing = conn.ClientStreamRing.Next()
 	}
 	for i := 0; i < len(overlapBytesTests); i++ {
 		var startSeq uint32 = overlapBytesTests[i].in.Seq
@@ -500,10 +504,10 @@ func TestGetOverlapBytes(t *testing.T) {
 		tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
 		serverFlow := types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 		clientFlow := serverFlow.Reverse()
-		conn.SetServerFlow(serverFlow)
-		conn.SetClientFlow(clientFlow)
+		conn.serverFlow = serverFlow
+		conn.clientFlow = clientFlow
 
-		head, tail := getOverlapRings(&p, serverFlow, conn.GetClientStreamRing())
+		head, tail := getOverlapRings(&p, serverFlow, conn.ClientStreamRing)
 		if head == nil || tail == nil {
 			t.Errorf("%d getOverlapRings returned a nil\n", i)
 			t.Fail()
@@ -567,10 +571,10 @@ func TestGetOverlapRingsWithZeroRings(t *testing.T) {
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
 	serverFlow := types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 	clientFlow := serverFlow.Reverse()
-	conn.SetServerFlow(serverFlow)
-	conn.SetClientFlow(clientFlow)
+	conn.serverFlow = serverFlow
+	conn.clientFlow = clientFlow
 
-	head, tail := getOverlapRings(&p, serverFlow, conn.GetClientStreamRing())
+	head, tail := getOverlapRings(&p, serverFlow, conn.ClientStreamRing)
 	if head == nil || tail == nil {
 		return
 	} else {
@@ -751,7 +755,8 @@ func TestGetOverlapRings(t *testing.T) {
 			Seq:   types.Sequence(j),
 			Bytes: []byte{1, 2, 3, 4, 5},
 		}
-		conn.AppendToClientStreamRing(&reassembly)
+		conn.ClientStreamRing.Reassembly = &reassembly
+		conn.ClientStreamRing = conn.ClientStreamRing.Next()
 	}
 
 	for i := 0; i < len(overlapTests); i++ {
@@ -772,10 +777,10 @@ func TestGetOverlapRings(t *testing.T) {
 		tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
 		serverFlow := types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 		clientFlow := serverFlow.Reverse()
-		conn.SetServerFlow(serverFlow)
-		conn.SetClientFlow(clientFlow)
+		conn.serverFlow = serverFlow
+		conn.clientFlow = clientFlow
 
-		head, tail := getOverlapRings(&p, serverFlow, conn.GetClientStreamRing())
+		head, tail := getOverlapRings(&p, serverFlow, conn.ClientStreamRing)
 
 		log.Printf("head %v tail %v", head, tail)
 
