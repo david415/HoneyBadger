@@ -57,7 +57,9 @@ func TestStateDataTransfer(t *testing.T) {
 		t.Error("invalid state transition\n")
 		t.Fail()
 	}
+
 	clientRingCount = conn.ClientStreamRing.Prev().Count()
+
 	if clientRingCount != 1 {
 		t.Errorf("clientRingCount %d not correct", clientRingCount)
 		t.Fail()
@@ -104,6 +106,7 @@ func TestStateDataTransfer(t *testing.T) {
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
 	conn.ReceivePacket(&p)
+
 	if conn.state != TCP_DATA_TRANSFER {
 		t.Error("invalid state transition\n")
 		t.Fail()

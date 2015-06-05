@@ -82,7 +82,7 @@ func TestInjectionDetector(t *testing.T) {
 	conn.SetServerFlow(serverFlow)
 	clientFlow := serverFlow.Reverse()
 	conn.SetClientFlow(clientFlow)
-	conn.detectInjection(p, serverFlow)
+	conn.detectInjection(&p, serverFlow)
 
 	if attackLogger.Count != 1 {
 		t.Errorf("detectInjection failed; count == %d\n", attackLogger.Count)
@@ -96,7 +96,7 @@ func TestInjectionDetector(t *testing.T) {
 		DstPort: 2,
 	}
 	p.Payload = []byte{3, 4, 5}
-	conn.detectInjection(p, serverFlow)
+	conn.detectInjection(&p, serverFlow)
 	if attackLogger.Count == 0 {
 		t.Error("failed to detect injection\n")
 		t.Fail()
@@ -110,7 +110,7 @@ func TestInjectionDetector(t *testing.T) {
 		DstPort: 2,
 	}
 	p.Payload = []byte{1, 2, 3, 4, 5, 6}
-	conn.detectInjection(p, serverFlow)
+	conn.detectInjection(&p, serverFlow)
 	if attackLogger.Count == 0 {
 		t.Error("failed to detect injection\n")
 		t.Fail()
@@ -124,7 +124,7 @@ func TestInjectionDetector(t *testing.T) {
 		DstPort: 2,
 	}
 	p.Payload = []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17}
-	conn.detectInjection(p, serverFlow)
+	conn.detectInjection(&p, serverFlow)
 	if attackLogger.Count != 1 {
 		t.Error("injection detection failure\n")
 		t.Fail()
@@ -173,7 +173,7 @@ func TestGetRingSlice(t *testing.T) {
 	conn.SetServerFlow(serverFlow)
 	conn.SetClientFlow(clientFlow)
 
-	head, tail := getOverlapRings(p, serverFlow, conn.GetClientStreamRing())
+	head, tail := getOverlapRings(&p, serverFlow, conn.GetClientStreamRing())
 
 	if head == nil {
 		t.Fatal()
@@ -240,7 +240,7 @@ func TestGetRingSlice(t *testing.T) {
 		Payload: []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
 	}
 
-	head, tail = getOverlapRings(p, serverFlow, conn.GetClientStreamRing())
+	head, tail = getOverlapRings(&p, serverFlow, conn.GetClientStreamRing())
 
 	log.Printf("sequence of head %d", head.Reassembly.Seq)
 	log.Printf("and tail %d", tail.Reassembly.Seq)
@@ -503,7 +503,7 @@ func TestGetOverlapBytes(t *testing.T) {
 		conn.SetServerFlow(serverFlow)
 		conn.SetClientFlow(clientFlow)
 
-		head, tail := getOverlapRings(p, serverFlow, conn.GetClientStreamRing())
+		head, tail := getOverlapRings(&p, serverFlow, conn.GetClientStreamRing())
 		if head == nil || tail == nil {
 			t.Errorf("%d getOverlapRings returned a nil\n", i)
 			t.Fail()
@@ -570,7 +570,7 @@ func TestGetOverlapRingsWithZeroRings(t *testing.T) {
 	conn.SetServerFlow(serverFlow)
 	conn.SetClientFlow(clientFlow)
 
-	head, tail := getOverlapRings(p, serverFlow, conn.GetClientStreamRing())
+	head, tail := getOverlapRings(&p, serverFlow, conn.GetClientStreamRing())
 	if head == nil || tail == nil {
 		return
 	} else {
@@ -775,7 +775,7 @@ func TestGetOverlapRings(t *testing.T) {
 		conn.SetServerFlow(serverFlow)
 		conn.SetClientFlow(clientFlow)
 
-		head, tail := getOverlapRings(p, serverFlow, conn.GetClientStreamRing())
+		head, tail := getOverlapRings(&p, serverFlow, conn.GetClientStreamRing())
 
 		log.Printf("head %v tail %v", head, tail)
 

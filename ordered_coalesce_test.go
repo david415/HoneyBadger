@@ -44,7 +44,7 @@ func TestOrderedCoalesceUsedPages(t *testing.T) {
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
 
-	coalesce.insert(p, nextSeq)
+	coalesce.insert(&p, nextSeq)
 
 	if coalesce.PageCache.used != 1 {
 		t.Errorf("coalesce.pager.Used() not equal to 1\n")

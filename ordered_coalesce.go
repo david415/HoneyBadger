@@ -158,7 +158,7 @@ func (o *OrderedCoalesce) Close() {
 	}
 }
 
-func (o *OrderedCoalesce) insert(packetManifest types.PacketManifest, nextSeq types.Sequence) (types.Sequence, bool) {
+func (o *OrderedCoalesce) insert(packetManifest *types.PacketManifest, nextSeq types.Sequence) (types.Sequence, bool) {
 	isEnd := false
 	if o.first != nil && o.first.Seq == nextSeq {
 		panic("wtf")
@@ -206,7 +206,7 @@ func (o *OrderedCoalesce) flushUntilThreshold(nextSeq types.Sequence) (types.Seq
 // correctly.
 //
 // It returns the first and last page in its doubly-linked list of new pages.
-func (o *OrderedCoalesce) pagesFromTcp(p types.PacketManifest) (*page, *page, int) {
+func (o *OrderedCoalesce) pagesFromTcp(p *types.PacketManifest) (*page, *page, int) {
 	first := o.PageCache.next(p.Timestamp)
 	count := 1
 	current := first
@@ -323,7 +323,7 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) (types.Sequence, bool)
 					Seq: uint32(o.first.Seq),
 				},
 			}
-			event := injectionInStreamRing(p, o.Flow, o.StreamRing, "coalesce injection", 0)
+			event := injectionInStreamRing(&p, o.Flow, o.StreamRing, "coalesce injection", 0)
 			if event != nil {
 				o.log.Log(event)
 			} else {

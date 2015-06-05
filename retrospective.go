@@ -43,7 +43,10 @@ func displayRingSummary(ringHeadPtr *types.Ring) {
 	}
 }
 
-func injectionInStreamRing(p types.PacketManifest, flow *types.TcpIpFlow, ringPtr *types.Ring, eventType string, packetCount uint64) *types.Event {
+func injectionInStreamRing(p *types.PacketManifest, flow *types.TcpIpFlow, ringPtr *types.Ring, eventType string, packetCount uint64) *types.Event {
+
+	log.Printf("injectionInStreamRing: packetCount %d", packetCount)
+
 	start := types.Sequence(p.TCP.Seq)
 	end := start.Add(len(p.Payload) - 1)
 	head, tail := getOverlapRings(p, flow, ringPtr)
@@ -80,7 +83,6 @@ func injectionInStreamRing(p types.PacketManifest, flow *types.TcpIpFlow, ringPt
 	if !bytes.Equal(overlapBytes, p.Payload[startOffset:endOffset]) {
 		log.Printf("injection attack detected at packet # %d with TCP.Seq %d\n", packetCount, p.TCP.Seq)
 		log.Printf("len overlapBytes %d len Payload slice %d\n", len(overlapBytes), len(p.Payload[startOffset:endOffset]))
-		displayRingSummary(ringPtr)
 		log.Print("overlapBytes:")
 		log.Print(hex.Dump(overlapBytes))
 		log.Print("packet payload slice:")
@@ -181,11 +183,13 @@ func getOverlapBytes(head, tail *types.Ring, start, end types.Sequence) ([]byte,
 			}
 		} else {
 			if diff > packetLength {
+				// XXX should we opt out instead of making the comparison?
 				overlapEndSlice = packetLength
 			} else {
 				overlapEndSlice = packetLength - diff
 				if overlapEndSlice < overlapStartSlice {
-					panic("wtf")
+					// XXX wtf
+					return nil, 0, 0
 				}
 			}
 			tailSlice = len(tail.Reassembly.Bytes)
@@ -202,7 +206,7 @@ func getOverlapBytes(head, tail *types.Ring, start, end types.Sequence) ([]byte,
 // overlapping ring segments... that overlap with the given packet (types.PacketManifest).
 // Furthermore geOverlapRings also will make sure none of these ring elements will have a Reassembly.Skip value
 // other than 0 (zero).
-func getOverlapRings(p types.PacketManifest, flow *types.TcpIpFlow, ringPtr *types.Ring) (*types.Ring, *types.Ring) {
+func getOverlapRings(p *types.PacketManifest, flow *types.TcpIpFlow, ringPtr *types.Ring) (*types.Ring, *types.Ring) {
 	var head, tail *types.Ring
 	start := types.Sequence(p.TCP.Seq)
 	end := start.Add(len(p.Payload) - 1)
