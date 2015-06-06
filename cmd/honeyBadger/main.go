@@ -35,7 +35,7 @@ func main() {
 		iface                    = flag.String("i", "eth0", "Interface to get packets from")
 		snaplen                  = flag.Int("s", 65536, "SnapLen for pcap packet capture")
 		filter                   = flag.String("f", "tcp", "BPF filter for pcap")
-		logDir                   = flag.String("l", "honeyBadger-logs", "log directory")
+		logDir                   = flag.String("l", "", "incoming log dir used initially for pcap files if packet logging is enabled")
 		wireTimeout              = flag.String("w", "3s", "timeout for reading packets off the wire")
 		metadataAttackLog        = flag.Bool("metadata_attack_log", true, "if set to true then attack reports will only include metadata")
 		logPackets               = flag.Bool("log_packets", false, "if set to true then log all packets for each tracked TCP connection")
@@ -55,17 +55,25 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		maxPcapLogSize      = flag.Int("max_pcap_log_size", 1, "maximum pcap size per rotation in megabytes")
 		maxNumPcapRotations = flag.Int("max_pcap_rotations", 10, "maximum number of pcap rotations per connection")
 		archiveDir          = flag.String("archive_dir", "", "archive directory for storing attack logs and related pcap files")
-		useAfPacket         = flag.Bool("afpacket", true, "Use AF_PACKET")
+		useAfPacket         = flag.Bool("afpacket", false, "Use AF_PACKET for faster, harder sniffing of packets.")
 	)
 	flag.Parse()
+
+	if *archiveDir == "" || *logDir == "" {
+		log.Fatal("must specify both incoming log dir and archive log dir")
+	}
 
 	wireDuration, err := time.ParseDuration(*wireTimeout)
 	if err != nil {
 		log.Fatal("invalid wire timeout duration: ", *wireTimeout)
 	}
 
-	if *maxConcurrentConnections == 0 && *bufferedTotal == 0 {
-		log.Fatal("connection_max_buffer and or total_max_buffer must be set to a non-zero value")
+	if *maxConcurrentConnections == 0 {
+		log.Fatal("maxConcurrentConnections must be specified")
+	}
+
+	if *bufferedPerConnection == 0 || *bufferedTotal == 0 {
+		log.Fatal("connection_max_buffer and total_max_buffer must be set to a non-zero value")
 	}
 
 	var logger types.Logger
