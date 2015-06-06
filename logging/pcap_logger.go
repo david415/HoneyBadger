@@ -29,7 +29,7 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcapgo"
-	
+
 	"github.com/david415/HoneyBadger/types"
 )
 
@@ -107,7 +107,7 @@ func (p *PcapLogger) Stop() {
 }
 
 func (p *PcapLogger) Archive() {
-	newBasename := filepath.Join(p.LogDir, filepath.Base(p.basename))
+	newBasename := filepath.Join(p.ArchiveDir, filepath.Base(p.basename))
 	os.Rename(p.basename, newBasename)
 	for i := 1; i < p.pcapLogNum+1; i++ {
 		os.Rename(filepath.Join(p.LogDir, fmt.Sprintf("%s.pcap.%d", p.Flow.String(), i)), fmt.Sprintf("%s.%d", newBasename, i))
