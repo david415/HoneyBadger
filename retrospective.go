@@ -87,6 +87,7 @@ func injectionInStreamRing(p *types.PacketManifest, flow *types.TcpIpFlow, ringP
 
 		e := &types.Event{
 			Type:          eventType,
+			PacketCount:   packetCount,
 			Time:          time.Now(),
 			Flow:          flow,
 			Payload:       p.Payload,
