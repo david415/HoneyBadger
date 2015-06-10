@@ -238,14 +238,14 @@ func (c *Connection) detectInjection(p *types.PacketManifest, flow *types.TcpIpF
 func (c *Connection) stateUnknown(p *types.PacketManifest) {
 	if p.TCP.SYN && !p.TCP.ACK {
 		c.state = TCP_CONNECTION_REQUEST
-		*c.clientFlow = *p.Flow
-		*c.serverFlow = *p.Flow.Reverse()
+		c.clientFlow = p.Flow
+		c.serverFlow = p.Flow.Reverse()
 
 		// Note that TCP SYN and SYN/ACK packets may contain payload data if
 		// a TCP extension is used...
 		// If so then the sequence number needs to track this payload.
 		// For more information see: https://tools.ietf.org/id/draft-agl-tcpm-sadata-00.html
-		c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1) // XXX
+		c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
 		c.hijackNextAck = c.clientNextSeq
 
 	} else {
@@ -256,9 +256,8 @@ func (c *Connection) stateUnknown(p *types.PacketManifest) {
 
 		// skip handshake hijack detection completely
 		c.skipHijackDetectionCount = 0
-		c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1) // XXX
+		c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
 
-		// XXX can we improve this section
 		if p.TCP.FIN || p.TCP.RST {
 			c.state = TCP_CLOSED
 			c.closingFlow = p.Flow
