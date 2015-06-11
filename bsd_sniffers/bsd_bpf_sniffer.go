@@ -1,24 +1,30 @@
-package main
+// +build darwin dragonfly freebsd netbsd openbsd
+
+/*
+ * This rough sketch of a golang API for a Berkeley packet filter sniffer for BSD variants.
+ * It provides only the capability to sniff ethernet frames... but could easily be extended for
+ * sending frames as well.
+ *
+ * This file was inspired by BSD licensed code from https://github.com/songgao/ether
+ *
+ * ( http://opensource.org/licenses/BSD-3-Clause )
+ *
+ * The bpf_wordalign function was borrowed... and readFrames was very much inspired by
+ * design I saw in songgao's ether git repository; the rest of the code I wrote myself ;-)
+ *
+ * Author: David Anthony Stainton
+ * License: BSD
+ *
+ */
+
+package bsd_sniffers
 
 import (
-	"fmt"
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
 	"syscall"
 	"unsafe"
 )
 
-// FreeBSD amd64 word length
-//const wordSize = 8
 const wordSize = int(unsafe.Sizeof(uintptr(0)))
-
-// FreeBSD style bpf_hdr
-type bpf_hdr struct {
-	bh_tstamp  syscall.Timeval // 8 or 16 bytes depending on arch
-	bh_caplen  uint32
-	bh_datalen uint32
-	bh_hdrlen  uint16
-}
 
 func bpf_wordalign(x int) int {
 	return (((x) + (wordSize - 1)) &^ (wordSize - 1))
@@ -43,7 +49,7 @@ func (b *BpfSniffer) Init(name string) error {
 	enable := 1
 
 	for i := 0; i < 99; i++ {
-		b.fd, err = syscall.Open("/dev/bpf0", syscall.O_RDWR, 0) // XXX 0
+		b.fd, err = syscall.Open("/dev/bpf0", syscall.O_RDWR, 0)
 		if err == nil {
 			break
 		}
@@ -107,31 +113,4 @@ func (b *BpfSniffer) readFrames() {
 func (b *BpfSniffer) ReadFrame() []byte {
 	frame := <-b.readChan
 	return frame
-}
-
-func main() {
-	var err error
-	sniffer := NewBpfSniffer()
-	err = sniffer.Init("vtnet0")
-	if err != nil {
-		panic(err)
-	}
-
-	for {
-		buf := sniffer.ReadFrame()
-		// Decode a packet
-		packet := gopacket.NewPacket(buf, layers.LayerTypeEthernet, gopacket.Default)
-		// Get the TCP layer from this packet
-		if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
-			fmt.Println("This is a TCP packet!")
-			// Get actual TCP data from this layer
-			tcp, _ := tcpLayer.(*layers.TCP)
-			fmt.Printf("From src port %d to dst port %d\n", tcp.SrcPort, tcp.DstPort)
-		}
-
-		// Iterate over all layers, printing out each layer type
-		for _, layer := range packet.Layers() {
-			fmt.Println("PACKET LAYER:", layer.LayerType())
-		}
-	}
 }
