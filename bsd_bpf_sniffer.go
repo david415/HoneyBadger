@@ -67,7 +67,7 @@ func (b *BpfSniffer) Init(name string) error {
 		return err
 	}
 
-	go b.readPackets()
+	go b.readFrames()
 	return nil
 }
 
@@ -75,7 +75,7 @@ func (b *BpfSniffer) Stop() {
 	b.stopChan <- true
 }
 
-func (b *BpfSniffer) readPackets() {
+func (b *BpfSniffer) readFrames() {
 
 	bufLen, err := syscall.BpfBuflen(b.fd)
 	if err != nil {
