@@ -56,6 +56,7 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		maxNumPcapRotations = flag.Int("max_pcap_rotations", 10, "maximum number of pcap rotations per connection")
 		archiveDir          = flag.String("archive_dir", "", "archive directory for storing attack logs and related pcap files")
 		useAfPacket         = flag.Bool("afpacket", false, "Use AF_PACKET for faster, harder sniffing of packets.")
+		useBpf              = flag.Bool("bpf", false, "Use *BSD-only BPF for sniffing packets on non-Linux systems.")
 	)
 	flag.Parse()
 
@@ -113,6 +114,7 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		Snaplen:      int32(*snaplen),
 		Filter:       *filter,
 		UseAfPacket:  *useAfPacket,
+		UseBpf:       *useBpf,
 	}
 
 	connectionFactory := &HoneyBadger.DefaultConnFactory{}

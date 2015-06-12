@@ -17,10 +17,13 @@
  *
  */
 
-package bsd_sniffers
+package bpf_sniffer
 
 import (
+	"fmt"
+	"github.com/google/gopacket"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -30,17 +33,22 @@ func bpf_wordalign(x int) int {
 	return (((x) + (wordSize - 1)) &^ (wordSize - 1))
 }
 
+type TimedFrame struct {
+	RawFrame  []byte
+	Timestamp time.Time
+}
+
 type BpfSniffer struct {
 	fd       int
 	name     string
 	stopChan chan bool
-	readChan chan []byte
+	readChan chan TimedFrame
 }
 
 func NewBpfSniffer() *BpfSniffer {
 	return &BpfSniffer{
 		stopChan: make(chan bool, 0),
-		readChan: make(chan []byte, 0),
+		readChan: make(chan TimedFrame, 0),
 	}
 }
 
@@ -49,7 +57,7 @@ func (b *BpfSniffer) Init(name string) error {
 	enable := 1
 
 	for i := 0; i < 99; i++ {
-		b.fd, err = syscall.Open("/dev/bpf0", syscall.O_RDWR, 0)
+		b.fd, err = syscall.Open(fmt.Sprintf("/dev/bpf%d", i), syscall.O_RDWR, 0)
 		if err == nil {
 			break
 		}
@@ -97,20 +105,34 @@ func (b *BpfSniffer) readFrames() {
 		default:
 			n, err = syscall.Read(b.fd, buf)
 			if err != nil {
-				return
-			}
-			p := int(0)
-			for p < n {
-				hdr := (*bpf_hdr)(unsafe.Pointer(&buf[p]))
-				frameStart := p + int(hdr.bh_hdrlen)
-				b.readChan <- buf[frameStart : frameStart+int(hdr.bh_caplen)]
-				p += bpf_wordalign(int(hdr.bh_hdrlen) + int(hdr.bh_caplen))
+				continue
+			} else {
+				p := int(0)
+				for p < n {
+					hdr := (*bpf_hdr)(unsafe.Pointer(&buf[p]))
+					frameStart := p + int(hdr.bh_hdrlen)
+					b.readChan <- TimedFrame{
+						RawFrame:  buf[frameStart : frameStart+int(hdr.bh_caplen)],
+						Timestamp: time.Unix(hdr.bh_tstamp.Unix()),
+					}
+					p += bpf_wordalign(int(hdr.bh_hdrlen) + int(hdr.bh_caplen))
+				}
 			}
 		}
 	}
 }
 
-func (b *BpfSniffer) ReadFrame() []byte {
-	frame := <-b.readChan
-	return frame
+func (b *BpfSniffer) ReadTimedFrame() TimedFrame {
+	timedFrame := <-b.readChan
+	return timedFrame
+}
+
+func (b *BpfSniffer) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
+	timedFrame := b.ReadTimedFrame()
+	captureInfo := gopacket.CaptureInfo{
+		Timestamp:     timedFrame.Timestamp,
+		CaptureLength: len(timedFrame.RawFrame),
+		Length:        len(timedFrame.RawFrame),
+	}
+	return timedFrame.RawFrame, captureInfo, nil
 }

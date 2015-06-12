@@ -8,7 +8,7 @@
  *
  */
 
-package bsd_sniffers
+package bpf_sniffer
 
 import "syscall"
 
