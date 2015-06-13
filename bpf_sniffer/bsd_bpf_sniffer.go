@@ -25,6 +25,7 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+	"golang.org/x/sys/unix"
 )
 
 const wordSize = int(unsafe.Sizeof(uintptr(0)))
@@ -90,7 +91,6 @@ func (b *BpfSniffer) Stop() {
 }
 
 func (b *BpfSniffer) readFrames() {
-
 	bufLen, err := syscall.BpfBuflen(b.fd)
 	if err != nil {
 		panic(err)
@@ -109,13 +109,13 @@ func (b *BpfSniffer) readFrames() {
 			} else {
 				p := int(0)
 				for p < n {
-					hdr := (*bpf_hdr)(unsafe.Pointer(&buf[p]))
-					frameStart := p + int(hdr.bh_hdrlen)
+					hdr := (*unix.BpfHdr)(unsafe.Pointer(&buf[p]))
+					frameStart := p + int(hdr.Hdrlen)
 					b.readChan <- TimedFrame{
-						RawFrame:  buf[frameStart : frameStart+int(hdr.bh_caplen)],
-						Timestamp: time.Unix(hdr.bh_tstamp.Unix()),
+						RawFrame:  buf[frameStart : frameStart+int(hdr.Caplen)],
+						Timestamp: time.Unix(hdr.Tstamp.Unix()),
 					}
-					p += bpf_wordalign(int(hdr.bh_hdrlen) + int(hdr.bh_caplen))
+					p += bpf_wordalign(int(hdr.Hdrlen) + int(hdr.Caplen))
 				}
 			}
 		}
