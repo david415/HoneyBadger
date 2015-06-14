@@ -10,7 +10,7 @@ import (
 func main() {
 	var err error
 	sniffer := bpf_sniffer.NewBpfSniffer()
-	err = sniffer.Init("vtnet0")
+	err = sniffer.Init("vio0")
 	if err != nil {
 		panic(err)
 	}

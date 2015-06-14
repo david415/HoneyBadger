@@ -22,10 +22,10 @@ package bpf_sniffer
 import (
 	"fmt"
 	"github.com/google/gopacket"
+	"golang.org/x/sys/unix"
 	"syscall"
 	"time"
 	"unsafe"
-	"golang.org/x/sys/unix"
 )
 
 const wordSize = int(unsafe.Sizeof(uintptr(0)))
@@ -95,6 +95,7 @@ func (b *BpfSniffer) readFrames() {
 	if err != nil {
 		panic(err)
 	}
+	fmt.Printf("buflen is %d\n", bufLen)
 	buf := make([]byte, bufLen)
 	var n int
 
@@ -113,7 +114,7 @@ func (b *BpfSniffer) readFrames() {
 					frameStart := p + int(hdr.Hdrlen)
 					b.readChan <- TimedFrame{
 						RawFrame:  buf[frameStart : frameStart+int(hdr.Caplen)],
-						Timestamp: time.Unix(hdr.Tstamp.Unix()),
+						Timestamp: time.Unix(int64(hdr.Tstamp.Sec), int64(hdr.Tstamp.Usec)*1000),
 					}
 					p += bpf_wordalign(int(hdr.Hdrlen) + int(hdr.Caplen))
 				}
