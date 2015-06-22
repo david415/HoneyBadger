@@ -17,7 +17,7 @@ type MockSniffer struct {
 	startedChan chan bool
 }
 
-func NewMockSniffer(options SnifferOptions) types.PacketSource {
+func NewMockSniffer(options *types.SnifferDriverOptions, dispatcher PacketDispatcher) types.PacketSource {
 	var packetSource types.PacketSource = &MockSniffer{
 		startedChan: make(chan bool, 0),
 	}
@@ -137,8 +137,8 @@ func SetupTestInquisitor() (*BadgerSupervisor, PacketDispatcher, types.PacketSou
 	}
 
 	wireDuration, _ := time.ParseDuration("3s")
-	snifferOptions := SnifferOptions{
-		Interface:    "myInterface",
+	snifferOptions := types.SnifferDriverOptions{
+		Device:       "myInterface",
 		Filename:     "",
 		WireDuration: wireDuration,
 		Snaplen:      65536,
@@ -146,7 +146,7 @@ func SetupTestInquisitor() (*BadgerSupervisor, PacketDispatcher, types.PacketSou
 	}
 	factory := mockConnFactory{}
 	mockPacketLoggerFactory := MockPacketLoggerFactory{}
-	supervisor := NewBadgerSupervisor(snifferOptions, dispatcherOptions, NewMockSniffer, &factory, mockPacketLoggerFactory)
+	supervisor := NewBadgerSupervisor(&snifferOptions, dispatcherOptions, NewMockSniffer, &factory, mockPacketLoggerFactory)
 	go supervisor.Run()
 	sniffer := supervisor.GetSniffer()
 	startedChan := sniffer.GetStartedChan()
@@ -301,8 +301,8 @@ func SetupRealConnectionInquisitor() (*BadgerSupervisor, PacketDispatcher, types
 	}
 
 	wireDuration, _ := time.ParseDuration("3s")
-	snifferOptions := SnifferOptions{
-		Interface:    "myInterface",
+	snifferOptions := types.SnifferDriverOptions{
+		Device:       "myInterface",
 		Filename:     "",
 		WireDuration: wireDuration,
 		Snaplen:      65536,
@@ -311,7 +311,7 @@ func SetupRealConnectionInquisitor() (*BadgerSupervisor, PacketDispatcher, types
 
 	factory := &DefaultConnFactory{}
 	mockPacketLoggerFactory := MockPacketLoggerFactory{}
-	supervisor := NewBadgerSupervisor(snifferOptions, dispatcherOptions, NewMockSniffer, factory, mockPacketLoggerFactory)
+	supervisor := NewBadgerSupervisor(&snifferOptions, dispatcherOptions, NewMockSniffer, factory, mockPacketLoggerFactory)
 	go supervisor.Run()
 	sniffer := supervisor.GetSniffer()
 	startedChan := sniffer.GetStartedChan()
