@@ -20,50 +20,32 @@
 package HoneyBadger
 
 import (
-	"io"
-	"log"
-	"time"
-
+	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"io"
+	"log"
 
-	"github.com/david415/HoneyBadger/afpacket_sniffer"
-	"github.com/david415/HoneyBadger/bpf_sniffer"
-	"github.com/david415/HoneyBadger/pcap_sniffer"
+	"github.com/david415/HoneyBadger/drivers"
 	"github.com/david415/HoneyBadger/types"
 )
-
-// SnifferOptions are user set parameters for specifying how to
-// receive packets.
-type SnifferOptions struct {
-	Interface    string
-	Filename     string
-	WireDuration time.Duration
-	Filter       string
-	Snaplen      int32
-	Dispatcher   PacketDispatcher
-	Supervisor   types.Supervisor
-	UseAfPacket  bool
-	UseBpf       bool
-}
 
 // Sniffer sets up the connection pool and is an abstraction layer for dealing
 // with incoming packets weather they be from a pcap file or directly off the wire.
 type Sniffer struct {
-	options          SnifferOptions
+	options          *types.SnifferDriverOptions
+	supervisor       types.Supervisor
+	dispatcher       PacketDispatcher
+	packetDataSource types.PacketDataSourceCloser
 	stopCaptureChan  chan bool
 	decodePacketChan chan TimedRawPacket
 	stopDecodeChan   chan bool
-	supervisor       types.Supervisor
-	packetDataSource gopacket.PacketDataSource
-	pcapHandle       *pcap_sniffer.PcapHandle
-	afpacketHandle   *afpacket_sniffer.AfpacketHandle
-	bpfHandle        *bpf_sniffer.BpfSniffer
 }
 
 // NewSniffer creates a new Sniffer struct
-func NewSniffer(options SnifferOptions) types.PacketSource {
+func NewSniffer(options *types.SnifferDriverOptions, dispatcher PacketDispatcher) types.PacketSource {
 	i := Sniffer{
+		dispatcher:       dispatcher,
 		options:          options,
 		stopCaptureChan:  make(chan bool),
 		decodePacketChan: make(chan TimedRawPacket),
@@ -75,15 +57,16 @@ func NewSniffer(options SnifferOptions) types.PacketSource {
 func (i *Sniffer) SetSupervisor(supervisor types.Supervisor) {
 	i.supervisor = supervisor
 }
+
 func (i *Sniffer) GetStartedChan() chan bool {
 	return make(chan bool)
 }
 
 // Start... starts the TCP attack inquisition!
 func (i *Sniffer) Start() {
-	if i.pcapHandle == nil && i.afpacketHandle == nil {
-		i.setupHandle()
-	}
+	// XXX
+	i.setupHandle()
+
 	go i.capturePackets()
 	go i.decodePackets()
 }
@@ -91,35 +74,32 @@ func (i *Sniffer) Start() {
 func (i *Sniffer) Stop() {
 	i.stopCaptureChan <- true
 	i.stopDecodeChan <- true
-	if i.pcapHandle != nil {
-		i.pcapHandle.Close()
-	} else {
-		i.afpacketHandle.Close()
+	if i.packetDataSource != nil {
+		i.packetDataSource.Close()
 	}
 }
 
 func (i *Sniffer) setupHandle() {
 	var err error
-	if i.options.UseBpf { // sniff BSD BPF
-		i.bpfHandle = bpf_sniffer.NewBpfSniffer()
-		err = i.bpfHandle.Init(i.options.Interface)
-		i.packetDataSource = i.bpfHandle
-	} else if i.options.UseAfPacket { // sniff AF_PACKET
-		log.Printf("Starting AF_PACKET capture on interface %s", i.options.Interface)
-		i.afpacketHandle, err = afpacket_sniffer.NewAfpacketHandle(i.options.Interface)
-		i.packetDataSource = i.afpacketHandle
-	} else if i.options.Filename != "" { // sniff pcap file
-		log.Printf("Reading from pcap file %q", i.options.Filename)
-		i.pcapHandle, err = pcap_sniffer.NewPcapFileSniffer(i.options.Filename)
-		i.packetDataSource = i.pcapHandle
-	} else { // sniff pcap wire interface
-		log.Printf("Starting pcap capture on interface %q", i.options.Interface)
-		i.pcapHandle, err = pcap_sniffer.NewPcapWireSniffer(i.options.Interface, i.options.Snaplen, i.options.WireDuration, i.options.Filter)
-		i.packetDataSource = i.pcapHandle
+	var what string
+
+	factory, ok := drivers.Drivers[i.options.DAQ]
+	if !ok {
+		log.Fatal(fmt.Sprintf("%s Sniffer not supported on this system", i.options.DAQ))
 	}
+	i.packetDataSource, err = factory(i.options)
+
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
+
+	if i.options.Filename != "" {
+		what = fmt.Sprintf("file %s", i.options.Filename)
+	} else {
+		what = fmt.Sprintf("interface %s", i.options.Device)
+	}
+
+	log.Printf("Starting %s packet capture on %s", i.options.DAQ, what)
 }
 
 func (i *Sniffer) capturePackets() {
@@ -185,7 +165,7 @@ func (i *Sniffer) decodePackets() {
 				TCP:       tcp,
 				Payload:   payload,
 			}
-			i.options.Dispatcher.ReceivePacket(&packetManifest)
+			i.dispatcher.ReceivePacket(&packetManifest)
 		}
 	}
 }

@@ -1,4 +1,4 @@
-// +build !linux
+// +build linux
 
 /*
  *    HoneyBadger core library for detecting TCP injection attacks
@@ -19,27 +19,63 @@
  *    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package pcap_sniffer
+package drivers
 
 import (
 	"github.com/google/gopacket"
+	"github.com/google/gopacket/pcap"
 	"time"
+
+	"github.com/david415/HoneyBadger/types"
 )
 
+func init() {
+	SnifferRegister("PcapSniffer", NewPcapSniffer)
+}
+
 type PcapHandle struct {
+	handle *pcap.Handle
+}
+
+func NewPcapSniffer(options *types.SnifferDriverOptions) (types.PacketDataSourceCloser, error) {
+	if options.Filename != "" {
+		pcapFileHandle, err := pcap.OpenOffline(options.Filename)
+		pcapHandle := PcapHandle{
+			handle: pcapFileHandle,
+		}
+		return &pcapHandle, err
+	} else {
+		pcapWireHandle, err := pcap.OpenLive(options.Device, options.Snaplen, true, options.WireDuration)
+		pcapHandle := PcapHandle{
+			handle: pcapWireHandle,
+		}
+		err = pcapHandle.handle.SetBPFFilter(options.Filter)
+		return &pcapHandle, err
+	}
 }
 
 func NewPcapFileSniffer(filename string) (*PcapHandle, error) {
-	return &PcapHandle{}, nil
+	pcapFileHandle, err := pcap.OpenOffline(filename)
+	pcapHandle := PcapHandle{
+		handle: pcapFileHandle,
+	}
+	return &pcapHandle, err
 }
 
 func NewPcapWireSniffer(netDevice string, snaplen int32, wireDuration time.Duration, filter string) (*PcapHandle, error) {
-	return &PcapHandle{}, nil
+	pcapWireHandle, err := pcap.OpenLive(netDevice, snaplen, true, wireDuration)
+	pcapHandle := PcapHandle{
+		handle: pcapWireHandle,
+	}
+	err = pcapHandle.handle.SetBPFFilter(filter)
+	return &pcapHandle, err
 }
 
 func (p *PcapHandle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
-	panic("libpcap only for linux...")
+	return p.handle.ReadPacketData()
 }
 
-func (p *PcapHandle) Close() {
+func (p *PcapHandle) Close() error {
+	p.handle.Close()
+	return nil
 }

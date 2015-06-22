@@ -1,4 +1,4 @@
-// +build !linux
+// +build darwin dragonfly freebsd netbsd openbsd
 
 /*
  *    HoneyBadger core library for detecting TCP injection attacks
@@ -19,22 +19,35 @@
  *    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package afpacket_sniffer
+package drivers
 
 import (
 	"github.com/google/gopacket"
+	"github.com/google/gopacket/bsdbpf"
+
+	"github.com/david415/HoneyBadger/types"
 )
 
-type AfpacketHandle struct {
+func init() {
+	SnifferRegister("BSD_BPF", NewBPFHandle)
 }
 
-func NewAfpacketHandle(netDevice string) (*AfpacketHandle, error) {
-	return &AfpacketHandle{}, nil
+type BPFHandle struct {
+	bpfSniffer *bsdbpf.BPFSniffer
 }
 
-func (a *AfpacketHandle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
-	panic("AF_PACKET not supported by non-Linux systems")
+func NewBPFHandle(options *types.SnifferDriverOptions) (types.PacketDataSourceCloser, error) {
+	// XXX TODO pass more options...
+	bpfSniffer, err := bsdbpf.NewBPFSniffer(options.Device, nil)
+	return &BPFHandle{
+		bpfSniffer: bpfSniffer,
+	}, err
 }
 
-func (a *AfpacketHandle) Close() {
+func (a *BPFHandle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
+	return a.bpfSniffer.ReadPacketData()
+}
+
+func (a *BPFHandle) Close() error {
+	return a.bpfSniffer.Close()
 }

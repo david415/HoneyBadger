@@ -1,5 +1,3 @@
-// +build linux
-
 /*
  *    HoneyBadger core library for detecting TCP injection attacks
  *
@@ -19,28 +17,22 @@
  *    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package afpacket_sniffer
+package drivers
 
 import (
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/afpacket"
+	"github.com/david415/HoneyBadger/types"
 )
 
-type AfpacketHandle struct {
-	afpacketHandle *afpacket.TPacket
-}
+var Drivers = map[string]func(*types.SnifferDriverOptions) (types.PacketDataSourceCloser, error){}
 
-func NewAfpacketHandle(netDevice string) (*AfpacketHandle, error) {
-	afpacketHandle, err := afpacket.NewTPacket(afpacket.OptInterface(netDevice))
-	return &AfpacketHandle{
-		afpacketHandle: afpacketHandle,
-	}, err
-}
-
-func (a *AfpacketHandle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
-	return a.afpacketHandle.ReadPacketData()
-}
-
-func (a *AfpacketHandle) Close() {
-	a.afpacketHandle.Close()
+// Register makes a ethernet sniffer driver available by the provided name.
+// If Register is called twice with the same name or if driver is nil, it panics.
+func SnifferRegister(name string, packetDataSourceCloserFactory func(*types.SnifferDriverOptions) (types.PacketDataSourceCloser, error)) {
+	if packetDataSourceCloserFactory == nil {
+		panic("sniffer: packetDataSourceCloserFactory is nil")
+	}
+	if _, dup := Drivers[name]; dup {
+		panic("sniffer: Register called twice for ethernet sniffer " + name)
+	}
+	Drivers[name] = packetDataSourceCloserFactory
 }

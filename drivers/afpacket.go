@@ -19,23 +19,35 @@
  *    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package bpf_sniffer
+package drivers
 
 import (
 	"github.com/google/gopacket"
+	"github.com/google/gopacket/afpacket"
+
+	"github.com/david415/HoneyBadger/types"
 )
 
-type BpfSniffer struct {
+func init() {
+	SnifferRegister("AF_PACKET", NewAfpacketHandle)
 }
 
-func NewBpfSniffer() *BpfSniffer {
-	return &BpfSniffer{}
+type AfpacketHandle struct {
+	afpacketHandle *afpacket.TPacket
 }
 
-func (b *BpfSniffer) Init(fufu string) error {
+func NewAfpacketHandle(options *types.SnifferDriverOptions) (types.PacketDataSourceCloser, error) {
+	afpacketHandle, err := afpacket.NewTPacket(afpacket.OptInterface(options.Device))
+	return &AfpacketHandle{
+		afpacketHandle: afpacketHandle,
+	}, err
+}
+
+func (a *AfpacketHandle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
+	return a.afpacketHandle.ReadPacketData()
+}
+
+func (a *AfpacketHandle) Close() error {
+	a.afpacketHandle.Close()
 	return nil
-}
-
-func (b *BpfSniffer) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
-	panic("BPF not supported in Linux")
 }

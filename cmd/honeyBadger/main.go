@@ -55,10 +55,18 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		maxPcapLogSize      = flag.Int("max_pcap_log_size", 1, "maximum pcap size per rotation in megabytes")
 		maxNumPcapRotations = flag.Int("max_pcap_rotations", 10, "maximum number of pcap rotations per connection")
 		archiveDir          = flag.String("archive_dir", "", "archive directory for storing attack logs and related pcap files")
-		useAfPacket         = flag.Bool("afpacket", false, "Use AF_PACKET for faster, harder sniffing of packets.")
-		useBpf              = flag.Bool("bpf", false, "Use *BSD-only BPF for sniffing packets on non-Linux systems.")
+		daq                 = flag.String("daq", "libpcap", "Data AcQuisition packet source")
 	)
 	flag.Parse()
+
+	if *daq == "" {
+		log.Fatal("must specify a Data AcQuisition packet source`")
+	}
+
+	// XXX TODO use the pure golang pcap file sniffing API; gopacket's pcapgo
+	if *pcapfile != "" && *daq != "libpcap" {
+		log.Fatal("only libpcap DAQ supports sniffing pcap files")
+	}
 
 	if *archiveDir == "" || *logDir == "" {
 		log.Fatal("must specify both incoming log dir and archive log dir")
@@ -107,14 +115,13 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		MaxConcurrentConnections: *maxConcurrentConnections,
 	}
 
-	snifferOptions := HoneyBadger.SnifferOptions{
-		Interface:    *iface,
+	snifferDriverOptions := types.SnifferDriverOptions{
+		DAQ:          *daq,
+		Device:       *iface,
 		Filename:     *pcapfile,
 		WireDuration: wireDuration,
 		Snaplen:      int32(*snaplen),
 		Filter:       *filter,
-		UseAfPacket:  *useAfPacket,
-		UseBpf:       *useBpf,
 	}
 
 	connectionFactory := &HoneyBadger.DefaultConnFactory{}
@@ -124,6 +131,6 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 	} else {
 		packetLoggerFactory = nil
 	}
-	supervisor := HoneyBadger.NewBadgerSupervisor(snifferOptions, dispatcherOptions, HoneyBadger.NewSniffer, connectionFactory, packetLoggerFactory)
+	supervisor := HoneyBadger.NewBadgerSupervisor(&snifferDriverOptions, dispatcherOptions, HoneyBadger.NewSniffer, connectionFactory, packetLoggerFactory)
 	supervisor.Run()
 }
