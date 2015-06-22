@@ -30,7 +30,7 @@ import (
 )
 
 func init() {
-	SnifferRegister("libpcap", NewPcapSniffer)
+	SnifferRegister("PcapSniffer", NewPcapSniffer)
 }
 
 type PcapHandle struct {
