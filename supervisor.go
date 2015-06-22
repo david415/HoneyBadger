@@ -27,6 +27,14 @@ import (
 	"github.com/david415/HoneyBadger/types"
 )
 
+type SupervisorOptions struct {
+	SnifferDriverOptions *types.SnifferDriverOptions
+	DispatcherOptions    DispatcherOptions
+	SnifferFactory       func(*types.SnifferDriverOptions, PacketDispatcher) types.PacketSource
+	ConnectionFactory    ConnectionFactory
+	PacketLoggerFactory  types.PacketLoggerFactory
+}
+
 type BadgerSupervisor struct {
 	dispatcher       *Dispatcher
 	sniffer          types.PacketSource
@@ -34,9 +42,9 @@ type BadgerSupervisor struct {
 	forceQuitChan    chan os.Signal
 }
 
-func NewBadgerSupervisor(snifferOptions *types.SnifferDriverOptions, dispatcherOptions DispatcherOptions, snifferFactoryFunc func(*types.SnifferDriverOptions, PacketDispatcher) types.PacketSource, connectionFactory ConnectionFactory, packetLoggerFactory types.PacketLoggerFactory) *BadgerSupervisor {
-	dispatcher := NewDispatcher(dispatcherOptions, connectionFactory, packetLoggerFactory)
-	sniffer := snifferFactoryFunc(snifferOptions, dispatcher)
+func NewBadgerSupervisor(options SupervisorOptions) *BadgerSupervisor {
+	dispatcher := NewDispatcher(options.DispatcherOptions, options.ConnectionFactory, options.PacketLoggerFactory)
+	sniffer := options.SnifferFactory(options.SnifferDriverOptions, dispatcher)
 	supervisor := BadgerSupervisor{
 		forceQuitChan:    make(chan os.Signal, 1),
 		childStoppedChan: make(chan bool, 0),
@@ -62,7 +70,6 @@ func (b BadgerSupervisor) Stopped() {
 }
 
 func (b BadgerSupervisor) Run() {
-	log.Println("HoneyBadger: comprehensive TCP injection attack detection.")
 	b.dispatcher.Start()
 	b.sniffer.Start()
 

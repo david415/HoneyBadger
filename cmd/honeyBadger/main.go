@@ -131,6 +131,14 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 	} else {
 		packetLoggerFactory = nil
 	}
-	supervisor := HoneyBadger.NewBadgerSupervisor(&snifferDriverOptions, dispatcherOptions, HoneyBadger.NewSniffer, connectionFactory, packetLoggerFactory)
+	options := HoneyBadger.SupervisorOptions{
+		SnifferDriverOptions: &snifferDriverOptions,
+		DispatcherOptions:    dispatcherOptions,
+		SnifferFactory:       HoneyBadger.NewSniffer,
+		ConnectionFactory:    connectionFactory,
+		PacketLoggerFactory:  packetLoggerFactory,
+	}
+	log.Println("HoneyBadger: comprehensive TCP injection attack detection.")
+	supervisor := HoneyBadger.NewBadgerSupervisor(options)
 	supervisor.Run()
 }
