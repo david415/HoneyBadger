@@ -35,17 +35,17 @@ type SupervisorOptions struct {
 	PacketLoggerFactory  types.PacketLoggerFactory
 }
 
-type BadgerSupervisor struct {
+type Supervisor struct {
 	dispatcher       *Dispatcher
 	sniffer          types.PacketSource
 	childStoppedChan chan bool
 	forceQuitChan    chan os.Signal
 }
 
-func NewBadgerSupervisor(options SupervisorOptions) *BadgerSupervisor {
+func NewSupervisor(options SupervisorOptions) *Supervisor {
 	dispatcher := NewDispatcher(options.DispatcherOptions, options.ConnectionFactory, options.PacketLoggerFactory)
 	sniffer := options.SnifferFactory(options.SnifferDriverOptions, dispatcher)
-	supervisor := BadgerSupervisor{
+	supervisor := Supervisor{
 		forceQuitChan:    make(chan os.Signal, 1),
 		childStoppedChan: make(chan bool, 0),
 		dispatcher:       dispatcher,
@@ -55,21 +55,21 @@ func NewBadgerSupervisor(options SupervisorOptions) *BadgerSupervisor {
 	return &supervisor
 }
 
-func (b BadgerSupervisor) GetDispatcher() PacketDispatcher {
+func (b Supervisor) GetDispatcher() PacketDispatcher {
 	return b.dispatcher
 }
 
-func (b BadgerSupervisor) GetSniffer() types.PacketSource {
+func (b Supervisor) GetSniffer() types.PacketSource {
 	// XXX return types.PacketSource(b.sniffer)
 	return b.sniffer
 }
 
-func (b BadgerSupervisor) Stopped() {
-	log.Print("BadgerSupervisor.Stopped()")
+func (b Supervisor) Stopped() {
+	log.Print("Supervisor.Stopped()")
 	b.childStoppedChan <- true
 }
 
-func (b BadgerSupervisor) Run() {
+func (b Supervisor) Run() {
 	log.Println("HoneyBadger: comprehensive TCP injection attack detection.")
 	b.dispatcher.Start()
 	b.sniffer.Start()

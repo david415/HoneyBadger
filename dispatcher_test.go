@@ -120,7 +120,7 @@ func (m *MockPacketLogger) Archive() {
 func (m *MockPacketLogger) Remove() {
 }
 
-func SetupTestInquisitor() (*BadgerSupervisor, PacketDispatcher, types.PacketSource) {
+func SetupTestInquisitor() (*Supervisor, PacketDispatcher, types.PacketSource) {
 	tcpIdleTimeout, _ := time.ParseDuration("10m")
 	dispatcherOptions := DispatcherOptions{
 		BufferedPerConnection:    10,
@@ -154,7 +154,7 @@ func SetupTestInquisitor() (*BadgerSupervisor, PacketDispatcher, types.PacketSou
 		PacketLoggerFactory:  mockPacketLoggerFactory,
 	}
 
-	supervisor := NewBadgerSupervisor(options)
+	supervisor := NewSupervisor(options)
 	go supervisor.Run()
 	sniffer := supervisor.GetSniffer()
 	startedChan := sniffer.GetStartedChan()
@@ -292,7 +292,7 @@ func TestInquisitorResetTwice(t *testing.T) {
 	sniffer.Stop()
 }
 
-func SetupRealConnectionInquisitor() (*BadgerSupervisor, PacketDispatcher, types.PacketSource) {
+func SetupRealConnectionInquisitor() (*Supervisor, PacketDispatcher, types.PacketSource) {
 	tcpIdleTimeout, _ := time.ParseDuration("10m")
 	dispatcherOptions := DispatcherOptions{
 		BufferedPerConnection:    10,
@@ -326,7 +326,7 @@ func SetupRealConnectionInquisitor() (*BadgerSupervisor, PacketDispatcher, types
 		ConnectionFactory:    factory,
 		PacketLoggerFactory:  mockPacketLoggerFactory,
 	}
-	supervisor := NewBadgerSupervisor(options)
+	supervisor := NewSupervisor(options)
 	go supervisor.Run()
 	sniffer := supervisor.GetSniffer()
 	startedChan := sniffer.GetStartedChan()

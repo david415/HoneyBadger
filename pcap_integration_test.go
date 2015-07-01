@@ -93,7 +93,7 @@ func SetupAttackDetectionPcapInquisitor(pcapPath string, attackLogger *TestLogge
 		PacketLoggerFactory:  dummyPacketLoggerFactory,
 	}
 
-	supervisor := NewBadgerSupervisor(options)
+	supervisor := NewSupervisor(options)
 	supervisor.Run()
 	return
 }

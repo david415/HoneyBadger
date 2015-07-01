@@ -140,6 +140,6 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		ConnectionFactory:    connectionFactory,
 		PacketLoggerFactory:  packetLoggerFactory,
 	}
-	supervisor := HoneyBadger.NewBadgerSupervisor(options)
+	supervisor := HoneyBadger.NewSupervisor(options)
 	supervisor.Run()
 }
