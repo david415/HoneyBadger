@@ -146,7 +146,15 @@ func SetupTestInquisitor() (*BadgerSupervisor, PacketDispatcher, types.PacketSou
 	}
 	factory := mockConnFactory{}
 	mockPacketLoggerFactory := MockPacketLoggerFactory{}
-	supervisor := NewBadgerSupervisor(&snifferOptions, dispatcherOptions, NewMockSniffer, &factory, mockPacketLoggerFactory)
+	options := SupervisorOptions{
+		SnifferDriverOptions: &snifferOptions,
+		DispatcherOptions:    dispatcherOptions,
+		SnifferFactory:       NewMockSniffer,
+		ConnectionFactory:    &factory,
+		PacketLoggerFactory:  mockPacketLoggerFactory,
+	}
+
+	supervisor := NewBadgerSupervisor(options)
 	go supervisor.Run()
 	sniffer := supervisor.GetSniffer()
 	startedChan := sniffer.GetStartedChan()
@@ -311,7 +319,14 @@ func SetupRealConnectionInquisitor() (*BadgerSupervisor, PacketDispatcher, types
 
 	factory := &DefaultConnFactory{}
 	mockPacketLoggerFactory := MockPacketLoggerFactory{}
-	supervisor := NewBadgerSupervisor(&snifferOptions, dispatcherOptions, NewMockSniffer, factory, mockPacketLoggerFactory)
+	options := SupervisorOptions{
+		SnifferDriverOptions: &snifferOptions,
+		DispatcherOptions:    dispatcherOptions,
+		SnifferFactory:       NewMockSniffer,
+		ConnectionFactory:    factory,
+		PacketLoggerFactory:  mockPacketLoggerFactory,
+	}
+	supervisor := NewBadgerSupervisor(options)
 	go supervisor.Run()
 	sniffer := supervisor.GetSniffer()
 	startedChan := sniffer.GetStartedChan()
