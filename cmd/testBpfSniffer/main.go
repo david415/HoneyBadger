@@ -8,15 +8,15 @@ import (
 )
 
 func main() {
+	var err error
+	var ci gopacket.CaptureInfo
+	var frame []byte
 	sniffer, err := bsdbpf.NewBPFSniffer("alc0", nil)
 	if err != nil {
 		panic(err)
 	}
 
 	for {
-		var err error
-		var ci gopacket.CaptureInfo
-		var frame []byte
 		frame,ci,err = sniffer.ReadPacketData()
 	        if err != nil {
 	         panic(err)
