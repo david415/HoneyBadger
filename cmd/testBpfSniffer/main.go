@@ -2,24 +2,28 @@ package main
 
 import (
 	"fmt"
-	"github.com/david415/HoneyBadger/bpf_sniffer"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/bsdbpf"
 )
 
 func main() {
-	var err error
-	sniffer := bpf_sniffer.NewBpfSniffer()
-	err = sniffer.Init("vio0")
+	sniffer, err := bsdbpf.NewBPFSniffer("alc0", nil)
 	if err != nil {
 		panic(err)
 	}
 
 	for {
-		timedFrame := sniffer.ReadTimedFrame()
-		// Decode a packet
-		fmt.Printf("timedFrame timestamp %s\n", timedFrame.Timestamp)
-		packet := gopacket.NewPacket(timedFrame.RawFrame, layers.LayerTypeEthernet, gopacket.Default)
+		var err error
+		var ci gopacket.CaptureInfo
+		var frame []byte
+		frame,ci,err = sniffer.ReadPacketData()
+	        if err != nil {
+	         panic(err)
+	        }
+		fmt.Printf("timeStamp %s\n", ci.Timestamp)
+		packet := gopacket.NewPacket(frame, layers.LayerTypeEthernet, gopacket.Default)
+
 		// Get the TCP layer from this packet
 		if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
 			fmt.Println("This is a TCP packet!")
