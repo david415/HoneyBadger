@@ -1,3 +1,5 @@
+//  this was briefly useful for debuging the gopacket bsdbpf packet capture api
+//  as i was developing it
 package main
 
 import (
