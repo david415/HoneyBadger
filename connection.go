@@ -93,6 +93,7 @@ type PacketDispatcher interface {
 	ReceivePacket(*types.PacketManifest)
 	GetObservedConnectionsChan(int) chan bool
 	Connections() []ConnectionInterface
+	Stop()
 }
 
 type ConnectionOptions struct {

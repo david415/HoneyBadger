@@ -77,6 +77,7 @@ func (i *Sniffer) Stop() {
 	if i.packetDataSource != nil {
 		i.packetDataSource.Close()
 	}
+	i.dispatcher.Stop()
 }
 
 func (i *Sniffer) setupHandle() {
