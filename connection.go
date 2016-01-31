@@ -493,13 +493,16 @@ func (c *Connection) stateFinWait2(p *types.PacketManifest, flow *types.TcpIpFlo
 		// future out of order
 		log.Print("FIN-WAIT-2: out of order packet received.\n")
 		log.Printf("got TCP.Seq %d expected %d\n", p.TCP.Seq, *nextSeqPtr)
-		c.Close()
 	} else if diff == 0 {
 		// contiguous
 		if p.TCP.ACK && p.TCP.FIN {
 			if types.Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 {
-				log.Print("FIN-WAIT-2: out of order ACK packet received.\n")
-				c.Close()
+				if len(p.Payload) > 0 {
+					log.Print("FIN-WAIT-2: out of order ACK packet received with payload.\n")
+					c.detectInjection(p, p.Flow)
+				} else {
+					log.Print("FIN-WAIT-2: out of order ACK packet received without payload.\n")
+				}
 				return
 			}
 			*nextSeqPtr += 1
