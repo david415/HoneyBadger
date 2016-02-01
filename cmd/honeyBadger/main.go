@@ -1,5 +1,3 @@
-// +build debian
-
 /*
  *    HoneyBadger main command line tool
  *
