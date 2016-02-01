@@ -30,28 +30,27 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"github.com/david415/HoneyBadger/logging"
-	"github.com/fatih/color"
 )
 
-func colorLineDiff(a, b string) {
+func lineDiff(a, b string) {
 	aLines := strings.Split(a, "\n")
 	bLines := strings.Split(b, "\n")
 
 	fmt.Print("Overlapping portion of reassembled TCP Stream:\n")
 	for i := 0; i < len(aLines); i++ {
 		if aLines[i] == bLines[i] {
-			color.Blue(aLines[i])
+			fmt.Println(aLines[i])
 		} else {
-			color.Green(aLines[i])
+			fmt.Println(aLines[i])
 		}
 	}
 
 	fmt.Print("Injection packet whose contents did not coalesce into the TCP Stream:\n")
 	for i := 0; i < len(aLines); i++ {
 		if aLines[i] == bLines[i] {
-			color.Cyan(bLines[i])
+			fmt.Println(bLines[i])
 		} else {
-			color.Red(bLines[i])
+			fmt.Println(bLines[i])
 		}
 	}
 
@@ -92,7 +91,7 @@ func expandReport(reportPath string) {
 			panic(err)
 		}
 
-		colorLineDiff(hex.Dump(overlap), hex.Dump(payload))
+		lineDiff(hex.Dump(overlap), hex.Dump(payload))
 		line, err = reader.ReadString('\n')
 	}
 }
