@@ -1,20 +1,28 @@
+
+// code borrowed from https://github.com/zond/qisniff
+// it's GPL2 see LICENSE
+
+// modified to use our Sequence type instead of int64
 // Package blocks contains logic to detect overlap between segments of a contiguous data stream.
 package blocks
 
+import "github.com/david415/HoneyBadger/types"
+
+
 type Block struct {
-	A, B int64
+	A, B types.Sequence
 }
 
-func (blk Block) Overlap(a, b int64) *Block {
+func (blk Block) Overlap(a, b types.Sequence) *Block {
 	left := a
-	if blk.A > left {
+	if left.Difference(blk.A) > 0 {
 		left = blk.A
 	}
 	right := b
-	if blk.B < right {
+	if right.Difference(blk.B) < 0 {
 		right = blk.B
 	}
-	if right > left {
+	if left.Difference(right) > 0 {
 		return &Block{left, right}
 	}
 	return nil
@@ -27,14 +35,14 @@ func (blks Blocks) Len() int {
 }
 
 func (blks Blocks) Less(i, j int) bool {
-	return blks[i].A < blks[j].A
+	return blks[i].A.Difference(blks[j].A) < 0
 }
 
 func (blks Blocks) Swap(i, j int) {
 	blks[i], blks[j] = blks[j], blks[i]
 }
 
-func (blks Blocks) Overlaps(a, b int64) Blocks {
+func (blks Blocks) Overlaps(a, b types.Sequence) Blocks {
 	var result Blocks
 	for _, blk := range blks {
 		if overlap := blk.Overlap(a, b); overlap != nil {
@@ -44,40 +52,40 @@ func (blks Blocks) Overlaps(a, b int64) Blocks {
 	return result
 }
 
-func (blks Blocks) Add(a, b int64) Blocks {
+func (blks Blocks) Add(a, b types.Sequence) Blocks {
 	var result Blocks
 	index := 0
 	added := false
 	for index < len(blks) {
 		blk := blks[index]
-		if a <= blk.A {
-			if b < blk.A {
+		if blk.A.Difference(a) <= 0 {
+			if blk.A.Difference(b) < 0 {
 				result = append(result, Block{a, b})
 				result = append(result, blks[index:]...)
 				return result
-			} else if b == blk.A {
+			} else if b.Difference(blk.A) == 0 {
 				result = append(result, Block{a, blk.B})
 				result = append(result, blks[index+1:]...)
 				return result
-			} else if b > blk.A {
-				if b <= blk.B {
+			} else if blk.A.Difference(b) > 0 {
+				if blk.B.Difference(b) <= 0 {
 					result = append(result, Block{a, blk.B})
 					result = append(result, blks[index+1:]...)
 					return result
-				} else if b > blk.B {
+				} else if blk.B.Difference(b) > 0 {
 					index++
 				}
 			}
-		} else if a > blk.A {
-			if a <= blk.B {
-				if b <= blk.B {
+		} else if blk.A.Difference(a) > 0 {
+			if blk.B.Difference(a) <= 0 {
+				if blk.B.Difference(b) <= 0 {
 					result = append(result, blks[index:]...)
 					return result
-				} else if b > blk.B {
+				} else if blk.B.Difference(b) > 0 {
 					a = blk.A
 					index++
 				}
-			} else if a > blk.B {
+			} else if blk.B.Difference(a) > 0 {
 				result = append(result, blk)
 				index++
 			}
