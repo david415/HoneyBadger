@@ -148,6 +148,7 @@ func NewOrderedCoalesce(log types.Logger, flow *types.TcpIpFlow, pageCache *page
 
 		MaxBufferedPagesTotal:   maxBufferedPagesTotal,
 		MaxBufferedPagesPerFlow: maxBufferedPagesPerFlow,
+		DetectCoalesceInjection: DetectCoalesceInjection,
 	}
 }
 
