@@ -6,11 +6,19 @@
 // Package blocks contains logic to detect overlap between segments of a contiguous data stream.
 package blocks
 
-import "github.com/david415/HoneyBadger/types"
+import (
+	"github.com/david415/HoneyBadger/types"
+	"fmt"
+	"strings"
+)
 
 
 type Block struct {
 	A, B types.Sequence
+}
+
+func (t Block) String() string {
+	return fmt.Sprintf("Block(%d, %d)", t.A, t.B)
 }
 
 func (blk Block) Overlap(a, b types.Sequence) *Block {
@@ -29,6 +37,14 @@ func (blk Block) Overlap(a, b types.Sequence) *Block {
 }
 
 type Blocks []Block
+
+func (t Blocks) String() string {
+	acc := make([]string, 1)
+	for i := 0; i < t.Len(); i++ {
+		acc = append(acc, t[i].String())
+	}
+	return strings.Join(acc, "\n")
+}
 
 func (blks Blocks) Len() int {
 	return len(blks)
