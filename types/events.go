@@ -47,9 +47,9 @@ type Event struct {
 	HijackSeq     uint32
 	HijackAck     uint32
 	Payload       []byte
-	Overlap       []byte
-	StartSequence Sequence
-	EndSequence   Sequence
-	OverlapStart  int
-	OverlapEnd    int
+	Winner        []byte
+	Loser         []byte
+	Base          Sequence
+	Start         Sequence
+	End           Sequence
 }

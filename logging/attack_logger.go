@@ -38,9 +38,9 @@ type SerializedEvent struct {
 	HijackSeq                uint32
 	HijackAck                uint32
 	Payload                  string
-	Overlap                  string
-	Start, End               types.Sequence
-	OverlapStart, OverlapEnd int
+	Winner                   string
+	Loser                    string
+	Base, Start, End         types.Sequence
 }
 
 // AttackJsonLogger is responsible for recording all attack reports as JSON objects in a file.
@@ -93,11 +93,11 @@ func (a *AttackJsonLogger) SerializeAndWrite(event *types.Event) {
 		HijackAck:    event.HijackAck,
 		Time:         event.Time,
 		Payload:      base64.StdEncoding.EncodeToString(event.Payload),
-		Overlap:      base64.StdEncoding.EncodeToString(event.Overlap),
-		Start:        event.StartSequence,
-		End:          event.EndSequence,
-		OverlapStart: event.OverlapStart,
-		OverlapEnd:   event.OverlapEnd,
+		Winner:       base64.StdEncoding.EncodeToString(event.Winner),
+		Loser:        base64.StdEncoding.EncodeToString(event.Loser),
+		Base:         event.Base,
+		Start:        event.Start,
+		End:          event.End,
 	}
 	a.Publish(serialized)
 }

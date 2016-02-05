@@ -78,10 +78,9 @@ func (a *AttackMetadataJsonLogger) SerializeAndWrite(event *types.Event) {
 		HijackSeq:    event.HijackSeq,
 		HijackAck:    event.HijackAck,
 		Time:         event.Time,
-		Start:        event.StartSequence,
-		End:          event.EndSequence,
-		OverlapStart: event.OverlapStart,
-		OverlapEnd:   event.OverlapEnd,
+		Base:         event.Base,
+		Start:        event.Start,
+		End:          event.End,
 	}
 	a.Publish(publishableEvent)
 }
