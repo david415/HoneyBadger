@@ -17,6 +17,11 @@ type Block struct {
 	A, B types.Sequence
 }
 
+type BlockSegment struct {
+	Block Block
+	Bytes []byte
+}
+
 func (t Block) String() string {
 	return fmt.Sprintf("Block(%d, %d)", t.A, t.B)
 }
