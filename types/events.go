@@ -42,7 +42,7 @@ type PacketLoggerFactory interface {
 type Event struct {
 	Type          string
 	PacketCount   uint64
-	Flow          *TcpIpFlow
+	Flow          TcpIpFlow
 	Time          time.Time
 	HijackSeq     uint32
 	HijackAck     uint32
