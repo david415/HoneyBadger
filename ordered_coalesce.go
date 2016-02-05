@@ -139,9 +139,9 @@ type OrderedCoalesce struct {
 	DetectCoalesceInjection bool
 }
 
-func NewOrderedCoalesce(log types.Logger, flow *types.TcpIpFlow, pageCache *pageCache, streamRing *types.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int, DetectCoalesceInjection bool) *OrderedCoalesce {
+func NewOrderedCoalesce(logger types.Logger, flow *types.TcpIpFlow, pageCache *pageCache, streamRing *types.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int, DetectCoalesceInjection bool) *OrderedCoalesce {
 	return &OrderedCoalesce{
-		log:        log,
+		log:        logger,
 		Flow:       flow,
 		PageCache:  pageCache,
 		StreamRing: streamRing,
@@ -324,12 +324,24 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) (types.Sequence, bool)
 					Seq: uint32(o.first.Seq),
 				},
 			}
-			event := injectionInStreamRing(&p, o.Flow, o.StreamRing, "coalesce injection", 0)
-			if event != nil {
-				o.log.Log(event)
-			} else {
-				log.Print("not an attack attempt; a normal TCP unordered stream segment coalesce\n")
+			start := types.Sequence(p.TCP.Seq)
+			end := types.Sequence(p.TCP.Seq).Add(len(p.Payload))
+			events := checkForInjectionInRing(o.StreamRing, start, end, p.Payload)
+
+			// log events if any
+			for i := 0; i < len(events); i++ {
+				if events[i] == nil {
+					panic("wtf got nil event")
+				} else {
+					events[i].Type = "ordered coalesce"
+					events[i].Time = o.first.Seen
+					events[i].Base = o.first.Seq
+					events[i].Flow = *o.Flow
+					log.Print("detected an ordered coalesce injection\n")
+					o.log.Log(events[i])
+				}
 			}
+
 		}
 	}
 	bytes, seq := byteSpan(nextSeq, o.first.Seq, o.first.Bytes) // XXX injection happens here
