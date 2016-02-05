@@ -77,17 +77,17 @@ func expandReport(reportPath string) {
 
 		fmt.Printf("Event Type: %s\nFlow: %s\nTime: %s\n", event.Type, event.Flow, event.Time)
 		fmt.Printf("Packet Number: %d\n", event.PacketCount)
-		fmt.Printf("HijackSeq: %d HijackAck: %d\nStart: %d End: %d\nOverlapStart: %d OverlapEnd: %d\n\n", event.HijackSeq, event.HijackAck, event.Start, event.End, event.OverlapStart, event.OverlapEnd)
+		fmt.Printf("HijackSeq: %d HijackAck: %d\nStart: %d End: %d\nBase Sequence: %d\n\n", event.HijackSeq, event.HijackAck, event.Start, event.End, event.Base)
 
 		var payload []byte
 		var overlap []byte
 
-		overlap, err = base64.StdEncoding.DecodeString(event.Overlap)
+		overlap, err = base64.StdEncoding.DecodeString(event.Winner)
 		if err != nil {
 			panic(err)
 		}
 
-		payload, err = base64.StdEncoding.DecodeString(event.Payload)
+		payload, err = base64.StdEncoding.DecodeString(event.Loser)
 		if err != nil {
 			panic(err)
 		}
