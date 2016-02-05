@@ -203,7 +203,7 @@ func (c *Connection) detectHijack(p *types.PacketManifest, flow *types.TcpIpFlow
 					Time:        time.Now(),
 					Type:        "handshake-hijack",
 					PacketCount: c.packetCount,
-					Flow:        flow,
+					Flow:        *flow,
 					HijackSeq:   p.TCP.Seq,
 					HijackAck:   p.TCP.Ack})
 				c.attackDetected = true
@@ -214,22 +214,40 @@ func (c *Connection) detectHijack(p *types.PacketManifest, flow *types.TcpIpFlow
 	}
 }
 
-// detectInjection write an attack report if the given packet indicates a TCP injection attack
-// such as segment veto.
-func (c *Connection) detectInjection(p *types.PacketManifest, flow *types.TcpIpFlow) {
+func (c *Connection) detectInjection(p *types.PacketManifest) {
+
 	var ringPtr *types.Ring
-	if flow.Equal(c.clientFlow) {
+
+	if p.Flow.Equal(c.clientFlow) {
 		ringPtr = c.ServerStreamRing
 	} else {
 		ringPtr = c.ClientStreamRing
 	}
-	event := injectionInStreamRing(p, flow, ringPtr, "ordered injection", c.packetCount)
-	if event != nil {
-		c.AttackLogger.Log(event)
-		c.attackDetected = true
-		log.Printf("packet # %d\n", c.packetCount)
-	} else {
-		log.Print("not an attack attempt; a normal TCP retransmission.\n")
+
+	start := types.Sequence(p.TCP.Seq)
+	end := types.Sequence(p.TCP.Seq).Add(len(p.Payload))
+
+	// injection detection
+	events := checkForInjectionInRing(ringPtr, start, end, p.Payload)
+
+	if len(events) == 0 {
+		return
+	}
+
+	// log events if any
+	for i := 0; i < len(events); i++ {
+		if events[i] == nil {
+			panic("wtf got nil event")
+		} else {
+			events[i].Base = types.Sequence(p.TCP.Seq)
+			events[i].Time = p.Timestamp
+			events[i].Flow = *p.Flow
+			events[i].Payload = p.Payload
+
+			c.AttackLogger.Log(events[i])
+			c.attackDetected = true
+			log.Printf("injection detected in packet # %d\n", c.packetCount)
+		}
 	}
 }
 
@@ -239,8 +257,8 @@ func (c *Connection) detectInjection(p *types.PacketManifest, flow *types.TcpIpF
 func (c *Connection) stateUnknown(p *types.PacketManifest) {
 	if p.TCP.SYN && !p.TCP.ACK {
 		c.state = TCP_CONNECTION_REQUEST
-		c.clientFlow = p.Flow
-		c.serverFlow = p.Flow.Reverse()
+		*c.clientFlow = *p.Flow
+		*c.serverFlow = *p.Flow.Reverse()
 
 		// Note that TCP SYN and SYN/ACK packets may contain payload data if
 		// a TCP extension is used...
@@ -252,8 +270,8 @@ func (c *Connection) stateUnknown(p *types.PacketManifest) {
 	} else {
 		// else process a connection after handshake
 		c.state = TCP_DATA_TRANSFER
-		c.clientFlow = p.Flow
-		c.serverFlow = p.Flow.Reverse()
+		*c.clientFlow = *p.Flow
+		*c.serverFlow = *p.Flow.Reverse()
 
 		// skip handshake hijack detection completely
 		c.skipHijackDetectionCount = 0
@@ -337,6 +355,7 @@ func (c *Connection) stateConnectionEstablished(p *types.PacketManifest) {
 func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 	var closerState, remoteState *uint8
 	var diff int
+
 	isEnd := false
 
 	if c.clientNextSeq == types.InvalidSequence && p.Flow.Equal(c.clientFlow) {
@@ -378,7 +397,7 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 		// ignore zero size packets
 		if len(p.Payload) > 0 {
 			if c.DetectInjection {
-				c.detectInjection(p, p.Flow)
+				c.detectInjection(p)
 			}
 		} else {
 			// deal with strange packets here...
@@ -449,7 +468,7 @@ func (c *Connection) stateFinWait1(p *types.PacketManifest, flow *types.TcpIpFlo
 	if diff < 0 {
 		// overlap
 		if len(p.Payload) > 0 {
-			c.detectInjection(p, p.Flow)
+			c.detectInjection(p)
 		}
 		return
 	} else if diff > 0 {
@@ -487,7 +506,7 @@ func (c *Connection) stateFinWait2(p *types.PacketManifest, flow *types.TcpIpFlo
 	if diff < 0 {
 		// overlap
 		if len(p.Payload) > 0 {
-			c.detectInjection(p, p.Flow)
+			c.detectInjection(p)
 		}
 	} else if diff > 0 {
 		// future out of order
@@ -499,7 +518,7 @@ func (c *Connection) stateFinWait2(p *types.PacketManifest, flow *types.TcpIpFlo
 			if types.Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 {
 				if len(p.Payload) > 0 {
 					log.Print("FIN-WAIT-2: out of order ACK packet received with payload.\n")
-					c.detectInjection(p, p.Flow)
+					c.detectInjection(p)
 				} else {
 					log.Print("FIN-WAIT-2: out of order ACK packet received without payload.\n")
 				}
@@ -509,7 +528,7 @@ func (c *Connection) stateFinWait2(p *types.PacketManifest, flow *types.TcpIpFlo
 			*statePtr = TCP_TIME_WAIT
 		} else {
 			if len(p.Payload) > 0 {
-				c.detectInjection(p, p.Flow)
+				c.detectInjection(p)
 			} else {
 				log.Print("FIN-WAIT-2: wtf non-FIN/ACK with payload len 0")
 			}
@@ -529,7 +548,7 @@ func (c *Connection) stateCloseWait(p *types.PacketManifest) {
 	// stream overlap case
 	if diff > 0 {
 		if len(p.Payload) > 0 {
-			c.detectInjection(p, p.Flow)
+			c.detectInjection(p)
 		} else {
 			c.detectCensorInjection(p)
 		}
@@ -594,8 +613,8 @@ func (c *Connection) detectCensorInjection(p *types.PacketManifest) {
 		Type:          attackType,
 		PacketCount:   c.packetCount,
 		Time:          time.Now(),
-		Flow:          p.Flow,
-		StartSequence: types.Sequence(p.TCP.Seq),
+		Flow:          *p.Flow,
+		Start:         types.Sequence(p.TCP.Seq),
 	}
 	c.AttackLogger.Log(&event)
 	c.attackDetected = true
@@ -660,6 +679,8 @@ func (c *Connection) ReceivePacket(p *types.PacketManifest) {
 		c.PacketLogger.WritePacket(p.RawPacket, p.Timestamp)
 	}
 	c.packetCount += 1
+	//log.Printf("packetCount %d\n", c.packetCount)
+
 	switch c.state {
 	case TCP_UNKNOWN:
 		c.stateUnknown(p)
