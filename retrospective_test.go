@@ -98,6 +98,12 @@ func TestGetOverlapsInRing(t *testing.T) {
 		ringPtr.Reassembly = &reassembly
 		ringPtr = ringPtr.Next()
 	}
+	reassembly := types.Reassembly{
+		Seq:   types.Sequence(46),
+		Bytes: []byte{},
+	}
+	ringPtr.Reassembly = &reassembly
+	ringPtr = ringPtr.Next()
 
 	// run tests
 	for i := 0; i < len(overlapBlockTests); i++ {

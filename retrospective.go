@@ -53,9 +53,6 @@ func checkForInjectionInRing(ringPtr *types.Ring, start, end types.Sequence, pay
 }
 
 func getOverlapBytesFromSlice(payload []byte, sequence types.Sequence, overlap blocks.Block) []byte {
-	if payload == nil {
-		panic("wtf")
-	}
 	start := sequence.Difference(overlap.A)
 	end := types.Sequence(start).Add(overlap.A.Difference(overlap.B))
 	return payload[start:end]
