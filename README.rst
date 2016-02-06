@@ -8,16 +8,6 @@ HoneyBadger
 
 |
 
-.. image:: https://drone.io/github.com/david415/HoneyBadger/status.png
-  :target: https://drone.io/github.com/david415/HoneyBadger/latest
-
-.. image:: https://coveralls.io/repos/david415/HoneyBadger/badge.svg?branch=master
-  :target: https://coveralls.io/r/david415/HoneyBadger?branch=master 
-
-.. image:: https://api.flattr.com/button/flattr-badge-large.png
-  :target: https://flattr.com/submit/auto?user_id=david415&url=https%3A%2F%2Fgithub.com%2Fdavid415%2FHoneyBadger
-
-
 
 project goals
 -------------
