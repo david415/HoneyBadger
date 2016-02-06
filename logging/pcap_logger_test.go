@@ -63,9 +63,9 @@ func TestPcapLogger(t *testing.T) {
 	tcpFlow, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
 	flow := types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 
-	pcapLogger := NewPcapLogger("fake-dir", flow)
+	pcapLogger := NewPcapLogger("log-dir", "archive-dir", flow, 1, 10)
 	testWriter := NewTestPcapWriter()
-	pcapLogger.fileWriter = testWriter
+	pcapLogger.FileWriter = testWriter
 
 	pcapLogger.Start()
 

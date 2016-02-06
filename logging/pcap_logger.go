@@ -46,13 +46,13 @@ type PcapLogger struct {
 	ArchiveDir string
 	Flow       *types.TcpIpFlow
 	writer     *pcapgo.Writer
-	fileWriter io.WriteCloser
+	FileWriter io.WriteCloser
 	pcapLogNum int
 	pcapQuota  int
 	basename   string
 }
 
-func NewPcapLogger(logDir, archiveDir string, flow *types.TcpIpFlow, pcapLogNum int, pcapQuota int) types.PacketLogger {
+func NewPcapLogger(logDir, archiveDir string, flow *types.TcpIpFlow, pcapLogNum int, pcapQuota int) *PcapLogger {
 	p := PcapLogger{
 		packetChan: make(chan TimedPacket),
 		stopChan:   make(chan bool),
@@ -62,7 +62,7 @@ func NewPcapLogger(logDir, archiveDir string, flow *types.TcpIpFlow, pcapLogNum 
 		pcapLogNum: pcapLogNum,
 		pcapQuota:  pcapQuota,
 	}
-	return types.PacketLogger(&p)
+	return &p
 }
 
 type PcapLoggerFactory struct {
@@ -93,17 +93,17 @@ func (p *PcapLogger) WriteHeader() {
 }
 
 func (p *PcapLogger) Start() {
-	if p.fileWriter == nil {
+	if p.FileWriter == nil {
 		p.basename = filepath.Join(p.LogDir, fmt.Sprintf("%s.pcap", p.Flow))
-		p.fileWriter = NewRotatingQuotaWriter(p.basename, p.pcapQuota, p.pcapLogNum, p.WriteHeader)
-		p.writer = pcapgo.NewWriter(p.fileWriter)
+		p.FileWriter = NewRotatingQuotaWriter(p.basename, p.pcapQuota, p.pcapLogNum, p.WriteHeader)
+		p.writer = pcapgo.NewWriter(p.FileWriter)
 	}
 	go p.logPackets()
 }
 
 func (p *PcapLogger) Stop() {
 	p.stopChan <- true
-	p.fileWriter.Close()
+	p.FileWriter.Close()
 }
 
 func (p *PcapLogger) Archive() {
