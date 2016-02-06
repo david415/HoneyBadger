@@ -7,8 +7,6 @@ go:
   - 1.5
   - 1.4
 
-sudo: false
-
 before_install:
  - sudo apt-get update -qq
  - sudo apt-get install -y libpcap-dev
