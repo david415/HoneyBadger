@@ -59,6 +59,7 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 	)
 	flag.Parse()
 
+	log.SetFlags(log.LUTC | log.Ldate | log.Ltime )
 	if *daq == "" {
 		log.Fatal("must specify a Data AcQuisition packet source`")
 	}
