@@ -8,6 +8,10 @@ HoneyBadger
 
 |
 
+.. image:: https://api.travis-ci.org/david415/HoneyBadger.svg
+  :target: https://travis-ci.org/david415/HoneyBadger
+
+
 
 project goals
 -------------
