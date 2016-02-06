@@ -4,6 +4,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"io"
 	"testing"
 	"time"
 
@@ -104,6 +105,9 @@ func NewMockPacketLogger(str string, flow *types.TcpIpFlow, pcapNum int, pcapSiz
 func (m *MockPacketLogger) WritePacket(rawPacket []byte, timestamp time.Time) {
 	log.Print("MockPacketLogger.WritePacket")
 	m.packetObserverChan <- true
+}
+
+func (m *MockPacketLogger) SetFileWriter(writer io.WriteCloser) {
 }
 
 func (m *MockPacketLogger) Start() {

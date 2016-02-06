@@ -3,6 +3,7 @@ package HoneyBadger
 import (
 	"fmt"
 	"os"
+	"io"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -27,6 +28,9 @@ func (f DummyPacketLoggerFactory) Build(flow *types.TcpIpFlow) types.PacketLogge
 }
 
 func (m *DummyPacketLogger) WritePacket(rawPacket []byte, timestamp time.Time) {
+}
+
+func (m DummyPacketLogger) SetFileWriter(writer io.WriteCloser) {
 }
 
 func (m DummyPacketLogger) Start() {
