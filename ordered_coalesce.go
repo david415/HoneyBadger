@@ -137,10 +137,12 @@ type OrderedCoalesce struct {
 	PageCache               *pageCache
 	first, last             *page
 	DetectCoalesceInjection bool
+	attackDetected          *bool
 }
 
-func NewOrderedCoalesce(logger types.Logger, flow *types.TcpIpFlow, pageCache *pageCache, streamRing *types.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int, DetectCoalesceInjection bool) *OrderedCoalesce {
+func NewOrderedCoalesce(logger types.Logger, flow *types.TcpIpFlow, pageCache *pageCache, streamRing *types.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int, DetectCoalesceInjection bool, attackDetected *bool) *OrderedCoalesce {
 	return &OrderedCoalesce{
+		attackDetected: attackDetected,
 		log:        logger,
 		Flow:       flow,
 		PageCache:  pageCache,
@@ -333,6 +335,7 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) (types.Sequence, bool)
 				if events[i] == nil {
 					panic("wtf got nil event")
 				} else {
+					*o.attackDetected = true
 					events[i].Type = "ordered coalesce"
 					events[i].Time = o.first.Seen
 					events[i].Base = o.first.Seq

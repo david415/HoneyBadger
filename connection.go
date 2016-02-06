@@ -75,8 +75,8 @@ func (f *DefaultConnFactory) Build(options ConnectionOptions) ConnectionInterfac
 		serverFlow:               &types.TcpIpFlow{},
 	}
 
-	conn.ClientCoalesce = NewOrderedCoalesce(conn.AttackLogger, conn.clientFlow, conn.PageCache, conn.ClientStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection)
-	conn.ServerCoalesce = NewOrderedCoalesce(conn.AttackLogger, conn.serverFlow, conn.PageCache, conn.ServerStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection)
+	conn.ClientCoalesce = NewOrderedCoalesce(conn.AttackLogger, conn.clientFlow, conn.PageCache, conn.ClientStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection, &conn.attackDetected)
+	conn.ServerCoalesce = NewOrderedCoalesce(conn.AttackLogger, conn.serverFlow, conn.PageCache, conn.ServerStreamRing, conn.MaxBufferedPagesTotal, conn.MaxBufferedPagesPerConnection/2, conn.DetectCoalesceInjection, &conn.attackDetected)
 
 	return &conn
 }
@@ -172,11 +172,13 @@ func (c *Connection) Close() {
 	}
 	if c.attackDetected == false {
 		if c.PacketLogger != nil {
+			log.Print("packet logging not enabled. removing pcap logs")
 			c.PacketLogger.Remove()
 		}
 	} else {
-		log.Print("attack detected; archiving connection's logs\n")
+
 		if c.LogPackets {
+			log.Print("attack detected; archiving connection's pcap logs\n")
 			c.PacketLogger.Archive()
 		}
 	}
