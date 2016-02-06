@@ -9,5 +9,9 @@ go:
 
 sudo: false
 
+before_install:
+ - sudo apt-get update -qq
+ - sudo apt-get install -y libpcap-dev
+
 install:
   go get -v -t ./
