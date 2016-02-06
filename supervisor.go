@@ -70,7 +70,6 @@ func (b Supervisor) Stopped() {
 }
 
 func (b Supervisor) Run() {
-	log.Println("HoneyBadger: comprehensive TCP injection attack detection.")
 	b.dispatcher.Start()
 	b.sniffer.Start()
 
