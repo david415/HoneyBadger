@@ -8,3 +8,6 @@ go:
   - 1.4
 
 sudo: false
+
+install:
+  go get -v -t ./
