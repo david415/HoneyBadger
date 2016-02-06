@@ -20,6 +20,7 @@
 package types
 
 import (
+	"io"
 	"time"
 )
 
@@ -33,6 +34,7 @@ type PacketLogger interface {
 	Stop()
 	Remove()
 	Archive()
+	SetFileWriter(io.WriteCloser)
 }
 
 type PacketLoggerFactory interface {
