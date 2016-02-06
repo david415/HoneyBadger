@@ -20,8 +20,8 @@ func TestOrderedCoalesceUsedPages(t *testing.T) {
 	flow := types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 
 	var nextSeq types.Sequence = types.Sequence(1)
-
-	coalesce := NewOrderedCoalesce(nil, flow, PageCache, streamRing, maxBufferedPagesTotal, maxBufferedPagesPerFlow, false)
+	attackDetected := false
+	coalesce := NewOrderedCoalesce(nil, flow, PageCache, streamRing, maxBufferedPagesTotal, maxBufferedPagesPerFlow, false, &attackDetected)
 
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},
