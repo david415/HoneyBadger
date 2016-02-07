@@ -10,7 +10,7 @@ go:
 before_install:
  - sudo apt-get update -qq
  - sudo apt-get install -y libpcap-dev
-
+ - git clone https://github.com/david415/honeybadger-pcap-files.git pcap_archive
 install:
  - go get -v -t ./
 
