@@ -8,11 +8,14 @@ HoneyBadger
 
 |
 
-.. image:: https://api.travis-ci.org/david415/HoneyBadger.svg
+.. image:: https://travis-ci.org/david415/HoneyBadger.svg?branch=master
   :target: https://travis-ci.org/david415/HoneyBadger
 
 .. image:: https://coveralls.io/repos/github/david415/HoneyBadger/badge.svg?branch=master
   :target: https://coveralls.io/github/david415/HoneyBadger
+
+.. image:: https://godoc.org/github.com/david415/HoneyBadger?status.svg
+  :target: https://godoc.org/github.com/david415/HoneyBadger
 
 
 project goals
