@@ -12,7 +12,10 @@ before_install:
  - sudo apt-get install -y libpcap-dev
 
 install:
-  go get -v -t ./
+ - go get -v -t ./
 
 script:
-  go test -v ./
+ - go test -v ./
+ - go test -v ./logging
+ - go test -v ./blocks
+ - go test -v ./types
