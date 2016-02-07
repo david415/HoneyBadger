@@ -1,5 +1,5 @@
 /*
- *    probabalistic/sloppy TCP stream injection based on observed TCP sequences
+ *    rough but working prototype; probabalistic ordered coalesce TCP stream injector!
  *
  *    Copyright (C) 2014, 2015  David Stainton
  *
@@ -32,11 +32,13 @@ import (
 	"net"
 )
 
+
 var iface = flag.String("i", "lo", "Interface to get packets from")
 var filter = flag.String("f", "tcp", "BPF filter for pcap")
 var snaplen = flag.Int("s", 65536, "SnapLen for pcap packet capture")
 var serviceIPstr = flag.String("d", "127.0.0.1", "target TCP flows from this IP address")
 var servicePort = flag.Int("e", 9666, "target TCP flows from this port")
+var coalesce1or2 = flag.Bool("coalesce1", true, "perform the TCP coalesce1 injection, perform coalesce2 if false.")
 
 func main() {
 	defer util.Run()()
@@ -117,7 +119,8 @@ func main() {
 				panic(err)
 			}
 			streamInjector.SetTCPLayer(tcp)
-			err = streamInjector.SprayFutureAndFillGapPackets(tcp.Seq, gap_payload, attack_payload)
+			// we choose coalesce1 OR coalesce2 with a boolean
+			err := streamInjector.SprayFutureAndFillGapPackets(tcp.Seq, gap_payload, attack_payload, *coalesce1or2)
 			if err != nil {
 				panic(err)
 			}
