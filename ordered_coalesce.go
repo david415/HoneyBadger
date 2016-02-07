@@ -336,7 +336,7 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) (types.Sequence, bool)
 					panic("wtf got nil event")
 				} else {
 					*o.attackDetected = true
-					events[i].Type = "ordered coalesce"
+					events[i].Type = "ordered coalesce 1"
 					events[i].Time = o.first.Seen
 					events[i].Base = o.first.Seq
 					events[i].Flow = *o.Flow
@@ -354,6 +354,7 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) (types.Sequence, bool)
 		// append reassembly to the reassembly ring buffer
 		if len(o.first.Bytes) > 0 {
 			o.StreamRing.Reassembly = &o.first.Reassembly
+			o.StreamRing.Reassembly.IsCoalesce = true
 			o.StreamRing = o.StreamRing.Next()
 		}
 	}

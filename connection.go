@@ -241,11 +241,13 @@ func (c *Connection) detectInjection(p *types.PacketManifest) {
 		if events[i] == nil {
 			panic("wtf got nil event")
 		} else {
+			if len(events[i].Type) == 0 {
+				events[i].Type = "segment veto or sloppy injection"
+			}
 			events[i].Base = types.Sequence(p.TCP.Seq)
 			events[i].Time = p.Timestamp
 			events[i].Flow = *p.Flow
 			events[i].Payload = p.Payload
-
 			c.AttackLogger.Log(events[i])
 			c.attackDetected = true
 			log.Printf("injection detected in packet # %d\n", c.packetCount)
@@ -416,7 +418,11 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 				c.ServerStreamRing.Reassembly = &reassembly
 				c.ServerStreamRing = c.ServerStreamRing.Next()
 				c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
+				prev := c.clientNextSeq
 				c.clientNextSeq, isEnd = c.ServerCoalesce.addContiguous(c.clientNextSeq)
+				if c.clientNextSeq != prev {
+					reassembly.IsCoalesceGap = true
+				}
 				if isEnd {
 					c.state = TCP_CLOSED
 					return
@@ -425,7 +431,11 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 				c.ClientStreamRing.Reassembly = &reassembly
 				c.ClientStreamRing = c.ClientStreamRing.Next()
 				c.serverNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
+				prev := c.serverNextSeq
 				c.serverNextSeq, isEnd = c.ClientCoalesce.addContiguous(c.serverNextSeq)
+				if c.serverNextSeq != prev {
+					reassembly.IsCoalesceGap = true
+				}
 				if isEnd {
 					c.state = TCP_CLOSED
 					return
@@ -477,27 +487,48 @@ func (c *Connection) stateFinWait1(p *types.PacketManifest, flow *types.TcpIpFlo
 		// future out of order
 		log.Print("FIN-WAIT-1: ignoring out of order packet")
 		return
-	} else if p.TCP.ACK {
-		*nextAckPtr += 1
-		if p.TCP.FIN {
-			*statePtr = TCP_CLOSING
-			*otherStatePtr = TCP_LAST_ACK
-			*nextSeqPtr = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
-			if types.Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 {
-				log.Printf("FIN-WAIT-1: unexpected ACK: got %d expected %d TCP.Seq %d\n", p.TCP.Ack, *nextAckPtr, p.TCP.Seq)
-				c.closingFlow = p.Flow
-				c.closingSeq = types.Sequence(p.TCP.Seq)
-				return
+	} else if diff == 0 {
+		if len(p.Payload) > 0 {
+			reassembly := types.Reassembly{
+				Seq:   types.Sequence(p.TCP.Seq),
+				Bytes: []byte(p.Payload),
+				Seen:  p.Timestamp,
+			}
+			if p.Flow.Equal(c.clientFlow) {
+				c.ServerStreamRing.Reassembly = &reassembly
+				c.ServerStreamRing = c.ServerStreamRing.Next()
+				c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
+				c.clientNextSeq, _ = c.ServerCoalesce.addContiguous(c.clientNextSeq)
+			} else {
+				c.ClientStreamRing.Reassembly = &reassembly
+				c.ClientStreamRing = c.ClientStreamRing.Next()
+				c.serverNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
+				c.serverNextSeq, _ = c.ClientCoalesce.addContiguous(c.serverNextSeq)
+			}
+		}
+
+		if p.TCP.ACK {
+			*nextAckPtr += 1
+			if p.TCP.FIN {
+				*statePtr = TCP_CLOSING
+				*otherStatePtr = TCP_LAST_ACK
+				*nextSeqPtr = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
+				if types.Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 {
+					log.Printf("FIN-WAIT-1: unexpected ACK: got %d expected %d TCP.Seq %d\n", p.TCP.Ack, *nextAckPtr, p.TCP.Seq)
+					c.closingFlow = p.Flow
+					c.closingSeq = types.Sequence(p.TCP.Seq)
+					return
+				}
+			} else {
+				*statePtr = TCP_FIN_WAIT2
+				*nextSeqPtr = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
 			}
 		} else {
-			*statePtr = TCP_FIN_WAIT2
-			*nextSeqPtr = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
+			log.Print("FIN-WAIT-1: non-ACK packet received.\n")
+			c.closingFlow = p.Flow
+			c.closingSeq = types.Sequence(p.TCP.Seq)
+			return
 		}
-	} else {
-		log.Print("FIN-WAIT-1: non-ACK packet received.\n")
-		c.closingFlow = p.Flow
-		c.closingSeq = types.Sequence(p.TCP.Seq)
-		return
 	}
 }
 

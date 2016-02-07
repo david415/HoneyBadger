@@ -48,39 +48,39 @@ func TestGetOverlapsInRing(t *testing.T) {
 	}{
 		{ //0
 			blocks.Block{ A:1, B:22 }, []blocks.BlockSegment{
-				blocks.BlockSegment{ blocks.Block{ 5, 10 }, []byte{1, 2, 3, 4, 5} },
-				blocks.BlockSegment{ blocks.Block{ 10, 15 }, []byte{1, 2, 3, 4, 5} },
-				blocks.BlockSegment{ blocks.Block{ 15, 20 }, []byte{1, 2, 3, 4, 5} },
-				blocks.BlockSegment{ blocks.Block{ 20, 22 }, []byte{1, 2, 3} },
+				blocks.BlockSegment{ blocks.Block{ 5, 10 }, []byte{1, 2, 3, 4, 5}, false, false },
+				blocks.BlockSegment{ blocks.Block{ 10, 15 }, []byte{1, 2, 3, 4, 5}, false, false },
+				blocks.BlockSegment{ blocks.Block{ 15, 20 }, []byte{1, 2, 3, 4, 5}, false, false },
+				blocks.BlockSegment{ blocks.Block{ 20, 22 }, []byte{1, 2, 3}, false, false },
 			},
 		},
 		{ //1
 			blocks.Block{ 3, 10 }, []blocks.BlockSegment{
-				blocks.BlockSegment{ blocks.Block{ 5, 10 }, []byte{1, 2, 3, 4, 5} },
+				blocks.BlockSegment{ blocks.Block{ 5, 10 }, []byte{1, 2, 3, 4, 5}, false, false },
 			},
 		},
 		{ //2
 			blocks.Block{ 6, 12 }, []blocks.BlockSegment{
-				blocks.BlockSegment{ blocks.Block{ 6, 10 }, []byte{2, 3, 4, 5} },
-				blocks.BlockSegment{ blocks.Block{ 10, 12 }, []byte{1, 2, 3} },
+				blocks.BlockSegment{ blocks.Block{ 6, 10 }, []byte{2, 3, 4, 5}, false, false },
+				blocks.BlockSegment{ blocks.Block{ 10, 12 }, []byte{1, 2, 3}, false, false },
 			},
 		},
 		{ //3
 			blocks.Block{ A:1, B:17 }, []blocks.BlockSegment{
-				blocks.BlockSegment{ blocks.Block{ 5, 10 }, []byte{1, 2, 3, 4, 5} },
-				blocks.BlockSegment{ blocks.Block{ 10, 15 }, []byte{1, 2, 3, 4, 5} },
-				blocks.BlockSegment{ blocks.Block{ 15, 17 }, []byte{1, 2, 3} },
+				blocks.BlockSegment{ blocks.Block{ 5, 10 }, []byte{1, 2, 3, 4, 5}, false, false },
+				blocks.BlockSegment{ blocks.Block{ 10, 15 }, []byte{1, 2, 3, 4, 5}, false, false },
+				blocks.BlockSegment{ blocks.Block{ 15, 17 }, []byte{1, 2, 3}, false, false },
 			},
 		},
 		{ //4
 			blocks.Block{ A:0, B:100 }, []blocks.BlockSegment{
-				blocks.BlockSegment{ blocks.Block{ A:5, B:10 }, []byte{1, 2, 3, 4, 5} },
-				blocks.BlockSegment{ blocks.Block{ A:10, B:15 }, []byte{1, 2, 3, 4, 5} },
-				blocks.BlockSegment{ blocks.Block{ A:15, B:20 }, []byte{1, 2, 3, 4, 5} },
-				blocks.BlockSegment{ blocks.Block{ A:20, B:25 }, []byte{1, 2, 3, 4, 5} },
-				blocks.BlockSegment{ blocks.Block{ A:25, B:30 }, []byte{1, 2, 3, 4, 5} },
-				blocks.BlockSegment{ blocks.Block{ A:30, B:35 }, []byte{1, 2, 3, 4, 5} },
-				blocks.BlockSegment{ blocks.Block{ A:35, B:40 }, []byte{1, 2, 3, 4, 5} },
+				blocks.BlockSegment{ blocks.Block{ A:5, B:10 }, []byte{1, 2, 3, 4, 5}, false, false },
+				blocks.BlockSegment{ blocks.Block{ A:10, B:15 }, []byte{1, 2, 3, 4, 5}, false, false },
+				blocks.BlockSegment{ blocks.Block{ A:15, B:20 }, []byte{1, 2, 3, 4, 5}, false, false },
+				blocks.BlockSegment{ blocks.Block{ A:20, B:25 }, []byte{1, 2, 3, 4, 5}, false, false },
+				blocks.BlockSegment{ blocks.Block{ A:25, B:30 }, []byte{1, 2, 3, 4, 5}, false, false },
+				blocks.BlockSegment{ blocks.Block{ A:30, B:35 }, []byte{1, 2, 3, 4, 5}, false, false },
+				blocks.BlockSegment{ blocks.Block{ A:35, B:40 }, []byte{1, 2, 3, 4, 5}, false, false },
 
 			},
 		},

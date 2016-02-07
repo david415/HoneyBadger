@@ -35,17 +35,25 @@ func checkForInjectionInRing(ringPtr *types.Ring, start, end types.Sequence, pay
 	for i := 0; i < len(overlapBlockSegments); i++ {
 		packetOverlapBytes := getOverlapBytesFromSlice(payload, start, overlapBlockSegments[i].Block)
 		if !bytes.Equal(packetOverlapBytes, overlapBlockSegments[i].Bytes) {
+			log.Printf("injection at TCP Sequence start %d end %d\n", start, end)
 			log.Print("race winner stream segment:")
 			log.Print(hex.Dump(overlapBlockSegments[i].Bytes))
 			log.Print("race loser stream segment:")
 			log.Print(hex.Dump(packetOverlapBytes))
 
 			e := &types.Event{
-				Loser:       packetOverlapBytes,
-				Winner:       overlapBlockSegments[i].Bytes,
-				Start: overlapBlockSegments[i].Block.A,
-				End:   overlapBlockSegments[i].Block.B,
+				Loser:   packetOverlapBytes,
+				Winner:  overlapBlockSegments[i].Bytes,
+				Start:   overlapBlockSegments[i].Block.A,
+				End:     overlapBlockSegments[i].Block.B,
 			}
+			if overlapBlockSegments[i].IsCoalesce {
+				e.Type = "ordered coalesce 2"
+			}
+			if overlapBlockSegments[i].IsCoalesceGap {
+				e.Type = "ordered coalesce 2 gap"
+			}
+
 			acc = append(acc, e)
 		}
 	}
@@ -88,6 +96,8 @@ func getOverlapsInRing(ringPtr *types.Ring, start, end types.Sequence) []blocks.
 			blockSegment := blocks.BlockSegment {
 				Block: *overlap,
 				Bytes: overlapBytes,
+				IsCoalesce: current.Reassembly.IsCoalesce,
+				IsCoalesceGap: current.Reassembly.IsCoalesceGap,
 			}
 			acc = append(acc, blockSegment)
 		}

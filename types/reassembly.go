@@ -32,6 +32,12 @@ type Reassembly struct {
 	Start bool
 	// End is set if this set of bytes has a TCP FIN or RST accompanying it.
 	End bool
+	// IsOrderCoalesce is set if this stream segment was originally received
+	// out of order and the later coalesced into the stream.
+	IsCoalesce bool
+	// IsCoalesceGap is set if this stream segment was the catalyzing segment
+	// for triggering the coalescing of latent out-of-order packets.
+	IsCoalesceGap bool
 	// Seen is the timestamp this set of bytes was pulled off the wire.
 	Seen time.Time
 }

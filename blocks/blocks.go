@@ -20,6 +20,8 @@ type Block struct {
 type BlockSegment struct {
 	Block Block
 	Bytes []byte
+	IsCoalesce bool
+	IsCoalesceGap bool
 }
 
 func (t Block) String() string {
