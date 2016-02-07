@@ -55,7 +55,7 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		maxPcapLogSize      = flag.Int("max_pcap_log_size", 1, "maximum pcap size per rotation in megabytes")
 		maxNumPcapRotations = flag.Int("max_pcap_rotations", 10, "maximum number of pcap rotations per connection")
 		archiveDir          = flag.String("archive_dir", "", "archive directory for storing attack logs and related pcap files")
-		daq                 = flag.String("daq", "libpcap", "Data AcQuisition packet source")
+		daq                 = flag.String("daq", "libpcap", "Data AcQuisition packet source: libpcap, AF_PACKET or BSD_BPF")
 	)
 	flag.Parse()
 
