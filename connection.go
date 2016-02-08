@@ -84,7 +84,7 @@ func (f *DefaultConnFactory) Build(options ConnectionOptions) ConnectionInterfac
 type ConnectionInterface interface {
 	Close()
 	SetPacketLogger(types.PacketLogger)
-	GetConnectionHash() types.ConnectionHash
+	GetConnectionHash() uint64
 	GetLastSeen() time.Time
 	ReceivePacket(*types.PacketManifest)
 }
@@ -107,7 +107,7 @@ type ConnectionOptions struct {
 	DetectHijack                  bool
 	DetectInjection               bool
 	DetectCoalesceInjection       bool
-	Pool                          *map[types.ConnectionHash]ConnectionInterface
+	Pool                          *map[uint64]ConnectionInterface
 }
 
 // Connection is used to track client and server flows for a given TCP connection.
@@ -160,7 +160,7 @@ func (c *Connection) updateLastSeen(timestamp time.Time) {
 	}
 }
 
-func (c *Connection) GetConnectionHash() types.ConnectionHash {
+func (c *Connection) GetConnectionHash() uint64 {
 	return c.clientFlow.ConnectionHash()
 }
 
@@ -259,10 +259,12 @@ func (c *Connection) detectInjection(p *types.PacketManifest) {
 // and moves us into the TCP_CONNECTION_REQUEST state if we receive
 // a SYN packet... otherwise TCP_DATA_TRANSFER state.
 func (c *Connection) stateUnknown(p *types.PacketManifest) {
+
+	*c.clientFlow = *p.Flow
+	*c.serverFlow = *p.Flow.Reverse()
+
 	if p.TCP.SYN && !p.TCP.ACK {
 		c.state = TCP_CONNECTION_REQUEST
-		*c.clientFlow = *p.Flow
-		*c.serverFlow = *p.Flow.Reverse()
 
 		// Note that TCP SYN and SYN/ACK packets may contain payload data if
 		// a TCP extension is used...
@@ -274,8 +276,6 @@ func (c *Connection) stateUnknown(p *types.PacketManifest) {
 	} else {
 		// else process a connection after handshake
 		c.state = TCP_DATA_TRANSFER
-		*c.clientFlow = *p.Flow
-		*c.serverFlow = *p.Flow.Reverse()
 
 		// skip handshake hijack detection completely
 		c.skipHijackDetectionCount = 0
@@ -393,6 +393,7 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 		closerState = &c.serverState
 		remoteState = &c.clientState
 	} else {
+		log.Printf("packet flow %s clientflow %s serverflow %s\n", p.Flow, c.clientFlow, c.serverFlow)
 		panic("wtf")
 	}
 

@@ -25,6 +25,24 @@ import (
 	"github.com/google/gopacket/layers"
 )
 
+
+const fnvBasis = 14695981039346656037
+const fnvPrime = 1099511628211
+
+// This fnvHash function is from google. I've already included their LICENSE file.
+//
+// fnvHash is used by our FastHash functions, and implements the FNV hash
+// created by Glenn Fowler, Landon Curt Noll, and Phong Vo.
+// See http://isthe.com/chongo/tech/comp/fnv/.
+func fnvHash(s []byte) (h uint64) {
+	h = fnvBasis
+	for i := 0; i < len(s); i++ {
+		h ^= uint64(s[i])
+		h *= fnvPrime
+	}
+	return
+}
+
 // SequenceFromPacket returns a Sequence number and nil error if the given
 // packet is able to be parsed. Otherwise returns 0 and an error.
 func SequenceFromPacket(packet []byte) (uint32, error) {
@@ -37,15 +55,6 @@ func SequenceFromPacket(packet []byte) (uint32, error) {
 		return 0, err
 	}
 	return tcp.Seq, nil
-}
-
-// ConnectionHash struct value will be used as the result of
-// gopacket's variant of Fowler-Noll-Vo hashing
-// which guarantees collisions of a flow's reverse:
-// A->B == B->A
-// https://github.com/google/gopacket/blob/master/flows.go
-type ConnectionHash struct {
-	IpFlowHash, TcpFlowHash uint64
 }
 
 // TcpIpFlow is used for tracking unidirectional TCP flows
@@ -71,16 +80,23 @@ func NewTcpIpFlowFromFlows(ipFlow gopacket.Flow, tcpFlow gopacket.Flow) *TcpIpFl
 	}
 }
 
+
 // ConnectionHash returns a hash of the flow A->B such
 // that it is guaranteed to collide with flow B->A
-//
-// XXX Is it possible to make this function more efficient
-// by computing a single hash value instead of two?
-func (t *TcpIpFlow) ConnectionHash() ConnectionHash {
-	return ConnectionHash{
-		IpFlowHash:  t.ipFlow.FastHash(),
-		TcpFlowHash: t.tcpFlow.FastHash(),
-	}
+func (t *TcpIpFlow) ConnectionHash() uint64 {
+	src := []byte{}
+	dst := []byte{}
+
+	src = append(src, t.ipFlow.Src().Raw()...)
+	src = append(src, t.tcpFlow.Src().Raw()...)
+
+	dst = append(dst, t.ipFlow.Dst().Raw()...)
+	dst = append(dst, t.tcpFlow.Dst().Raw()...)
+
+	h := fnvHash(src) + fnvHash(dst)
+	h *= fnvPrime
+
+	return h
 }
 
 // String returns the string representation of a TcpIpFlow
