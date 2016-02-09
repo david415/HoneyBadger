@@ -172,11 +172,10 @@ func (c *Connection) Close() {
 	}
 	if c.attackDetected == false {
 		if c.PacketLogger != nil {
-			log.Print("packet logging not enabled. removing pcap logs")
+			log.Print("no attack detected. removing pcap logs")
 			c.PacketLogger.Remove()
 		}
 	} else {
-
 		if c.LogPackets {
 			log.Print("attack detected; archiving connection's pcap logs\n")
 			c.PacketLogger.Archive()
