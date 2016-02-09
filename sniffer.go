@@ -37,7 +37,7 @@ type Sniffer struct {
 	supervisor       types.Supervisor
 	dispatcher       PacketDispatcher
 	packetDataSource types.PacketDataSourceCloser
-	stopCaptureChan  chan bool
+	isStopped        bool
 	decodePacketChan chan TimedRawPacket
 	stopDecodeChan   chan bool
 }
@@ -47,7 +47,6 @@ func NewSniffer(options *types.SnifferDriverOptions, dispatcher PacketDispatcher
 	i := Sniffer{
 		dispatcher:       dispatcher,
 		options:          options,
-		stopCaptureChan:  make(chan bool),
 		decodePacketChan: make(chan TimedRawPacket),
 		stopDecodeChan:   make(chan bool),
 	}
@@ -72,12 +71,19 @@ func (i *Sniffer) Start() {
 }
 
 func (i *Sniffer) Stop() {
-	i.stopCaptureChan <- true
+	log.Print("sniffer: sending stopCapureChan signal")
+	i.isStopped = true
 	i.stopDecodeChan <- true
+}
+
+func (i *Sniffer) Close() {
 	if i.packetDataSource != nil {
+		log.Print("closing packet capture socket")
 		i.packetDataSource.Close()
 	}
-	i.dispatcher.Stop()
+	log.Print("stopping the sniffer decode loop")
+	i.isStopped = true
+	log.Print("done.")
 }
 
 func (i *Sniffer) setupHandle() {
@@ -104,35 +110,26 @@ func (i *Sniffer) setupHandle() {
 }
 
 func (i *Sniffer) capturePackets() {
-
-	tchan := make(chan TimedRawPacket, 0)
-	// XXX does this need a shutdown code path?
-	go func() {
-		for {
-			rawPacket, captureInfo, err := i.packetDataSource.ReadPacketData()
-			if err == io.EOF {
-				log.Print("ReadPacketData got EOF\n")
-				i.Stop()
-				close(tchan)
-				i.supervisor.Stopped()
-				return
-			}
-			if err != nil {
-				continue
-			}
-			tchan <- TimedRawPacket{
-				Timestamp: captureInfo.Timestamp,
-				RawPacket: rawPacket,
-			}
-		}
-	}()
-
 	for {
-		select {
-		case <-i.stopCaptureChan:
+		rawPacket, captureInfo, err := i.packetDataSource.ReadPacketData()
+		if err == io.EOF {
+			log.Print("ReadPacketData got EOF\n")
+			i.Close()
+			i.Stop()
+			i.dispatcher.Stop()
+			i.supervisor.Stopped()
 			return
-		case t := <-tchan:
-			i.decodePacketChan <- t
+		}
+		if err != nil {
+			continue
+		}
+		timedPacket := TimedRawPacket{
+			Timestamp: captureInfo.Timestamp,
+			RawPacket: rawPacket,
+		}
+		i.decodePacketChan <- timedPacket
+		if i.isStopped {
+			break
 		}
 	}
 }

@@ -77,9 +77,12 @@ func (b Supervisor) Run() {
 
 	select {
 	case <-b.forceQuitChan:
-		log.Print("graceful shutdown: user force quit")
-		b.dispatcher.Stop()
+		log.Print("graceful shutdown: user force quit\n")
+		log.Print("stopping sniffer")
 		b.sniffer.Stop()
+		log.Print("stopping dispatcher")
+		b.dispatcher.Stop()
+		log.Print("supervisor waiting for child to stop\n")
 	case <-b.childStoppedChan:
 		log.Print("graceful shutdown: packet-source stopped")
 	}
