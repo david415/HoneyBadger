@@ -19,6 +19,7 @@
 
 package main
 
+
 import (
 	"flag"
 	"fmt"
@@ -69,7 +70,7 @@ func main() {
 		panic(err)
 	}
 
-	gap_payload := []byte("meowmeowmeow")
+	gap_payload := []byte("Many of these well-funded state/world-class adversaries are able to completely automate the compromising of computers using these TCP injection attacks against real people to violate their human rights.")
 	attack_payload := []byte("Privacy is necessary for an open society in the electronic age. Privacy is not secrecy. A private matter is something one doesn't want the whole world to know, but a secret matter is something one doesn't want anybody to know. Privacy is the power to selectively reveal oneself to the world.")
 
 
@@ -113,7 +114,7 @@ func main() {
 		}
 
 		// after 3 packets from a given flow then inject packets into the stream
-		if trackedFlows[*flow] == 10 {
+		if trackedFlows[*flow] == 3 {
 			err = streamInjector.SetIPLayer(ip4)
 			if err != nil {
 				panic(err)
