@@ -258,7 +258,6 @@ func (c *Connection) detectInjection(p *types.PacketManifest) {
 // and moves us into the TCP_CONNECTION_REQUEST state if we receive
 // a SYN packet... otherwise TCP_DATA_TRANSFER state.
 func (c *Connection) stateUnknown(p *types.PacketManifest) {
-
 	*c.clientFlow = *p.Flow
 	*c.serverFlow = *p.Flow.Reverse()
 
@@ -275,27 +274,24 @@ func (c *Connection) stateUnknown(p *types.PacketManifest) {
 	} else {
 		// else process a connection after handshake
 		c.state = TCP_DATA_TRANSFER
-
 		// skip handshake hijack detection completely
 		c.skipHijackDetectionCount = 0
 		c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
-
+		if len(p.Payload) > 0 {
+			reassembly := types.Reassembly{
+				Seq:   types.Sequence(p.TCP.Seq),
+				Bytes: []byte(p.Payload),
+				Seen:  p.Timestamp,
+			}
+			c.ServerStreamRing.Reassembly = &reassembly
+			c.ServerStreamRing = c.ServerStreamRing.Next()
+			c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
+		}
 		if p.TCP.FIN || p.TCP.RST {
 			c.state = TCP_CLOSED
 			c.closingFlow = p.Flow
 			c.closingSeq = types.Sequence(p.TCP.Seq)
 			return
-		} else {
-			if len(p.Payload) > 0 {
-				isEnd := false
-				c.clientNextSeq, isEnd = c.ServerCoalesce.insert(p, c.clientNextSeq)
-				if isEnd {
-					c.state = TCP_CLOSED
-					c.closingFlow = p.Flow
-					c.closingSeq = types.Sequence(p.TCP.Seq)
-					return
-				}
-			}
 		}
 	}
 }
@@ -360,23 +356,10 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 	var diff int
 
 	isEnd := false
-
 	if c.clientNextSeq == types.InvalidSequence && p.Flow.Equal(c.clientFlow) {
-		c.clientNextSeq, isEnd = c.ServerCoalesce.insert(p, c.clientNextSeq)
-		if isEnd {
-			c.state = TCP_CLOSED
-			c.closingFlow = p.Flow
-			c.closingSeq = types.Sequence(p.TCP.Seq)
-		}
-		return
+		c.clientNextSeq = types.Sequence(p.TCP.Seq)
 	} else if c.serverNextSeq == types.InvalidSequence && p.Flow.Equal(c.serverFlow) {
-		c.serverNextSeq, isEnd = c.ClientCoalesce.insert(p, c.serverNextSeq)
-		if isEnd {
-			c.state = TCP_CLOSED
-			c.closingFlow = p.Flow
-			c.closingSeq = types.Sequence(p.TCP.Seq)
-		}
-		return
+		c.serverNextSeq = types.Sequence(p.TCP.Seq)
 	}
 	if c.packetCount < c.skipHijackDetectionCount {
 		if c.DetectHijack {
