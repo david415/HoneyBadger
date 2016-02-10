@@ -396,18 +396,7 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 		panic("wtf")
 	}
 
-	// stream overlap case
-	if diff < 0 {
-		// ignore zero size packets
-		if len(p.Payload) > 0 {
-			if c.DetectInjection {
-				c.detectInjection(p)
-			}
-		} else {
-			// deal with strange packets here...
-			// possibly RST or FIN
-		}
-	} else if diff == 0 { // contiguous
+	if diff == 0 { // contiguous
 		if len(p.Payload) > 0 {
 			reassembly := types.Reassembly{
 				Seq:   types.Sequence(p.TCP.Seq),
@@ -477,13 +466,7 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 func (c *Connection) stateFinWait1(p *types.PacketManifest, flow *types.TcpIpFlow, nextSeqPtr *types.Sequence, nextAckPtr *types.Sequence, statePtr, otherStatePtr *uint8) {
 	c.detectCensorInjection(p)
 	diff := nextSeqPtr.Difference(types.Sequence(p.TCP.Seq))
-	if diff < 0 {
-		// overlap
-		if len(p.Payload) > 0 {
-			c.detectInjection(p)
-		}
-		return
-	} else if diff > 0 {
+	if diff > 0 {
 		// future out of order
 		log.Print("FIN-WAIT-1: ignoring out of order packet")
 		return
@@ -536,35 +519,15 @@ func (c *Connection) stateFinWait1(p *types.PacketManifest, flow *types.TcpIpFlo
 func (c *Connection) stateFinWait2(p *types.PacketManifest, flow *types.TcpIpFlow, nextSeqPtr *types.Sequence, nextAckPtr *types.Sequence, statePtr *uint8) {
 	c.detectCensorInjection(p)
 	diff := nextSeqPtr.Difference(types.Sequence(p.TCP.Seq))
-	if diff < 0 {
-		// overlap
-		if len(p.Payload) > 0 {
-			c.detectInjection(p)
-		}
-	} else if diff > 0 {
+	if diff > 0 {
 		// future out of order
 		log.Print("FIN-WAIT-2: out of order packet received.\n")
 		log.Printf("got TCP.Seq %d expected %d\n", p.TCP.Seq, *nextSeqPtr)
 	} else if diff == 0 {
 		// contiguous
 		if p.TCP.ACK && p.TCP.FIN {
-			if types.Sequence(p.TCP.Ack).Difference(*nextAckPtr) != 0 {
-				if len(p.Payload) > 0 {
-					log.Print("FIN-WAIT-2: out of order ACK packet received with payload.\n")
-					c.detectInjection(p)
-				} else {
-					log.Print("FIN-WAIT-2: out of order ACK packet received without payload.\n")
-				}
-				return
-			}
 			*nextSeqPtr += 1
 			*statePtr = TCP_TIME_WAIT
-		} else {
-			if len(p.Payload) > 0 {
-				c.detectInjection(p)
-			} else {
-				log.Print("FIN-WAIT-2: wtf non-FIN/ACK with payload len 0")
-			}
 		}
 	}
 }
@@ -580,9 +543,7 @@ func (c *Connection) stateCloseWait(p *types.PacketManifest) {
 	diff := types.Sequence(p.TCP.Seq).Difference(*nextSeqPtr)
 	// stream overlap case
 	if diff > 0 {
-		if len(p.Payload) > 0 {
-			c.detectInjection(p)
-		} else {
+		if len(p.Payload) == 0 {
 			c.detectCensorInjection(p)
 		}
 	}
@@ -714,6 +675,22 @@ func (c *Connection) ReceivePacket(p *types.PacketManifest) {
 	c.packetCount += 1
 	//log.Printf("packetCount %d\n", c.packetCount)
 
+	// detect injection
+	var nextSeqPtr *types.Sequence
+	if c.clientFlow.Equal(p.Flow) {
+		nextSeqPtr = &c.clientNextSeq
+	} else {
+		nextSeqPtr = &c.serverNextSeq
+	}
+	diff := nextSeqPtr.Difference(types.Sequence(p.TCP.Seq))
+	if diff < 0 {
+		// overlap
+		if len(p.Payload) > 0 {
+			c.detectInjection(p)
+		}
+	}
+
+	// simplified TCP state machine
 	switch c.state {
 	case TCP_UNKNOWN:
 		c.stateUnknown(p)
