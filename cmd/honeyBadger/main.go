@@ -37,23 +37,23 @@ func main() {
 		filter                   = flag.String("f", "tcp", "BPF filter for pcap")
 		logDir                   = flag.String("l", "", "incoming log dir used initially for pcap files if packet logging is enabled")
 		wireTimeout              = flag.String("w", "3s", "timeout for reading packets off the wire")
-		metadataAttackLog        = flag.Bool("metadata_attack_log", true, "if set to true then attack reports will only include metadata")
+		metadataAttackLog        = flag.Bool("metadata_attack_log", false, "if set to true then attack reports will only include metadata")
 		logPackets               = flag.Bool("log_packets", false, "if set to true then log all packets for each tracked TCP connection")
-		tcpTimeout               = flag.Duration("tcp_idle_timeout", time.Minute*5, "tcp idle timeout duration")
+		tcpTimeout               = flag.Duration("tcp_idle_timeout", time.Minute*10, "tcp idle timeout duration")
 		maxRingPackets           = flag.Int("max_ring_packets", 40, "Max packets per connection stream ring buffer")
 		detectHijack             = flag.Bool("detect_hijack", true, "Detect handshake hijack attacks")
 		detectInjection          = flag.Bool("detect_injection", true, "Detect injection attacks")
 		detectCoalesceInjection  = flag.Bool("detect_coalesce_injection", true, "Detect coalesce injection attacks")
-		maxConcurrentConnections = flag.Int("max_concurrent_connections", 0, "Maximum number of concurrent connection to track.")
-		bufferedPerConnection    = flag.Int("connection_max_buffer", 0, `
+		maxConcurrentConnections = flag.Int("max_concurrent_connections", 300, "Maximum number of concurrent connection to track.")
+		bufferedPerConnection    = flag.Int("connection_max_buffer", 100, `
 Max packets to buffer for a single connection before skipping over a gap in data
 and continuing to stream the connection after the buffer.  If zero or less, this
 is infinite.`)
-		bufferedTotal = flag.Int("total_max_buffer", 0, `
+		bufferedTotal = flag.Int("total_max_buffer", 1000, `
 Max packets to buffer total before skipping over gaps in connections and
 continuing to stream connection data.  If zero or less, this is infinite`)
-		maxPcapLogSize      = flag.Int("max_pcap_log_size", 1, "maximum pcap size per rotation in megabytes")
-		maxNumPcapRotations = flag.Int("max_pcap_rotations", 10, "maximum number of pcap rotations per connection")
+		maxPcapLogSize      = flag.Int("max_pcap_log_size", 10, "maximum pcap size per rotation in megabytes")
+		maxNumPcapRotations = flag.Int("max_pcap_rotations", 100, "maximum number of pcap rotations per connection")
 		archiveDir          = flag.String("archive_dir", "", "archive directory for storing attack logs and related pcap files")
 		daq                 = flag.String("daq", "libpcap", "Data AcQuisition packet source: libpcap, AF_PACKET or BSD_BPF")
 	)
@@ -70,7 +70,7 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 	}
 
 	if *archiveDir == "" || *logDir == "" {
-		log.Fatal("must specify both incoming log dir and archive log dir")
+		log.Fatal("must specify both incoming log dir and archive log dir with option flags -l and -archive_dir")
 	}
 
 	wireDuration, err := time.ParseDuration(*wireTimeout)
