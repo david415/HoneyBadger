@@ -247,6 +247,7 @@ func (c *Connection) detectInjection(p *types.PacketManifest) {
 			events[i].Time = p.Timestamp
 			events[i].Flow = *p.Flow
 			events[i].Payload = p.Payload
+			events[i].PacketCount = c.packetCount
 			c.AttackLogger.Log(events[i])
 			c.attackDetected = true
 			log.Printf("injection detected in packet # %d\n", c.packetCount)
