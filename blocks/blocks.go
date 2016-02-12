@@ -29,6 +29,21 @@ func (t Block) String() string {
 }
 
 func (blk Block) Overlap(a, b types.Sequence) *Block {
+	// zero-length overlap case 1
+	if a.Equals(b) {
+			if a.GreaterThanOrEqual(blk.A) && a.LessThanOrEqual(blk.B) {
+				return &Block{a, b}
+			}
+		return nil
+	}
+	// zero-length overlap case 2
+	if blk.A.Equals(blk.B) {
+			if blk.A.GreaterThanOrEqual(a) && blk.B.LessThanOrEqual(b) {
+				return &Block{blk.A, blk.B}
+			}
+		return nil
+	}
+	// normal non-zero length block comparison case
 	left := a
 	if blk.A.GreaterThan(left) {
 		left = blk.A

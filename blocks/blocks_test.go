@@ -44,6 +44,17 @@ func TestOverlaps(t *testing.T) {
 	blks := Blocks{}
 	blks = blks.Add(types.Sequence(0), types.Sequence(100))
 	blks = blks.Add(types.Sequence(110), types.Sequence(200))
+	blks = blks.Add(types.Sequence(207), types.Sequence(207))
+	blks = blks.Add(types.Sequence(227), types.Sequence(228))
+	blks = blks.Add(types.Sequence(240), types.Sequence(250))
+
 	checkBlocks(t, blks.Overlaps(types.Sequence(50), types.Sequence(150)), Blocks{{types.Sequence(50), types.Sequence(100)}, {types.Sequence(110), types.Sequence(150)}})
-	checkBlocks(t, blks.Overlaps(types.Sequence(110), types.Sequence(220)), Blocks{{types.Sequence(110), types.Sequence(200)}})
+	checkBlocks(t, blks.Overlaps(types.Sequence(110), types.Sequence(220)), Blocks{{types.Sequence(110), types.Sequence(200)}, {types.Sequence(207), types.Sequence(207)}})
+	checkBlocks(t, blks.Overlaps(types.Sequence(222), types.Sequence(230)), Blocks{{types.Sequence(227), types.Sequence(228)}})
+	checkBlocks(t, blks.Overlaps(types.Sequence(250), types.Sequence(260)), Blocks{})
+	checkBlocks(t, blks.Overlaps(types.Sequence(280), types.Sequence(280)), Blocks{})
+	checkBlocks(t, blks.Overlaps(types.Sequence(208), types.Sequence(208)), Blocks{})
+	checkBlocks(t, blks.Overlaps(types.Sequence(206), types.Sequence(208)), Blocks{{types.Sequence(207), types.Sequence(207)}})
+	checkBlocks(t, blks.Overlaps(types.Sequence(207), types.Sequence(207)), Blocks{{types.Sequence(207), types.Sequence(207)}})
+	checkBlocks(t, blks.Overlaps(types.Sequence(206), types.Sequence(206)), Blocks{})
 }
