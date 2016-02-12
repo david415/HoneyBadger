@@ -350,12 +350,10 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) (types.Sequence, bool)
 	if bytes != nil {
 		o.first.Bytes = bytes
 		nextSeq = seq
-		// append reassembly to the reassembly ring buffer
-		if len(o.first.Bytes) > 0 {
-			o.StreamRing.Reassembly = &o.first.Reassembly
-			o.StreamRing.Reassembly.IsCoalesce = true
-			o.StreamRing = o.StreamRing.Next()
-		}
+		o.StreamRing.Reassembly = &o.first.Reassembly
+		o.StreamRing.Reassembly.IsCoalesce = true
+		o.StreamRing = o.StreamRing.Next()
+
 	}
 	o.freeNext()
 	return nextSeq, false

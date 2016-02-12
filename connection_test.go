@@ -52,6 +52,7 @@ func TestStateDataTransfer(t *testing.T) {
 	conn.clientNextSeq = 9666
 	conn.serverNextSeq = 3
 
+	// #1
 	conn.ReceivePacket(&p)
 	if conn.state != TCP_DATA_TRANSFER {
 		t.Error("invalid state transition\n")
@@ -79,6 +80,7 @@ func TestStateDataTransfer(t *testing.T) {
 		TCP:       tcp,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
+	// #2
 	conn.ReceivePacket(&p)
 
 	if conn.state != TCP_DATA_TRANSFER {
@@ -105,6 +107,7 @@ func TestStateDataTransfer(t *testing.T) {
 		TCP:       tcp,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
+	// #3
 	conn.ReceivePacket(&p)
 
 	if conn.state != TCP_DATA_TRANSFER {

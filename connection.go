@@ -23,7 +23,6 @@ import (
 	"log"
 	"sync"
 	"time"
-
 	"github.com/david415/HoneyBadger/types"
 )
 
@@ -216,7 +215,6 @@ func (c *Connection) detectHijack(p *types.PacketManifest, flow *types.TcpIpFlow
 }
 
 func (c *Connection) detectInjection(p *types.PacketManifest) {
-	log.Print("detectInjection")
 	var ringPtr *types.Ring
 
 	if p.Flow.Equal(c.clientFlow) {
@@ -276,7 +274,7 @@ func (c *Connection) stateUnknown(p *types.PacketManifest) {
 		c.state = TCP_DATA_TRANSFER
 		// skip handshake hijack detection completely
 		c.skipHijackDetectionCount = 0
-		c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
+		c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
 		if len(p.Payload) > 0 {
 			reassembly := types.Reassembly{
 				Seq:   types.Sequence(p.TCP.Seq),
@@ -387,6 +385,9 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 			Seen:  p.Timestamp,
 			PacketManifest: p,
 		}
+		if len(p.Payload) == 0 {
+			log.Print("zero len payload")
+		}
 		if p.Flow.Equal(c.clientFlow) {
 			c.ServerStreamRing.Reassembly = &reassembly
 			c.ServerStreamRing = c.ServerStreamRing.Next()
@@ -466,12 +467,12 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 				if p.Flow.Equal(c.clientFlow) {
 					c.ServerStreamRing.Reassembly = &reassembly
 					c.ServerStreamRing = c.ServerStreamRing.Next()
-					c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
+					c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
 					c.clientNextSeq, _ = c.ServerCoalesce.addContiguous(c.clientNextSeq)
 				} else {
 					c.ClientStreamRing.Reassembly = &reassembly
 					c.ClientStreamRing = c.ClientStreamRing.Next()
-					c.serverNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
+					c.serverNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
 					c.serverNextSeq, _ = c.ClientCoalesce.addContiguous(c.serverNextSeq)
 				}
 			}
@@ -499,22 +500,35 @@ func (c *Connection) stateFinWait1(p *types.PacketManifest, flow *types.TcpIpFlo
 		log.Print("FIN-WAIT-1: ignoring out of order packet")
 		return
 	} else if diff == 0 {
+		reassembly := types.Reassembly{
+			Seq:   types.Sequence(p.TCP.Seq),
+			Bytes: []byte(p.Payload),
+			Seen:  p.Timestamp,
+			PacketManifest: p,
+		}
+
 		if len(p.Payload) > 0 {
-			reassembly := types.Reassembly{
-				Seq:   types.Sequence(p.TCP.Seq),
-				Bytes: []byte(p.Payload),
-				Seen:  p.Timestamp,
-				PacketManifest: p,
-			}
 			if p.Flow.Equal(c.clientFlow) {
 				c.ServerStreamRing.Reassembly = &reassembly
 				c.ServerStreamRing = c.ServerStreamRing.Next()
-				c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
+				c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
 				c.clientNextSeq, _ = c.ServerCoalesce.addContiguous(c.clientNextSeq)
 			} else {
 				c.ClientStreamRing.Reassembly = &reassembly
 				c.ClientStreamRing = c.ClientStreamRing.Next()
-				c.serverNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
+				c.serverNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
+				c.serverNextSeq, _ = c.ClientCoalesce.addContiguous(c.serverNextSeq)
+			}
+		} else {
+			if p.Flow.Equal(c.clientFlow) {
+				c.ServerStreamRing.Reassembly = &reassembly
+				c.ServerStreamRing = c.ServerStreamRing.Next()
+				c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
+				c.clientNextSeq, _ = c.ServerCoalesce.addContiguous(c.clientNextSeq)
+			} else {
+				c.ClientStreamRing.Reassembly = &reassembly
+				c.ClientStreamRing = c.ClientStreamRing.Next()
+				c.serverNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
 				c.serverNextSeq, _ = c.ClientCoalesce.addContiguous(c.serverNextSeq)
 			}
 		}
@@ -533,7 +547,7 @@ func (c *Connection) stateFinWait1(p *types.PacketManifest, flow *types.TcpIpFlo
 				}
 			} else {
 				*statePtr = TCP_FIN_WAIT2
-				*nextSeqPtr = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
+				*nextSeqPtr = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
 			}
 		} else {
 			log.Print("FIN-WAIT-1: non-ACK packet received.\n")
@@ -643,7 +657,7 @@ func (c *Connection) ReceivePacket(p *types.PacketManifest) {
 		c.PacketLogger.WritePacket(p.RawPacket, p.Timestamp)
 	}
 	c.packetCount += 1
-	//log.Printf("packetCount %d\n", c.packetCount)
+	log.Printf("packetCount %d\n", c.packetCount)
 
 	// detect injection
 	var nextSeqPtr *types.Sequence
@@ -652,6 +666,8 @@ func (c *Connection) ReceivePacket(p *types.PacketManifest) {
 	} else {
 		nextSeqPtr = &c.serverNextSeq
 	}
+	log.Printf("next seq %d", *nextSeqPtr)
+	log.Printf("packet seq %d", p.TCP.Seq)
 	if *nextSeqPtr != types.InvalidSequence {
 		diff := nextSeqPtr.Difference(types.Sequence(p.TCP.Seq))
 		if diff < 0 {

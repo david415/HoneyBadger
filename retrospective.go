@@ -60,20 +60,32 @@ func checkForInjectionInRing(ringPtr *types.Ring, p *types.PacketManifest) []*ty
 				acc = append(acc, e)
 			}
 		} else {
+			injectionType := "zero-length injection:"
+			// XXX correct?
+			if overlapBlockSegments[i].RST || overlapBlockSegments[i].FIN || p.TCP.RST || p.TCP.FIN {
+				log.Print("RST or FIN injection packet won the race")
+				if len(p.Payload) > 0 {
+					log.Print("race loser packet payload:")
+					log.Print(hex.Dump(p.Payload))
+				}
+				if p.TCP.FIN || overlapBlockSegments[i].FIN {
+					log.Print("FIN flag")
+					injectionType += "FIN Injection"
+				}
+				if p.TCP.RST || overlapBlockSegments[i].RST {
+					log.Print("RST flag")
+					injectionType += "RST Injection"
+				}
+			} else {
+				// XXX not an injection attack?
+				// at the very least we can confidently say
+				// that it's not an RST or FIN injection attack
+				continue
+			}
+
 			log.Print("detect zero length overlap 'injection'.")
 			log.Printf("injection at TCP Sequence start %d end %d\n", start, end)
-			if len(p.Payload) > 0 {
-				log.Print("race loser packet payload:")
-				log.Print(hex.Dump(p.Payload))
-			}
-			injectionType := "zero-length injection:"
-			if p.TCP.RST || overlapBlockSegments[i].RST {
-				log.Print("RST flag")
-				injectionType += "RST Injection"
-			} else if p.TCP.FIN || overlapBlockSegments[i].FIN {
-				log.Print("FIN flag")
-				injectionType += "FIN Injection"
-			}
+
 			e := &types.Event{
 				Type:    injectionType,
 				Winner:   []byte{},
