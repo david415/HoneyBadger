@@ -219,6 +219,7 @@ func (o *OrderedCoalesce) pagesFromTcp(p *types.PacketManifest) (*page, *page, i
 		current.Bytes = current.buf[:length]
 		copy(current.Bytes, bytes)
 		current.Seq = seq
+		current.PacketManifest = p
 		bytes = bytes[length:]
 		if len(bytes) == 0 {
 			break
@@ -326,9 +327,7 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) (types.Sequence, bool)
 					Seq: uint32(o.first.Seq),
 				},
 			}
-			start := types.Sequence(p.TCP.Seq)
-			end := types.Sequence(p.TCP.Seq).Add(len(p.Payload))
-			events := checkForInjectionInRing(o.StreamRing, start, end, p.Payload)
+			events := checkForInjectionInRing(o.StreamRing, &p)
 
 			// log events if any
 			for i := 0; i < len(events); i++ {

@@ -48,40 +48,46 @@ func TestGetOverlapsInRing(t *testing.T) {
 	}{
 		{ //0
 			blocks.Block{ A:1, B:22 }, []blocks.BlockSegment{
-				blocks.BlockSegment{ blocks.Block{ 5, 10 }, []byte{1, 2, 3, 4, 5}, false, false },
-				blocks.BlockSegment{ blocks.Block{ 10, 15 }, []byte{1, 2, 3, 4, 5}, false, false },
-				blocks.BlockSegment{ blocks.Block{ 15, 20 }, []byte{1, 2, 3, 4, 5}, false, false },
-				blocks.BlockSegment{ blocks.Block{ 20, 22 }, []byte{1, 2, 3}, false, false },
+				blocks.BlockSegment{
+					Block: blocks.Block{ 5, 10 },
+					Bytes: []byte{1, 2, 3, 4, 5},
+				},
+				blocks.BlockSegment{ Block: blocks.Block{ 10, 15 },
+					Bytes: []byte{1, 2, 3, 4, 5},},
+				blocks.BlockSegment{ Block: blocks.Block{ 15, 20 },
+					Bytes: []byte{1, 2, 3, 4, 5},},
+				blocks.BlockSegment{ Block: blocks.Block{ 20, 22 },
+					Bytes: []byte{1, 2, 3},},
 			},
 		},
 		{ //1
 			blocks.Block{ 3, 10 }, []blocks.BlockSegment{
-				blocks.BlockSegment{ blocks.Block{ 5, 10 }, []byte{1, 2, 3, 4, 5}, false, false },
+				blocks.BlockSegment{ Block: blocks.Block{ 5, 10 }, Bytes: []byte{1, 2, 3, 4, 5},},
 			},
 		},
 		{ //2
 			blocks.Block{ 6, 12 }, []blocks.BlockSegment{
-				blocks.BlockSegment{ blocks.Block{ 6, 10 }, []byte{2, 3, 4, 5}, false, false },
-				blocks.BlockSegment{ blocks.Block{ 10, 12 }, []byte{1, 2, 3}, false, false },
+				blocks.BlockSegment{ Block: blocks.Block{ 6, 10 }, Bytes: []byte{2, 3, 4, 5},},
+				blocks.BlockSegment{ Block: blocks.Block{ 10, 12 }, Bytes: []byte{1, 2, 3},},
 			},
 		},
 		{ //3
 			blocks.Block{ A:1, B:17 }, []blocks.BlockSegment{
-				blocks.BlockSegment{ blocks.Block{ 5, 10 }, []byte{1, 2, 3, 4, 5}, false, false },
-				blocks.BlockSegment{ blocks.Block{ 10, 15 }, []byte{1, 2, 3, 4, 5}, false, false },
-				blocks.BlockSegment{ blocks.Block{ 15, 17 }, []byte{1, 2, 3}, false, false },
+				blocks.BlockSegment{ Block: blocks.Block{ 5, 10 }, Bytes: []byte{1, 2, 3, 4, 5},},
+				blocks.BlockSegment{ Block: blocks.Block{ 10, 15 }, Bytes: []byte{1, 2, 3, 4, 5},},
+				blocks.BlockSegment{ Block: blocks.Block{ 15, 17 }, Bytes: []byte{1, 2, 3},},
 			},
 		},
 		{ //4
 			blocks.Block{ A:0, B:100 }, []blocks.BlockSegment{
-				blocks.BlockSegment{ blocks.Block{ A:5, B:10 }, []byte{1, 2, 3, 4, 5}, false, false },
-				blocks.BlockSegment{ blocks.Block{ A:10, B:15 }, []byte{1, 2, 3, 4, 5}, false, false },
-				blocks.BlockSegment{ blocks.Block{ A:15, B:20 }, []byte{1, 2, 3, 4, 5}, false, false },
-				blocks.BlockSegment{ blocks.Block{ A:20, B:25 }, []byte{1, 2, 3, 4, 5}, false, false },
-				blocks.BlockSegment{ blocks.Block{ A:25, B:30 }, []byte{1, 2, 3, 4, 5}, false, false },
-				blocks.BlockSegment{ blocks.Block{ A:30, B:35 }, []byte{1, 2, 3, 4, 5}, false, false },
-				blocks.BlockSegment{ blocks.Block{ A:35, B:40 }, []byte{1, 2, 3, 4, 5}, false, false },
-
+				blocks.BlockSegment{ Block: blocks.Block{ A:5, B:10 }, Bytes: []byte{1, 2, 3, 4, 5},},
+				blocks.BlockSegment{ Block: blocks.Block{ A:10, B:15 }, Bytes: []byte{1, 2, 3, 4, 5},},
+				blocks.BlockSegment{ Block: blocks.Block{ A:15, B:20 }, Bytes: []byte{1, 2, 3, 4, 5},},
+				blocks.BlockSegment{ Block: blocks.Block{ A:20, B:25 }, Bytes: []byte{1, 2, 3, 4, 5},},
+				blocks.BlockSegment{ Block: blocks.Block{ A:25, B:30 }, Bytes: []byte{1, 2, 3, 4, 5},},
+				blocks.BlockSegment{ Block: blocks.Block{ A:30, B:35 }, Bytes: []byte{1, 2, 3, 4, 5},},
+				blocks.BlockSegment{ Block: blocks.Block{ A:35, B:40 }, Bytes: []byte{1, 2, 3, 4, 5},},
+				blocks.BlockSegment{ Block: blocks.Block{ A:46, B:46 }, Bytes: []byte{1, 2, 3, 4, 5},},
 			},
 		},
 	}
@@ -112,13 +118,14 @@ func TestGetOverlapsInRing(t *testing.T) {
 
 		if len(overlaps) != len(overlapBlockTests[i].want) {
 			t.Errorf("wanted %d overlaps, got %d\n", len(overlapBlockTests[i].want), len(overlaps) )
+			t.Errorf("wanted %d overlaps, got %d\n", overlapBlockTests[i].want, overlaps )
+			t.Errorf("here %s and here %s", overlapBlockTests[i].want, overlaps[i])
 			t.Fail()
 		}
 
 		for j := 0; j < len(overlaps) && j < len(overlapBlockTests[i].want); j++ {
 			log.Printf("got overlap: %s\n", overlaps[j].Block)
 			log.Printf("len of overlap bytes: %d\n", len(overlaps[j].Bytes))
-			//log.Print(hex.Dump(overlaps[j].Bytes))
 			if overlaps[j].Block != overlapBlockTests[i].want[j].Block {
 				t.Errorf("overlaps unequal: %s != %s\n", overlaps[j].Block, overlapBlockTests[i].want[j])
 				t.Fail()

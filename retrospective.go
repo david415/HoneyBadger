@@ -29,31 +29,54 @@ import (
 )
 
 
-func checkForInjectionInRing(ringPtr *types.Ring, start, end types.Sequence, payload []byte) []*types.Event {
+func checkForInjectionInRing(ringPtr *types.Ring, p *types.PacketManifest) []*types.Event {
+	start := types.Sequence(p.TCP.Seq)
+	end := types.Sequence(p.TCP.Seq).Add(len(p.Payload))
+
+	log.Print("checkForInjectionInRing")
 	acc := []*types.Event{}
 	overlapBlockSegments := getOverlapsInRing(ringPtr, start, end)
+	log.Printf("overlapBlockSegments %s\n", overlapBlockSegments)
 	for i := 0; i < len(overlapBlockSegments); i++ {
-		packetOverlapBytes := getOverlapBytesFromSlice(payload, start, overlapBlockSegments[i].Block)
-		if !bytes.Equal(packetOverlapBytes, overlapBlockSegments[i].Bytes) {
-			log.Printf("injection at TCP Sequence start %d end %d\n", start, end)
-			log.Print("race winner stream segment:")
-			log.Print(hex.Dump(overlapBlockSegments[i].Bytes))
-			log.Print("race loser stream segment:")
-			log.Print(hex.Dump(packetOverlapBytes))
+		if len(overlapBlockSegments[i].Bytes) > 0 {
+			packetOverlapBytes := getOverlapBytesFromSlice(p.Payload, start, overlapBlockSegments[i].Block)
+			if !bytes.Equal(packetOverlapBytes, overlapBlockSegments[i].Bytes) {
+				log.Printf("injection at TCP Sequence start %d end %d\n", start, end)
+				log.Print("race winner stream segment:")
+				log.Print(hex.Dump(overlapBlockSegments[i].Bytes))
+				log.Print("race loser stream segment:")
+				log.Print(hex.Dump(packetOverlapBytes))
 
+				e := &types.Event{
+					Loser:   packetOverlapBytes,
+					Winner:  overlapBlockSegments[i].Bytes,
+					Start:   overlapBlockSegments[i].Block.A,
+					End:     overlapBlockSegments[i].Block.B,
+				}
+				if overlapBlockSegments[i].IsCoalesce {
+					e.Type = "ordered coalesce 2"
+				}
+				if overlapBlockSegments[i].IsCoalesceGap {
+					e.Type = "ordered coalesce 2 gap"
+				}
+				acc = append(acc, e)
+			}
+		} else {
+			injectionType := ""
+			if p.TCP.RST || overlapBlockSegments[i].RST {
+				injectionType = "RST Injection"
+			} else if p.TCP.FIN || overlapBlockSegments[i].FIN {
+				injectionType = "FIN Injection"
+			}
 			e := &types.Event{
-				Loser:   packetOverlapBytes,
-				Winner:  overlapBlockSegments[i].Bytes,
-				Start:   overlapBlockSegments[i].Block.A,
-				End:     overlapBlockSegments[i].Block.B,
+				Type:    injectionType,
+				Winner:   []byte{},
+				Loser:    []byte{},
+				Payload:  []byte{},
+				Base:     overlapBlockSegments[i].Block.A,
+				Start:    overlapBlockSegments[i].Block.A,
+				End:      overlapBlockSegments[i].Block.B,
 			}
-			if overlapBlockSegments[i].IsCoalesce {
-				e.Type = "ordered coalesce 2"
-			}
-			if overlapBlockSegments[i].IsCoalesceGap {
-				e.Type = "ordered coalesce 2 gap"
-			}
-
 			acc = append(acc, e)
 		}
 	}
@@ -67,6 +90,7 @@ func getOverlapBytesFromSlice(payload []byte, sequence types.Sequence, overlap b
 }
 
 func getOverlapsInRing(ringPtr *types.Ring, start, end types.Sequence) []blocks.BlockSegment {
+	log.Print("getOverlapsInRing")
 	acc := []blocks.BlockSegment{}
 
 	target := blocks.Block {
@@ -76,11 +100,8 @@ func getOverlapsInRing(ringPtr *types.Ring, start, end types.Sequence) []blocks.
 
 	// iterate for the entire ring
 	for current := ringPtr.Next(); current != ringPtr; current = current.Next() {
+		log.Print("for")
 		if current.Reassembly == nil {
-			continue
-		}
-
-		if len(current.Reassembly.Bytes) == 0 {
 			continue
 		}
 
@@ -92,13 +113,20 @@ func getOverlapsInRing(ringPtr *types.Ring, start, end types.Sequence) []blocks.
 			continue
 		} else {
 			// overlaps
+			log.Printf("else overlaps: overlap %s current reassembly %s", *overlap, current.Reassembly)
+			log.Printf("%x", current.Reassembly.Bytes)
 			overlapBytes := getOverlapBytesFromSlice(current.Reassembly.Bytes, current.Reassembly.Seq, *overlap)
+			log.Print("after getOverlapBytesFromSlice")
 			blockSegment := blocks.BlockSegment {
 				Block: *overlap,
 				Bytes: overlapBytes,
 				IsCoalesce: current.Reassembly.IsCoalesce,
 				IsCoalesceGap: current.Reassembly.IsCoalesceGap,
+				/*RST: current.Reassembly.PacketManifest.TCP.RST,
+				ACK: current.Reassembly.PacketManifest.TCP.ACK,
+				FIN: current.Reassembly.PacketManifest.TCP.FIN,*/
 			}
+			log.Print("before append")
 			acc = append(acc, blockSegment)
 		}
 	}
