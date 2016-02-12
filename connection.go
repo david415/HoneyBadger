@@ -643,8 +643,7 @@ func (c *Connection) ReceivePacket(p *types.PacketManifest) {
 		c.PacketLogger.WritePacket(p.RawPacket, p.Timestamp)
 	}
 	c.packetCount += 1
-	log.Printf("packetCount %d\n", c.packetCount)
-
+	//log.Printf("packetCount %d\n", c.packetCount)
 
 	// detect injection
 	var nextSeqPtr *types.Sequence
@@ -653,12 +652,10 @@ func (c *Connection) ReceivePacket(p *types.PacketManifest) {
 	} else {
 		nextSeqPtr = &c.serverNextSeq
 	}
-	log.Printf("next seq %s", *nextSeqPtr)
 	if *nextSeqPtr != types.InvalidSequence {
 		diff := nextSeqPtr.Difference(types.Sequence(p.TCP.Seq))
 		if diff < 0 {
 			// overlap
-			log.Print("before call to detectInjection")
 			c.detectInjection(p)
 		}
 	}

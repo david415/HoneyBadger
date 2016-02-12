@@ -33,10 +33,8 @@ func checkForInjectionInRing(ringPtr *types.Ring, p *types.PacketManifest) []*ty
 	start := types.Sequence(p.TCP.Seq)
 	end := types.Sequence(p.TCP.Seq).Add(len(p.Payload))
 
-	log.Print("checkForInjectionInRing")
 	acc := []*types.Event{}
 	overlapBlockSegments := getOverlapsInRing(ringPtr, start, end)
-	log.Printf("overlapBlockSegments %s\n", overlapBlockSegments)
 	for i := 0; i < len(overlapBlockSegments); i++ {
 		if len(overlapBlockSegments[i].Bytes) > 0 {
 			packetOverlapBytes := getOverlapBytesFromSlice(p.Payload, start, overlapBlockSegments[i].Block)
@@ -62,11 +60,19 @@ func checkForInjectionInRing(ringPtr *types.Ring, p *types.PacketManifest) []*ty
 				acc = append(acc, e)
 			}
 		} else {
-			injectionType := ""
+			log.Print("detect zero length overlap 'injection'.")
+			log.Printf("injection at TCP Sequence start %d end %d\n", start, end)
+			if len(p.Payload) > 0 {
+				log.Print("race loser packet payload:")
+				log.Print(hex.Dump(p.Payload))
+			}
+			injectionType := "zero-length injection:"
 			if p.TCP.RST || overlapBlockSegments[i].RST {
-				injectionType = "RST Injection"
+				log.Print("RST flag")
+				injectionType += "RST Injection"
 			} else if p.TCP.FIN || overlapBlockSegments[i].FIN {
-				injectionType = "FIN Injection"
+				log.Print("FIN flag")
+				injectionType += "FIN Injection"
 			}
 			e := &types.Event{
 				Type:    injectionType,
@@ -90,7 +96,6 @@ func getOverlapBytesFromSlice(payload []byte, sequence types.Sequence, overlap b
 }
 
 func getOverlapsInRing(ringPtr *types.Ring, start, end types.Sequence) []blocks.BlockSegment {
-	log.Print("getOverlapsInRing")
 	acc := []blocks.BlockSegment{}
 
 	target := blocks.Block {
@@ -100,7 +105,6 @@ func getOverlapsInRing(ringPtr *types.Ring, start, end types.Sequence) []blocks.
 
 	// iterate for the entire ring
 	for current := ringPtr.Next(); current != ringPtr; current = current.Next() {
-		log.Print("for")
 		if current.Reassembly == nil {
 			continue
 		}
@@ -113,10 +117,7 @@ func getOverlapsInRing(ringPtr *types.Ring, start, end types.Sequence) []blocks.
 			continue
 		} else {
 			// overlaps
-			log.Printf("else overlaps: overlap %s current reassembly %s", *overlap, current.Reassembly)
-			log.Printf("%x", current.Reassembly.Bytes)
 			overlapBytes := getOverlapBytesFromSlice(current.Reassembly.Bytes, current.Reassembly.Seq, *overlap)
-			log.Print("after getOverlapBytesFromSlice")
 			blockSegment := blocks.BlockSegment {
 				Block: *overlap,
 				Bytes: overlapBytes,
@@ -126,7 +127,6 @@ func getOverlapsInRing(ringPtr *types.Ring, start, end types.Sequence) []blocks.
 				ACK: current.Reassembly.PacketManifest.TCP.ACK,
 				FIN: current.Reassembly.PacketManifest.TCP.FIN,*/
 			}
-			log.Print("before append")
 			acc = append(acc, blockSegment)
 		}
 	}
