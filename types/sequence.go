@@ -41,6 +41,26 @@ func (s Sequence) Difference(t Sequence) int {
 	return int(t - s)
 }
 
+// LessThan returns true if s < t
+func (s Sequence) LessThan(t Sequence) bool {
+	return s.Difference(t) > 0
+}
+
+// LessThanOrEqual returns true if s <= t
+func (s Sequence) LessThanOrEqual(t Sequence) bool {
+	return s.Difference(t) >= 0
+}
+
+// Equals returns true if s == t
+func (s Sequence) Equals(t Sequence) bool {
+	return s.Difference(t) >= 0
+}
+
+// GreaterThan returns true if s > t
+func (s Sequence) GreaterThan(t Sequence) bool {
+	return s.Difference(t) < 0
+}
+
 // Add adds an integer to a sequence and returns the resulting sequence.
 func (s Sequence) Add(t int) Sequence {
 	return (s + Sequence(t)) & uint32Max

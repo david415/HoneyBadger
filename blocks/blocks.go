@@ -30,14 +30,14 @@ func (t Block) String() string {
 
 func (blk Block) Overlap(a, b types.Sequence) *Block {
 	left := a
-	if left.Difference(blk.A) > 0 {
+	if blk.A.GreaterThan(left) {
 		left = blk.A
 	}
 	right := b
-	if right.Difference(blk.B) < 0 {
+	if blk.B.LessThan(right) {
 		right = blk.B
 	}
-	if left.Difference(right) > 0 {
+	if right.GreaterThan(left) {
 		return &Block{left, right}
 	}
 	return nil
@@ -58,7 +58,7 @@ func (blks Blocks) Len() int {
 }
 
 func (blks Blocks) Less(i, j int) bool {
-	return blks[i].A.Difference(blks[j].A) < 0
+	return blks[i].A.LessThan(blks[j].A)
 }
 
 func (blks Blocks) Swap(i, j int) {
@@ -81,34 +81,34 @@ func (blks Blocks) Add(a, b types.Sequence) Blocks {
 	added := false
 	for index < len(blks) {
 		blk := blks[index]
-		if blk.A.Difference(a) <= 0 {
-			if blk.A.Difference(b) < 0 {
+		if a.LessThanOrEqual(blk.A) {
+			if b.LessThan(blk.A) {
 				result = append(result, Block{a, b})
 				result = append(result, blks[index:]...)
 				return result
-			} else if b.Difference(blk.A) == 0 {
+			} else if b.Equals(blk.A) {
 				result = append(result, Block{a, blk.B})
 				result = append(result, blks[index+1:]...)
 				return result
-			} else if blk.A.Difference(b) > 0 {
-				if blk.B.Difference(b) <= 0 {
+			} else if b.GreaterThan(blk.A) {
+				if b.LessThanOrEqual(blk.B) {
 					result = append(result, Block{a, blk.B})
 					result = append(result, blks[index+1:]...)
 					return result
-				} else if blk.B.Difference(b) > 0 {
+				} else if b.GreaterThan(blk.B) {
 					index++
 				}
 			}
-		} else if blk.A.Difference(a) > 0 {
-			if blk.B.Difference(a) <= 0 {
-				if blk.B.Difference(b) <= 0 {
+		} else if a.GreaterThan(blk.A) {
+			if a.LessThanOrEqual(blk.B) {
+				if b.LessThanOrEqual(blk.B) {
 					result = append(result, blks[index:]...)
 					return result
-				} else if blk.B.Difference(b) > 0 {
+				} else if b.GreaterThan(blk.B) {
 					a = blk.A
 					index++
 				}
-			} else if blk.B.Difference(a) > 0 {
+			} else if a.GreaterThan(blk.B) {
 				result = append(result, blk)
 				index++
 			}
