@@ -216,7 +216,7 @@ func (c *Connection) detectHijack(p *types.PacketManifest, flow *types.TcpIpFlow
 }
 
 func (c *Connection) detectInjection(p *types.PacketManifest) {
-
+	log.Print("detectInjection")
 	var ringPtr *types.Ring
 
 	if p.Flow.Equal(c.clientFlow) {
@@ -225,22 +225,21 @@ func (c *Connection) detectInjection(p *types.PacketManifest) {
 		ringPtr = c.ClientStreamRing
 	}
 
-	start := types.Sequence(p.TCP.Seq)
-	end := types.Sequence(p.TCP.Seq).Add(len(p.Payload))
-
 	// injection detection
-	events := checkForInjectionInRing(ringPtr, start, end, p.Payload)
+	events := checkForInjectionInRing(ringPtr, p)
 
 	if len(events) == 0 {
 		return
 	}
-
+	log.Printf("%d injections", len(events))
 	// log events if any
 	for i := 0; i < len(events); i++ {
 		if events[i] == nil {
 			panic("wtf got nil event")
 		} else {
-			if len(events[i].Type) == 0 {
+			if events[i].Start == events[i].End && len(events[i].Type) == 0 {
+				events[i].Type = "zero-payload injection"
+			} else {
 				events[i].Type = "segment veto or sloppy injection"
 			}
 			events[i].Base = types.Sequence(p.TCP.Seq)
@@ -283,6 +282,7 @@ func (c *Connection) stateUnknown(p *types.PacketManifest) {
 				Seq:   types.Sequence(p.TCP.Seq),
 				Bytes: []byte(p.Payload),
 				Seen:  p.Timestamp,
+				PacketManifest: p,
 			}
 			c.ServerStreamRing.Reassembly = &reassembly
 			c.ServerStreamRing = c.ServerStreamRing.Next()
@@ -381,46 +381,72 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 	}
 
 	if diff == 0 { // contiguous
-		if len(p.Payload) > 0 {
-			reassembly := types.Reassembly{
-				Seq:   types.Sequence(p.TCP.Seq),
-				Bytes: []byte(p.Payload),
-				Seen:  p.Timestamp,
-			}
-			if p.Flow.Equal(c.clientFlow) {
-				c.ServerStreamRing.Reassembly = &reassembly
-				c.ServerStreamRing = c.ServerStreamRing.Next()
-				c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
-				prev := c.clientNextSeq
-				c.clientNextSeq, isEnd = c.ServerCoalesce.addContiguous(c.clientNextSeq)
-				if c.clientNextSeq != prev {
-					reassembly.IsCoalesceGap = true
-				}
-				if isEnd {
-					c.state = TCP_CLOSED
-					return
-				}
+		reassembly := types.Reassembly{
+			Seq:   types.Sequence(p.TCP.Seq),
+			Bytes: []byte(p.Payload),
+			Seen:  p.Timestamp,
+			PacketManifest: p,
+		}
+		if p.Flow.Equal(c.clientFlow) {
+			c.ServerStreamRing.Reassembly = &reassembly
+			c.ServerStreamRing = c.ServerStreamRing.Next()
+			if len(p.Payload) == 0 {
+				c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(1)
 			} else {
-				c.ClientStreamRing.Reassembly = &reassembly
-				c.ClientStreamRing = c.ClientStreamRing.Next()
+				c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
+			}
+			prev := c.clientNextSeq
+			c.clientNextSeq, isEnd = c.ServerCoalesce.addContiguous(c.clientNextSeq)
+			if c.clientNextSeq != prev {
+				reassembly.IsCoalesceGap = true
+			}
+			if isEnd {
+				c.state = TCP_CLOSED
+				return
+			}
+		} else {
+			c.ClientStreamRing.Reassembly = &reassembly
+			c.ClientStreamRing = c.ClientStreamRing.Next()
+			if len(p.Payload) == 0 {
+				c.serverNextSeq = types.Sequence(p.TCP.Seq).Add(1)
+			} else {
 				c.serverNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
-				prev := c.serverNextSeq
-				c.serverNextSeq, isEnd = c.ClientCoalesce.addContiguous(c.serverNextSeq)
-				if c.serverNextSeq != prev {
-					reassembly.IsCoalesceGap = true
-				}
-				if isEnd {
-					c.state = TCP_CLOSED
-					return
-				}
+			}
+			prev := c.serverNextSeq
+			c.serverNextSeq, isEnd = c.ClientCoalesce.addContiguous(c.serverNextSeq)
+			if c.serverNextSeq != prev {
+				reassembly.IsCoalesceGap = true
+			}
+			if isEnd {
+				c.state = TCP_CLOSED
 			}
 		}
+
 		if p.TCP.RST {
 			log.Print("got RST!\n")
 			c.closingRST = true
 			c.state = TCP_CLOSED
 			c.closingFlow = p.Flow
 			c.closingSeq = types.Sequence(p.TCP.Seq)
+
+			// reassembly with zero size payload
+			reassembly := types.Reassembly{
+				Seq:   types.Sequence(p.TCP.Seq),
+				Bytes: []byte{},
+				Seen:  p.Timestamp,
+				End:   true,
+				PacketManifest: p,
+			}
+			// XXX correct?
+			if p.Flow.Equal(c.clientFlow) {
+				c.ServerStreamRing.Reassembly = &reassembly
+				c.ServerStreamRing = c.ServerStreamRing.Next()
+				c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
+			} else {
+				c.ClientStreamRing.Reassembly = &reassembly
+				c.ClientStreamRing = c.ClientStreamRing.Next()
+				c.serverNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
+			}
 			return
 		}
 		if p.TCP.FIN {
@@ -429,7 +455,26 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 			c.state = TCP_CONNECTION_CLOSING
 			*closerState = TCP_FIN_WAIT1
 			*remoteState = TCP_CLOSE_WAIT
-			return
+
+			if len(p.Payload) > 0 {
+				reassembly := types.Reassembly{
+					Seq:   types.Sequence(p.TCP.Seq),
+					Bytes: []byte(p.Payload),
+					Seen:  p.Timestamp,
+					PacketManifest: p,
+				}
+				if p.Flow.Equal(c.clientFlow) {
+					c.ServerStreamRing.Reassembly = &reassembly
+					c.ServerStreamRing = c.ServerStreamRing.Next()
+					c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
+					c.clientNextSeq, _ = c.ServerCoalesce.addContiguous(c.clientNextSeq)
+				} else {
+					c.ClientStreamRing.Reassembly = &reassembly
+					c.ClientStreamRing = c.ClientStreamRing.Next()
+					c.serverNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
+					c.serverNextSeq, _ = c.ClientCoalesce.addContiguous(c.serverNextSeq)
+				}
+			}
 		}
 	} else if diff > 0 { // future-out-of-order packet case
 		if p.Flow.Equal(c.clientFlow) {
@@ -448,7 +493,6 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 // stateFinWait1 handles packets for the FIN-WAIT-1 state
 //func (c *Connection) stateFinWait1(p *types.PacketManifest) {
 func (c *Connection) stateFinWait1(p *types.PacketManifest, flow *types.TcpIpFlow, nextSeqPtr *types.Sequence, nextAckPtr *types.Sequence, statePtr, otherStatePtr *uint8) {
-	c.detectCensorInjection(p)
 	diff := nextSeqPtr.Difference(types.Sequence(p.TCP.Seq))
 	if diff > 0 {
 		// future out of order
@@ -460,6 +504,7 @@ func (c *Connection) stateFinWait1(p *types.PacketManifest, flow *types.TcpIpFlo
 				Seq:   types.Sequence(p.TCP.Seq),
 				Bytes: []byte(p.Payload),
 				Seen:  p.Timestamp,
+				PacketManifest: p,
 			}
 			if p.Flow.Equal(c.clientFlow) {
 				c.ServerStreamRing.Reassembly = &reassembly
@@ -501,7 +546,6 @@ func (c *Connection) stateFinWait1(p *types.PacketManifest, flow *types.TcpIpFlo
 
 // stateFinWait2 handles packets for the FIN-WAIT-2 state
 func (c *Connection) stateFinWait2(p *types.PacketManifest, flow *types.TcpIpFlow, nextSeqPtr *types.Sequence, nextAckPtr *types.Sequence, statePtr *uint8) {
-	c.detectCensorInjection(p)
 	diff := nextSeqPtr.Difference(types.Sequence(p.TCP.Seq))
 	if diff > 0 {
 		// future out of order
@@ -518,19 +562,6 @@ func (c *Connection) stateFinWait2(p *types.PacketManifest, flow *types.TcpIpFlo
 
 // stateCloseWait represents the TCP FSM's CLOSE-WAIT state
 func (c *Connection) stateCloseWait(p *types.PacketManifest) {
-	var nextSeqPtr *types.Sequence
-	if p.Flow.Equal(c.clientFlow) {
-		nextSeqPtr = &c.clientNextSeq
-	} else {
-		nextSeqPtr = &c.serverNextSeq
-	}
-	diff := types.Sequence(p.TCP.Seq).Difference(*nextSeqPtr)
-	// stream overlap case
-	if diff > 0 {
-		if len(p.Payload) == 0 {
-			c.detectCensorInjection(p)
-		}
-	}
 }
 
 // stateTimeWait represents the TCP FSM's CLOSE-WAIT state
@@ -562,52 +593,7 @@ func (c *Connection) stateLastAck(p *types.PacketManifest, flow *types.TcpIpFlow
 	c.state = TCP_CLOSED
 }
 
-func (c *Connection) detectCensorInjection(p *types.PacketManifest) {
-	var attackType string
-	if p.TCP.FIN || p.TCP.RST {
-		// ignore "closing" retransmissions
-		return
-	}
-	if len(p.Payload) == 0 {
-		return
-	}
-	if c.closingRST {
-		attackType = "censor-injection-RST_"
-	} else if c.closingFIN {
-		attackType = "censor-injection-FIN_"
-	} else {
-		attackType = "censor-injection-coalesce_"
-	}
-	if c.closingFlow != nil {
-		if p.Flow.Equal(c.closingFlow) && types.Sequence(p.TCP.Seq).Difference(c.closingSeq) == 0 {
-			attackType += "closing-sequence-overlap"
-		} else {
-			return
-		}
-	} else {
-		return
-	}
-	event := types.Event{
-		Type:          attackType,
-		PacketCount:   c.packetCount,
-		Time:          time.Now(),
-		Flow:          *p.Flow,
-		Start:         types.Sequence(p.TCP.Seq),
-	}
-	c.AttackLogger.Log(&event)
-	c.attackDetected = true
-}
-
 func (c *Connection) stateClosed(p *types.PacketManifest) {
-	var nextSeqPtr *types.Sequence
-	if p.Flow.Equal(c.clientFlow) {
-		nextSeqPtr = &c.clientNextSeq
-	} else {
-		nextSeqPtr = &c.serverNextSeq
-	}
-	if *nextSeqPtr != types.InvalidSequence {
-		c.detectCensorInjection(p)
-	}
 }
 
 // stateConnectionClosing handles all the closing states until the closed state has been reached.
@@ -657,7 +643,8 @@ func (c *Connection) ReceivePacket(p *types.PacketManifest) {
 		c.PacketLogger.WritePacket(p.RawPacket, p.Timestamp)
 	}
 	c.packetCount += 1
-	//log.Printf("packetCount %d\n", c.packetCount)
+	log.Printf("packetCount %d\n", c.packetCount)
+
 
 	// detect injection
 	var nextSeqPtr *types.Sequence
@@ -666,10 +653,12 @@ func (c *Connection) ReceivePacket(p *types.PacketManifest) {
 	} else {
 		nextSeqPtr = &c.serverNextSeq
 	}
-	diff := nextSeqPtr.Difference(types.Sequence(p.TCP.Seq))
-	if diff < 0 {
-		// overlap
-		if len(p.Payload) > 0 {
+	log.Printf("next seq %s", *nextSeqPtr)
+	if *nextSeqPtr != types.InvalidSequence {
+		diff := nextSeqPtr.Difference(types.Sequence(p.TCP.Seq))
+		if diff < 0 {
+			// overlap
+			log.Print("before call to detectInjection")
 			c.detectInjection(p)
 		}
 	}

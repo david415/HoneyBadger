@@ -40,6 +40,8 @@ type Reassembly struct {
 	IsCoalesceGap bool
 	// Seen is the timestamp this set of bytes was pulled off the wire.
 	Seen time.Time
+
+	PacketManifest *PacketManifest
 }
 
 // String returns a string representation of Reassembly
