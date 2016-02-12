@@ -53,12 +53,17 @@ func (s Sequence) LessThanOrEqual(t Sequence) bool {
 
 // Equals returns true if s == t
 func (s Sequence) Equals(t Sequence) bool {
-	return s.Difference(t) >= 0
+	return s.Difference(t) == 0
 }
 
 // GreaterThan returns true if s > t
 func (s Sequence) GreaterThan(t Sequence) bool {
 	return s.Difference(t) < 0
+}
+
+// GreaterThanOrEqual returns true if s >= t
+func (s Sequence) GreaterThanOrEqual(t Sequence) bool {
+	return s.Difference(t) <= 0
 }
 
 // Add adds an integer to a sequence and returns the resulting sequence.
