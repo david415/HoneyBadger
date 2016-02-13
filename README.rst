@@ -115,7 +115,16 @@ Here's an example output with a pcap file containing an ordered coalesce injecti
 
 
 
-Or instead you can tell honeyBadger to analyze the wire with Linux's AF_PACKET capture mode::
+Or instead you can tell honeyBadger to analyze the wire with Linux's AF_PACKET capture mode. You
+should first disable offloading::
+
+  sudo apt-get install ethtool
+  sudo ethtool -K eth0 gso off
+  sudo ethtool -K eth0 tso off
+  sudo ethtool -K eth0 gro off
+
+
+And then run honeyBadger like this::
 
   ./honeyBadger -max_concurrent_connections=1000 -max_pcap_log_size=100 -max_pcap_rotations=10 \
   -max_ring_packets=40 -metadata_attack_log=false -total_max_buffer=1000 -connection_max_buffer=100 \
