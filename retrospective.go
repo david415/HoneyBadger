@@ -63,7 +63,6 @@ func checkForInjectionInRing(ringPtr *types.Ring, p *types.PacketManifest) []*ty
 			injectionType := "zero-length injection:"
 			// XXX correct?
 			if overlapBlockSegments[i].RST || overlapBlockSegments[i].FIN || p.TCP.RST || p.TCP.FIN {
-				log.Print("RST or FIN injection packet won the race")
 				if len(p.Payload) > 0 {
 					log.Print("race loser packet payload:")
 					log.Print(hex.Dump(p.Payload))
