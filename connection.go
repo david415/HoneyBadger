@@ -385,9 +385,6 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 			Seen:  p.Timestamp,
 			PacketManifest: p,
 		}
-		if len(p.Payload) == 0 {
-			log.Print("zero len payload")
-		}
 		if p.Flow.Equal(c.clientFlow) {
 			c.ServerStreamRing.Reassembly = &reassembly
 			c.ServerStreamRing = c.ServerStreamRing.Next()
@@ -610,7 +607,7 @@ func (c *Connection) ReceivePacket(p *types.PacketManifest) {
 		c.PacketLogger.WritePacket(p.RawPacket, p.Timestamp)
 	}
 	c.packetCount += 1
-	log.Printf("packetCount %d\n", c.packetCount)
+	//log.Printf("packetCount %d\n", c.packetCount)
 
 	// detect injection
 	var nextSeqPtr *types.Sequence
@@ -619,8 +616,8 @@ func (c *Connection) ReceivePacket(p *types.PacketManifest) {
 	} else {
 		nextSeqPtr = &c.serverNextSeq
 	}
-	log.Printf("next seq %d", *nextSeqPtr)
-	log.Printf("packet seq %d", p.TCP.Seq)
+	//log.Printf("next seq %d", *nextSeqPtr)
+	//log.Printf("packet seq %d", p.TCP.Seq)
 	if *nextSeqPtr != types.InvalidSequence {
 		diff := nextSeqPtr.Difference(types.Sequence(p.TCP.Seq))
 		if diff < 0 {
