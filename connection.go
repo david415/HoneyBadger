@@ -217,6 +217,7 @@ func (c *Connection) detectHijack(p *types.PacketManifest, flow *types.TcpIpFlow
 func (c *Connection) detectInjection(p *types.PacketManifest) {
 	var ringPtr *types.Ring
 
+	log.Print("detectInjection")
 	if p.Flow.Equal(c.clientFlow) {
 		ringPtr = c.ServerStreamRing
 	} else {
@@ -379,11 +380,16 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 	}
 
 	if diff == 0 { // contiguous
+		log.Print("CONTIGUOUS")
 		reassembly := types.Reassembly{
 			Seq:   types.Sequence(p.TCP.Seq),
-			Bytes: []byte(p.Payload),
 			Seen:  p.Timestamp,
 			PacketManifest: p,
+		}
+		if len(p.Payload) == 0 {
+			reassembly.Bytes = []byte{}
+		} else {
+			reassembly.Bytes = p.Payload
 		}
 		if p.Flow.Equal(c.clientFlow) {
 			c.ServerStreamRing.Reassembly = &reassembly
@@ -558,6 +564,7 @@ func (c *Connection) stateLastAck(p *types.PacketManifest, flow *types.TcpIpFlow
 }
 
 func (c *Connection) stateClosed(p *types.PacketManifest) {
+	c.detectInjection(p)
 }
 
 // stateConnectionClosing handles all the closing states until the closed state has been reached.
@@ -607,7 +614,7 @@ func (c *Connection) ReceivePacket(p *types.PacketManifest) {
 		c.PacketLogger.WritePacket(p.RawPacket, p.Timestamp)
 	}
 	c.packetCount += 1
-	//log.Printf("packetCount %d\n", c.packetCount)
+	log.Printf("packetCount %d\n", c.packetCount)
 
 	// detect injection
 	var nextSeqPtr *types.Sequence
@@ -616,12 +623,16 @@ func (c *Connection) ReceivePacket(p *types.PacketManifest) {
 	} else {
 		nextSeqPtr = &c.serverNextSeq
 	}
-	//log.Printf("next seq %d", *nextSeqPtr)
-	//log.Printf("packet seq %d", p.TCP.Seq)
+	log.Printf("next seq %d", *nextSeqPtr)
+	log.Printf("packet seq %d", p.TCP.Seq)
 	if *nextSeqPtr != types.InvalidSequence {
 		diff := nextSeqPtr.Difference(types.Sequence(p.TCP.Seq))
 		if diff < 0 {
+			log.Print("OVERLAP case")
 			// overlap
+			c.detectInjection(p)
+		}
+		if (p.TCP.RST || p.TCP.FIN) && diff <= 0 {
 			c.detectInjection(p)
 		}
 	}
