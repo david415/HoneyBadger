@@ -391,11 +391,7 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 		if p.Flow.Equal(c.clientFlow) {
 			c.ServerStreamRing.Reassembly = &reassembly
 			c.ServerStreamRing = c.ServerStreamRing.Next()
-			if len(p.Payload) == 0 {
-				c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(1)
-			} else {
-				c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
-			}
+			c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
 			prev := c.clientNextSeq
 			c.clientNextSeq, isEnd = c.ServerCoalesce.addContiguous(c.clientNextSeq)
 			if c.clientNextSeq != prev {
@@ -408,11 +404,7 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 		} else {
 			c.ClientStreamRing.Reassembly = &reassembly
 			c.ClientStreamRing = c.ClientStreamRing.Next()
-			if len(p.Payload) == 0 {
-				c.serverNextSeq = types.Sequence(p.TCP.Seq).Add(1)
-			} else {
-				c.serverNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
-			}
+			c.serverNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload))
 			prev := c.serverNextSeq
 			c.serverNextSeq, isEnd = c.ClientCoalesce.addContiguous(c.serverNextSeq)
 			if c.serverNextSeq != prev {
@@ -429,25 +421,6 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 			c.state = TCP_CLOSED
 			c.closingFlow = p.Flow
 			c.closingSeq = types.Sequence(p.TCP.Seq)
-
-			// reassembly with zero size payload
-			reassembly := types.Reassembly{
-				Seq:   types.Sequence(p.TCP.Seq),
-				Bytes: []byte{},
-				Seen:  p.Timestamp,
-				End:   true,
-				PacketManifest: p,
-			}
-			// XXX correct?
-			if p.Flow.Equal(c.clientFlow) {
-				c.ServerStreamRing.Reassembly = &reassembly
-				c.ServerStreamRing = c.ServerStreamRing.Next()
-				c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
-			} else {
-				c.ClientStreamRing.Reassembly = &reassembly
-				c.ClientStreamRing = c.ClientStreamRing.Next()
-				c.serverNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
-			}
 			return
 		}
 		if p.TCP.FIN {
@@ -456,26 +429,6 @@ func (c *Connection) stateDataTransfer(p *types.PacketManifest) {
 			c.state = TCP_CONNECTION_CLOSING
 			*closerState = TCP_FIN_WAIT1
 			*remoteState = TCP_CLOSE_WAIT
-
-			if len(p.Payload) > 0 {
-				reassembly := types.Reassembly{
-					Seq:   types.Sequence(p.TCP.Seq),
-					Bytes: []byte(p.Payload),
-					Seen:  p.Timestamp,
-					PacketManifest: p,
-				}
-				if p.Flow.Equal(c.clientFlow) {
-					c.ServerStreamRing.Reassembly = &reassembly
-					c.ServerStreamRing = c.ServerStreamRing.Next()
-					c.clientNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
-					c.clientNextSeq, _ = c.ServerCoalesce.addContiguous(c.clientNextSeq)
-				} else {
-					c.ClientStreamRing.Reassembly = &reassembly
-					c.ClientStreamRing = c.ClientStreamRing.Next()
-					c.serverNextSeq = types.Sequence(p.TCP.Seq).Add(len(p.Payload) + 1)
-					c.serverNextSeq, _ = c.ClientCoalesce.addContiguous(c.serverNextSeq)
-				}
-			}
 		}
 	} else if diff > 0 { // future-out-of-order packet case
 		if p.Flow.Equal(c.clientFlow) {
