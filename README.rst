@@ -23,7 +23,7 @@ project goals
 
 * HoneyBadger is primarily a comprehensive TCP stream analysis tool for detecting and recording TCP injection attacks.
 
-* HoneyBadger will also includes a variety of *prototype* TCP stream injections attacks which prove that the TCP attack detection is reliable.
+* HoneyBadger will also include a variety of *prototype* TCP stream injections attacks which prove that the TCP attack detection is reliable.
 
 
 details
