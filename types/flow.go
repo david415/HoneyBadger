@@ -42,20 +42,13 @@ func NewTcpIpFlowFromLayers(ipLayer layers.IPv4, tcpLayer layers.TCP) *TcpIpFlow
 	}
 }
 
-// NewTcpIpFlowFromFlows given an IP flow and TCP flow returns a TcpIpFlow
-func NewTcpIpFlowFromFlows(ipFlow gopacket.Flow, tcpFlow gopacket.Flow) *TcpIpFlow {
+// NewTcpIpFlowFromFlows given a net flow (either ipv4 or ipv6) and TCP flow returns a TcpIpFlow
+func NewTcpIpFlowFromFlows(netFlow gopacket.Flow, tcpFlow gopacket.Flow) TcpIpFlow {
 	// XXX todo: check that the flow types are correct
-	return &TcpIpFlow{
-		ipFlow:  ipFlow,
+	return TcpIpFlow{
+		ipFlow:  netFlow,
 		tcpFlow: tcpFlow,
 	}
-}
-
-
-// ConnectionHash returns a hash of the flow A->B such
-// that it is guaranteed to collide with flow B->A
-func (t *TcpIpFlow) ConnectionHash() HashedTcpIpFlow {
-	return NewHashedTcpIpFlow(t).Sorted()
 }
 
 // String returns the string representation of a TcpIpFlow
@@ -66,7 +59,7 @@ func (t TcpIpFlow) String() string {
 // Reverse returns a reversed TcpIpFlow, that is to say the resulting
 // TcpIpFlow flow will be made up of a reversed IP flow and a reversed
 // TCP flow.
-func (t *TcpIpFlow) Reverse() *TcpIpFlow {
+func (t *TcpIpFlow) Reverse() TcpIpFlow {
 	return NewTcpIpFlowFromFlows(t.ipFlow.Reverse(), t.tcpFlow.Reverse())
 }
 
@@ -96,14 +89,38 @@ func (t *TcpIpFlow) Flows() (gopacket.Flow, gopacket.Flow) {
 	return t.ipFlow, t.tcpFlow
 }
 
-type HashedTcpIpFlow struct {
+type HashedTcpIpv6Flow struct {
+	// ipv6 16 bytes + tcp port 2 bytes == 18
+	Src [18]byte
+	Dst [18]byte
+}
+
+// NewHashedTcpIpv6Flow returns a comparable struct given a flow struct
+func NewHashedTcpIpv6Flow(flow *TcpIpFlow) HashedTcpIpv6Flow {
+	hash := HashedTcpIpv6Flow{}
+
+	ipFlow, tcpFlow := flow.Flows()
+	src := make([]byte, 18)
+	copy(src, ipFlow.Src().Raw())
+	copy(src[len(ipFlow.Src().Raw()):], tcpFlow.Src().Raw())
+	copy(hash.Src[:], src)
+
+	dst := make([]byte, 18)
+	copy(dst, ipFlow.Dst().Raw())
+	copy(dst[len(ipFlow.Dst().Raw()):], tcpFlow.Dst().Raw())
+	copy(hash.Dst[:], dst)
+
+	return hash
+}
+
+type HashedTcpIpv4Flow struct {
 	Src uint64
 	Dst uint64
 }
 
-// NewHashedTcpIpFlow returns a comparable struct given a flow struct
-func NewHashedTcpIpFlow(flow *TcpIpFlow) *HashedTcpIpFlow {
-	hash := HashedTcpIpFlow{}
+// NewHashedTcpIpv4Flow returns a comparable struct given a flow struct
+func NewHashedTcpIpv4Flow(flow *TcpIpFlow) HashedTcpIpv4Flow {
+	hash := HashedTcpIpv4Flow{}
 
 	ipFlow, tcpFlow := flow.Flows()
 	src := make([]byte, 64)
@@ -116,19 +133,13 @@ func NewHashedTcpIpFlow(flow *TcpIpFlow) *HashedTcpIpFlow {
 	copy(dst[len(ipFlow.Dst().Raw()):], tcpFlow.Dst().Raw())
 	hash.Dst = binary.BigEndian.Uint64(dst)
 
-	return &hash
-}
-
-func (h *HashedTcpIpFlow) Sorted() HashedTcpIpFlow {
-	if h.Src > h.Dst {
-		return HashedTcpIpFlow {
-			Src: h.Src,
-			Dst: h.Dst,
-		}
+	if hash.Src > hash.Dst {
+		return hash
 	} else {
-		return HashedTcpIpFlow {
-			Src: h.Dst,
-			Dst: h.Src,
-		}
+		// reverse
+		a := hash.Src
+		hash.Src = hash.Dst
+		hash.Dst = a
+		return hash
 	}
 }

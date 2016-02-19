@@ -49,6 +49,10 @@ type MockConnection struct {
 	receiveChan        chan *types.PacketManifest
 }
 
+func (m MockConnection) GetClientFlow() *types.TcpIpFlow {
+	return &m.clientFlow
+}
+
 func (m MockConnection) Close() {
 	log.Print("MockConnection.Close()")
 	close(m.receiveChan)
@@ -56,10 +60,6 @@ func (m MockConnection) Close() {
 
 func (m MockConnection) ReceivePacket(p *types.PacketManifest) {
 	m.packetObserverChan <- true
-}
-
-func (m MockConnection) GetConnectionHash() types.HashedTcpIpFlow {
-	return m.clientFlow.ConnectionHash()
 }
 
 func (m MockConnection) GetLastSeen() time.Time {
@@ -200,7 +200,7 @@ func TestInquisitorSourceReceiveOne(t *testing.T) {
 	p := types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flow,
-		IP:        ip,
+		IPv4:      &ip,
 		TCP:       tcp,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
@@ -251,7 +251,7 @@ func TestInquisitorResetTwice(t *testing.T) {
 	packet1 := types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flow1,
-		IP:        ip1,
+		IPv4:      &ip1,
 		TCP:       tcp1,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
@@ -274,7 +274,7 @@ func TestInquisitorResetTwice(t *testing.T) {
 	packet2 := types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flow2,
-		IP:        ip2,
+		IPv4:      &ip2,
 		TCP:       tcp2,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}

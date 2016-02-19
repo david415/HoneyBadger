@@ -23,6 +23,8 @@ import (
 	"log"
 	"time"
 
+	"github.com/google/gopacket/layers"
+
 	"github.com/david415/HoneyBadger/types"
 )
 
@@ -62,7 +64,8 @@ type Dispatcher struct {
 	closeConnectionChan    chan ConnectionInterface
 	pageCache              *pageCache
 	PacketLoggerFactory    types.PacketLoggerFactory
-	pool                   map[types.HashedTcpIpFlow]ConnectionInterface
+	poolTcpIpv4            map[types.HashedTcpIpv4Flow]ConnectionInterface
+	poolTcpIpv6            map[types.HashedTcpIpv6Flow]ConnectionInterface
 }
 
 // NewInquisitor creates a new Inquisitor struct
@@ -76,7 +79,8 @@ func NewDispatcher(options DispatcherOptions, connectionFactory ConnectionFactor
 		closeConnectionChan:   make(chan ConnectionInterface),
 		pageCache:             newPageCache(),
 		observeConnectionChan: make(chan bool, 0),
-		pool: make(map[types.HashedTcpIpFlow]ConnectionInterface),
+		poolTcpIpv4: make(map[types.HashedTcpIpv4Flow]ConnectionInterface),
+		poolTcpIpv6: make(map[types.HashedTcpIpv6Flow]ConnectionInterface),
 	}
 	return &i
 }
@@ -104,8 +108,11 @@ func (i *Dispatcher) Connections() []ConnectionInterface {
 }
 
 func (i *Dispatcher) connections() []ConnectionInterface {
-	conns := make([]ConnectionInterface, 0, len(i.pool))
-	for _, conn := range i.pool {
+	conns := make([]ConnectionInterface, 0, len(i.poolTcpIpv4) + len(i.poolTcpIpv6))
+	for _, conn := range i.poolTcpIpv4 {
+		conns = append(conns, conn)
+	}
+	for _, conn := range i.poolTcpIpv6 {
 		conns = append(conns, conn)
 	}
 	return conns
@@ -118,19 +125,19 @@ func (i *Dispatcher) ReceivePacket(p *types.PacketManifest) {
 // CloseOlderThan takes a Time argument and closes all the connections
 // that have not received packet since that specified time
 func (i *Dispatcher) CloseOlderThan(t time.Time) int {
-	closed := 0
 	conns := i.connections()
 	if conns == nil {
 		return 0
 	}
+
+	closeList := make([]ConnectionInterface,0)
 	for _, conn := range conns {
 		lastSeen := conn.GetLastSeen()
 		if lastSeen.Equal(t) || lastSeen.Before(t) {
-			conn.Close()
-			closed += 1
+			conns = append(conns, conn)
 		}
 	}
-	return closed
+	return i.closeConnectionList(closeList)
 }
 
 // CloseAllConnections closes all connections in the pool.
@@ -139,10 +146,25 @@ func (i *Dispatcher) CloseAllConnections() int {
 	if conns == nil {
 		return 0
 	}
+	return i.closeConnectionList(conns)
+}
+
+func (i *Dispatcher) closeConnectionList(conns []ConnectionInterface) int {
 	count := 0
 	for _, conn := range conns {
+		tcpip_flow := conn.GetClientFlow()
+		netFlow, _ := tcpip_flow.Flows()
+		eType := netFlow.EndpointType()
+		if eType == layers.EndpointIPv4 {
+			delete(i.poolTcpIpv4, types.NewHashedTcpIpv4Flow(tcpip_flow))
+			count += 1
+		} else if eType == layers.EndpointIPv6 {
+			delete(i.poolTcpIpv6, types.NewHashedTcpIpv6Flow(tcpip_flow))
+			count += 1
+		} else {
+			panic("wtf")
+		}
 		conn.Close()
-		count += 1
 	}
 	return count
 }
@@ -159,7 +181,6 @@ func (i *Dispatcher) setupNewConnection(flow *types.TcpIpFlow) ConnectionInterfa
 		DetectHijack:                  i.options.DetectHijack,
 		DetectInjection:               i.options.DetectInjection,
 		DetectCoalesceInjection:       i.options.DetectCoalesceInjection,
-		Pool: &i.pool,
 	}
 
 	conn := i.connectionFactory.Build(options)
@@ -169,7 +190,16 @@ func (i *Dispatcher) setupNewConnection(flow *types.TcpIpFlow) ConnectionInterfa
 		packetLogger.Start()
 	}
 
-	i.pool[flow.ConnectionHash()] = conn
+	ipFlow, _ := flow.Flows()
+	eType := ipFlow.EndpointType()
+	if eType == layers.EndpointIPv4 {
+		i.poolTcpIpv4[types.NewHashedTcpIpv4Flow(flow)] = conn
+	} else if eType == layers.EndpointIPv6 {
+		i.poolTcpIpv6[types.NewHashedTcpIpv6Flow(flow)] = conn
+	} else {
+		panic("wtf")
+	}
+
 	if i.observeConnectionCount != 0 && i.observeConnectionCount == len(i.connections()) {
 		i.observeConnectionChan <- true
 	}
@@ -191,16 +221,35 @@ func (i *Dispatcher) dispatchPackets() {
 		case <-i.stopDispatchChan:
 			return
 		case packetManifest := <-i.dispatchPacketChan:
-			_, ok := i.pool[packetManifest.Flow.ConnectionHash()]
-			if ok {
-				conn = i.pool[packetManifest.Flow.ConnectionHash()]
-			} else {
-				if i.options.MaxConcurrentConnections != 0 {
-					if len(i.pool) >= i.options.MaxConcurrentConnections {
-						continue
+			ipFlow, _ := packetManifest.Flow.Flows()
+			eType := ipFlow.EndpointType()
+
+			if eType == layers.EndpointIPv4 {
+				_, ok := i.poolTcpIpv4[types.NewHashedTcpIpv4Flow(packetManifest.Flow)]
+				if ok {
+					conn = i.poolTcpIpv4[types.NewHashedTcpIpv4Flow(packetManifest.Flow)]
+				} else {
+					if i.options.MaxConcurrentConnections != 0 {
+						if len(i.poolTcpIpv4) >= i.options.MaxConcurrentConnections {
+							continue
+						}
 					}
+					conn = i.setupNewConnection(packetManifest.Flow)
 				}
-				conn = i.setupNewConnection(packetManifest.Flow)
+			} else if eType == layers.EndpointIPv6 {
+				_, ok := i.poolTcpIpv6[types.NewHashedTcpIpv6Flow(packetManifest.Flow)]
+				if ok {
+					conn = i.poolTcpIpv6[types.NewHashedTcpIpv6Flow(packetManifest.Flow)]
+				} else {
+					if i.options.MaxConcurrentConnections != 0 {
+						if len(i.poolTcpIpv6) >= i.options.MaxConcurrentConnections {
+							continue
+						}
+					}
+					conn = i.setupNewConnection(packetManifest.Flow)
+				}
+			} else {
+				panic("wtf")
 			}
 			conn.ReceivePacket(packetManifest)
 		}

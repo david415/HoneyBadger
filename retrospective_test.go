@@ -154,12 +154,12 @@ func TestInjectionDetector(t *testing.T) {
 
 	clientFlow := types.NewTcpIpFlowFromFlows(ipFlow, tcpFlow)
 	serverFlow := clientFlow.Reverse()
-	conn.serverFlow = serverFlow
-	conn.clientFlow = clientFlow
+	conn.serverFlow = &serverFlow
+	conn.clientFlow = &clientFlow
 
 	p := types.PacketManifest{
-		Flow: clientFlow,
-		IP: layers.IPv4{
+		Flow: &clientFlow,
+		IPv4: &layers.IPv4{
 			SrcIP:    net.IP{1, 2, 3, 4},
 			DstIP:    net.IP{2, 3, 4, 5},
 			Version:  4,

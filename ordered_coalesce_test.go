@@ -21,7 +21,7 @@ func TestOrderedCoalesceUsedPages(t *testing.T) {
 
 	var nextSeq types.Sequence = types.Sequence(1)
 	attackDetected := false
-	coalesce := NewOrderedCoalesce(nil, flow, PageCache, streamRing, maxBufferedPagesTotal, maxBufferedPagesPerFlow, false, &attackDetected)
+	coalesce := NewOrderedCoalesce(nil, &flow, PageCache, streamRing, maxBufferedPagesTotal, maxBufferedPagesPerFlow, false, &attackDetected)
 
 	ip := layers.IPv4{
 		SrcIP:    net.IP{1, 2, 3, 4},
@@ -38,8 +38,8 @@ func TestOrderedCoalesceUsedPages(t *testing.T) {
 	}
 	p := types.PacketManifest{
 		Timestamp: time.Now(),
-		Flow:      flow,
-		IP:        ip,
+		Flow:      &flow,
+		IPv4:      &ip,
 		TCP:       tcp,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}

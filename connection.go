@@ -83,8 +83,8 @@ func (f *DefaultConnFactory) Build(options ConnectionOptions) ConnectionInterfac
 
 type ConnectionInterface interface {
 	Close()
+    GetClientFlow() *types.TcpIpFlow
 	SetPacketLogger(types.PacketLogger)
-	GetConnectionHash() types.HashedTcpIpFlow
 	GetLastSeen() time.Time
 	ReceivePacket(*types.PacketManifest)
 }
@@ -107,7 +107,6 @@ type ConnectionOptions struct {
 	DetectHijack                  bool
 	DetectInjection               bool
 	DetectCoalesceInjection       bool
-	Pool                          *map[types.HashedTcpIpFlow]ConnectionInterface
 }
 
 // Connection is used to track client and server flows for a given TCP connection.
@@ -140,6 +139,11 @@ type Connection struct {
 	PacketLogger             types.PacketLogger
 }
 
+
+func (c *Connection) GetClientFlow() *types.TcpIpFlow {
+	return c.clientFlow
+}
+
 func (c *Connection) SetPacketLogger(logger types.PacketLogger) {
 	c.PacketLogger = logger
 }
@@ -160,16 +164,9 @@ func (c *Connection) updateLastSeen(timestamp time.Time) {
 	}
 }
 
-func (c *Connection) GetConnectionHash() types.HashedTcpIpFlow {
-	return c.clientFlow.ConnectionHash()
-}
-
 // Close can be used by the the connection or the dispatcher to close the connection
 func (c *Connection) Close() {
 	log.Print("Close()")
-	if c.Pool != nil {
-		delete(*c.Pool, c.GetConnectionHash())
-	}
 	if c.attackDetected == false {
 		if c.PacketLogger != nil {
 			log.Print("no attack detected. removing pcap logs")
@@ -259,8 +256,9 @@ func (c *Connection) detectInjection(p *types.PacketManifest) {
 // and moves us into the TCP_CONNECTION_REQUEST state if we receive
 // a SYN packet... otherwise TCP_DATA_TRANSFER state.
 func (c *Connection) stateUnknown(p *types.PacketManifest) {
-	*c.clientFlow = *p.Flow
-	*c.serverFlow = *p.Flow.Reverse()
+	c.clientFlow = p.Flow
+	f := p.Flow.Reverse()
+	c.serverFlow = &f
 
 	if p.TCP.SYN && !p.TCP.ACK {
 		c.state = TCP_CONNECTION_REQUEST
