@@ -55,9 +55,13 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		maxPcapLogSize      = flag.Int("max_pcap_log_size", 10, "maximum pcap size per rotation in megabytes")
 		maxNumPcapRotations = flag.Int("max_pcap_rotations", 100, "maximum number of pcap rotations per connection")
 		archiveDir          = flag.String("archive_dir", "", "archive directory for storing attack logs and related pcap files")
-		daq                 = flag.String("daq", "libpcap", "Data AcQuisition packet source: libpcap, AF_PACKET or BSD_BPF")
+		daq                 = flag.String("daq", "libpcap", "Data AcQuisition packet source: pcapgo, libpcap, AF_PACKET or BSD_BPF")
 	)
 	flag.Parse()
+
+	if *daq == "pcapgo" && *pcapfile == "" {
+		log.Fatal("must specify a -pcapfile option when using -daq=pcapgo")
+	}
 
 	log.SetFlags(log.LUTC | log.Ldate | log.Ltime )
 	if *daq == "" {
@@ -65,8 +69,8 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 	}
 
 	// XXX TODO use the pure golang pcap file sniffing API; gopacket's pcapgo
-	if *pcapfile != "" && *daq != "libpcap" {
-		log.Fatal("only libpcap DAQ supports sniffing pcap files")
+	if *pcapfile != "" && (*daq != "libpcap" && *daq != "pcapgo") {
+		log.Fatal("only pcapgo and libpcap DAQs supports sniffing pcap files")
 	}
 
 	if *archiveDir == "" || *logDir == "" {

@@ -97,7 +97,7 @@ func (i *Sniffer) setupHandle() {
 	i.packetDataSource, err = factory(i.options)
 
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("Failed to acquire DataAcQuisition source: %s", err))
 	}
 
 	if i.options.Filename != "" {
@@ -121,12 +121,14 @@ func (i *Sniffer) capturePackets() {
 			return
 		}
 		if err != nil {
+			log.Printf("packet capure read error: %s", err)
 			continue
 		}
 		timedPacket := TimedRawPacket{
 			Timestamp: captureInfo.Timestamp,
-			RawPacket: rawPacket,
 		}
+		timedPacket.RawPacket = make([]byte, len(rawPacket))
+		copy(timedPacket.RawPacket, rawPacket)
 		i.decodePacketChan <- timedPacket
 		if i.isStopped {
 			break
