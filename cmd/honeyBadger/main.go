@@ -31,7 +31,8 @@ import (
 
 func main() {
 	var (
-		pcapfile                 = flag.String("pcapfile", "", "pcap filename to read packets from rather than a wire interface.")
+		pcapfile                 = flag.String("pcapfile", "", `pcap filename to read packets from rather than a wire interface.
+This option is to be combined with a -daq= setting of either "pcapgo" OR "libpcap"!`)
 		iface                    = flag.String("i", "eth0", "Interface to get packets from")
 		snaplen                  = flag.Int("s", 65536, "SnapLen for pcap packet capture")
 		filter                   = flag.String("f", "tcp", "BPF filter for pcap")
@@ -55,7 +56,12 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		maxPcapLogSize      = flag.Int("max_pcap_log_size", 10, "maximum pcap size per rotation in megabytes")
 		maxNumPcapRotations = flag.Int("max_pcap_rotations", 100, "maximum number of pcap rotations per connection")
 		archiveDir          = flag.String("archive_dir", "", "archive directory for storing attack logs and related pcap files")
-		daq                 = flag.String("daq", "libpcap", "Data AcQuisition packet source: pcapgo, libpcap, AF_PACKET or BSD_BPF")
+		daq                 = flag.String("daq", "libpcap", `Data AcQuisition packet source: pcapgo, libpcap, AF_PACKET or BSD_BPF.
+BSD_BPF is BSD systems only.
+AF_PACKET is Linux only.
+libpcap builds on Linux and FreeBSD and can read every kind of pcap format.
+pcapgo builds on every platform but does not support pcap-ng format, only pcap v2.4.
+`)
 	)
 	flag.Parse()
 
