@@ -20,9 +20,13 @@
 package types
 
 import (
+	"time"
+	"bytes"
+	"fmt"
+	"encoding/hex"
+
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"time"
 )
 
 type SnifferDriverOptions struct {
@@ -67,4 +71,13 @@ type PacketManifest struct {
 	IP        layers.IPv4
 	TCP       layers.TCP
 	Payload   gopacket.Payload
+}
+
+func (p PacketManifest) String() string {
+	var buffer bytes.Buffer
+	buffer.WriteString(fmt.Sprintf("TCP Flow: %s\n", *p.Flow))
+	buffer.WriteString(fmt.Sprintf("TCP Sequence %d\n", p.TCP.Seq))
+	buffer.WriteString("Packet payload hex dump:\n")
+	buffer.WriteString(hex.Dump(p.Payload))
+    return buffer.String()
 }
