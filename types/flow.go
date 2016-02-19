@@ -106,12 +106,12 @@ func NewHashedTcpIpFlow(flow *TcpIpFlow) *HashedTcpIpFlow {
 	hash := HashedTcpIpFlow{}
 
 	ipFlow, tcpFlow := flow.Flows()
-	src := make([]byte, 64)
+	src := make([]byte, 8)
 	copy(src, ipFlow.Src().Raw())
 	copy(src[len(ipFlow.Src().Raw()):], tcpFlow.Src().Raw())
 	hash.Src = binary.BigEndian.Uint64(src)
 
-	dst := make([]byte, 64)
+	dst := make([]byte, 8)
 	copy(dst, ipFlow.Dst().Raw())
 	copy(dst[len(ipFlow.Dst().Raw()):], tcpFlow.Dst().Raw())
 	hash.Dst = binary.BigEndian.Uint64(dst)
