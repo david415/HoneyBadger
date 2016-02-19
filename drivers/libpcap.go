@@ -1,4 +1,4 @@
-// +build linux
+// +build linux freebsd
 
 /*
  *    HoneyBadger core library for detecting TCP injection attacks
