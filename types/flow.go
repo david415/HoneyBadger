@@ -28,37 +28,6 @@ import (
 )
 
 
-const fnvBasis = 14695981039346656037
-const fnvPrime = 1099511628211
-
-// This fnvHash function is from google. I've already included their LICENSE file.
-//
-// fnvHash is used by our FastHash functions, and implements the FNV hash
-// created by Glenn Fowler, Landon Curt Noll, and Phong Vo.
-// See http://isthe.com/chongo/tech/comp/fnv/.
-func fnvHash(s []byte) (h uint64) {
-	h = fnvBasis
-	for i := 0; i < len(s); i++ {
-		h ^= uint64(s[i])
-		h *= fnvPrime
-	}
-	return
-}
-
-// SequenceFromPacket returns a Sequence number and nil error if the given
-// packet is able to be parsed. Otherwise returns 0 and an error.
-func SequenceFromPacket(packet []byte) (uint32, error) {
-	var ip layers.IPv4
-	var tcp layers.TCP
-	decoded := []gopacket.LayerType{}
-	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeIPv4, &ip, &tcp)
-	err := parser.DecodeLayers(packet, &decoded)
-	if err != nil {
-		return 0, err
-	}
-	return tcp.Seq, nil
-}
-
 // TcpIpFlow is used for tracking unidirectional TCP flows
 type TcpIpFlow struct {
 	ipFlow  gopacket.Flow
