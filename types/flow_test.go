@@ -130,3 +130,40 @@ func TestNewTcpIpFlowFromPacket(t *testing.T) {
 		t.Fail()
 	}
 }
+
+func FlowFromPacket() *TcpIpFlow {
+	buf := gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{
+		FixLengths:       true,
+		ComputeChecksums: true,
+	}
+	ip := layers.IPv4{
+		SrcIP:    net.IP{1, 2, 3, 4},
+		DstIP:    net.IP{2, 3, 4, 5},
+		Version:  4,
+		TTL:      64,
+		Protocol: layers.IPProtocolTCP,
+	}
+	tcp := layers.TCP{
+		SYN:       true,
+		SrcPort:   1,
+		DstPort:   2,
+		Seq:       123,
+		BaseLayer: layers.BaseLayer{Payload: []byte{1, 2, 3}},
+	}
+	tcp.SetNetworkLayerForChecksum(&ip)
+	gopacket.SerializeLayers(buf, opts, &ip, &tcp)
+	packetData := buf.Bytes()
+	flow, _ := NewTcpIpFlowFromPacket(packetData)
+	return flow
+}
+
+func TestHashedTcpIpFlow(t *testing.T) {
+	tcpIpFlow := FlowFromPacket()
+	hash1 := NewHashedTcpIpFlow(tcpIpFlow).Sorted()
+	hash2 := NewHashedTcpIpFlow(tcpIpFlow.Reverse()).Sorted()
+	if hash1 != hash2 {
+		t.Error("hash values must be equal after sorting!")
+		t.Fail()
+	}
+}

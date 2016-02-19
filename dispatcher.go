@@ -62,7 +62,7 @@ type Dispatcher struct {
 	closeConnectionChan    chan ConnectionInterface
 	pageCache              *pageCache
 	PacketLoggerFactory    types.PacketLoggerFactory
-	pool                   map[uint64]ConnectionInterface
+	pool                   map[types.HashedTcpIpFlow]ConnectionInterface
 }
 
 // NewInquisitor creates a new Inquisitor struct
@@ -76,7 +76,7 @@ func NewDispatcher(options DispatcherOptions, connectionFactory ConnectionFactor
 		closeConnectionChan:   make(chan ConnectionInterface),
 		pageCache:             newPageCache(),
 		observeConnectionChan: make(chan bool, 0),
-		pool: make(map[uint64]ConnectionInterface),
+		pool: make(map[types.HashedTcpIpFlow]ConnectionInterface),
 	}
 	return &i
 }

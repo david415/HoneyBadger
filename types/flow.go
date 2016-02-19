@@ -21,6 +21,8 @@ package types
 
 import (
 	"fmt"
+	"encoding/binary"
+
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 )
@@ -83,20 +85,8 @@ func NewTcpIpFlowFromFlows(ipFlow gopacket.Flow, tcpFlow gopacket.Flow) *TcpIpFl
 
 // ConnectionHash returns a hash of the flow A->B such
 // that it is guaranteed to collide with flow B->A
-func (t *TcpIpFlow) ConnectionHash() uint64 {
-	src := []byte{}
-	dst := []byte{}
-
-	src = append(src, t.ipFlow.Src().Raw()...)
-	src = append(src, t.tcpFlow.Src().Raw()...)
-
-	dst = append(dst, t.ipFlow.Dst().Raw()...)
-	dst = append(dst, t.tcpFlow.Dst().Raw()...)
-
-	h := fnvHash(src) + fnvHash(dst)
-	h *= fnvPrime
-
-	return h
+func (t *TcpIpFlow) ConnectionHash() HashedTcpIpFlow {
+	return NewHashedTcpIpFlow(t).Sorted()
 }
 
 // String returns the string representation of a TcpIpFlow
@@ -135,4 +125,41 @@ func NewTcpIpFlowFromPacket(packet []byte) (*TcpIpFlow, error) {
 // Flows returns the component flow structs IPv4, TCP
 func (t *TcpIpFlow) Flows() (gopacket.Flow, gopacket.Flow) {
 	return t.ipFlow, t.tcpFlow
+}
+
+type HashedTcpIpFlow struct {
+	Src uint64
+	Dst uint64
+}
+
+// NewHashedTcpIpFlow returns a comparable struct given a flow struct
+func NewHashedTcpIpFlow(flow *TcpIpFlow) *HashedTcpIpFlow {
+	hash := HashedTcpIpFlow{}
+
+	ipFlow, tcpFlow := flow.Flows()
+	src := make([]byte, 64)
+	copy(src, ipFlow.Src().Raw())
+	copy(src[len(ipFlow.Src().Raw()):], tcpFlow.Src().Raw())
+	hash.Src = binary.BigEndian.Uint64(src)
+
+	dst := make([]byte, 64)
+	copy(dst, ipFlow.Dst().Raw())
+	copy(dst[len(ipFlow.Dst().Raw()):], tcpFlow.Dst().Raw())
+	hash.Dst = binary.BigEndian.Uint64(dst)
+
+	return &hash
+}
+
+func (h *HashedTcpIpFlow) Sorted() HashedTcpIpFlow {
+	if h.Src > h.Dst {
+		return HashedTcpIpFlow {
+			Src: h.Src,
+			Dst: h.Dst,
+		}
+	} else {
+		return HashedTcpIpFlow {
+			Src: h.Dst,
+			Dst: h.Src,
+		}
+	}
 }

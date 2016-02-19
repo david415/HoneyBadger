@@ -84,7 +84,7 @@ func (f *DefaultConnFactory) Build(options ConnectionOptions) ConnectionInterfac
 type ConnectionInterface interface {
 	Close()
 	SetPacketLogger(types.PacketLogger)
-	GetConnectionHash() uint64
+	GetConnectionHash() types.HashedTcpIpFlow
 	GetLastSeen() time.Time
 	ReceivePacket(*types.PacketManifest)
 }
@@ -107,7 +107,7 @@ type ConnectionOptions struct {
 	DetectHijack                  bool
 	DetectInjection               bool
 	DetectCoalesceInjection       bool
-	Pool                          *map[uint64]ConnectionInterface
+	Pool                          *map[types.HashedTcpIpFlow]ConnectionInterface
 }
 
 // Connection is used to track client and server flows for a given TCP connection.
@@ -160,7 +160,7 @@ func (c *Connection) updateLastSeen(timestamp time.Time) {
 	}
 }
 
-func (c *Connection) GetConnectionHash() uint64 {
+func (c *Connection) GetConnectionHash() types.HashedTcpIpFlow {
 	return c.clientFlow.ConnectionHash()
 }
 

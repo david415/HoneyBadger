@@ -58,7 +58,7 @@ func (m MockConnection) ReceivePacket(p *types.PacketManifest) {
 	m.packetObserverChan <- true
 }
 
-func (m MockConnection) GetConnectionHash() uint64 {
+func (m MockConnection) GetConnectionHash() types.HashedTcpIpFlow {
 	return m.clientFlow.ConnectionHash()
 }
 
