@@ -22,6 +22,7 @@ package types
 import (
 	"fmt"
 	"encoding/binary"
+	"bytes"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -110,7 +111,15 @@ func NewHashedTcpIpv6Flow(flow *TcpIpFlow) HashedTcpIpv6Flow {
 	copy(dst[len(ipFlow.Dst().Raw()):], tcpFlow.Dst().Raw())
 	copy(hash.Dst[:], dst)
 
-	return hash
+	if bytes.Compare(hash.Src[:], hash.Dst[:]) > 0 {
+		return hash
+	} else {
+		// reverse
+		a := hash.Src
+		hash.Src = hash.Dst
+		hash.Dst = a
+		return hash
+	}
 }
 
 type HashedTcpIpv4Flow struct {
