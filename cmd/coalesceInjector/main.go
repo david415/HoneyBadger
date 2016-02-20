@@ -39,7 +39,9 @@ var filter = flag.String("f", "tcp", "BPF filter for pcap")
 var snaplen = flag.Int("s", 65536, "SnapLen for pcap packet capture")
 var serviceIPstr = flag.String("d", "127.0.0.1", "target TCP flows from this IP address")
 var servicePort = flag.Int("e", 9666, "target TCP flows from this port")
-var coalesce1or2 = flag.Bool("coalesce1", true, "perform the TCP coalesce1 injection, perform coalesce2 if false.")
+var coalesce1 = flag.Bool("coalesce1", true, "perform the TCP coalesce1 injection")
+var coalesce2 = flag.Bool("coalesce2", true, "perform the TCP coalesce2 injection")
+var spray = flag.Bool("spray", true, "perform the TCP sloppy probalistic injection")
 
 func main() {
 	defer util.Run()()
@@ -175,12 +177,18 @@ func main() {
 			}
 
 			streamInjector.SetTCPLayer(tcp)
-			// we choose coalesce1 OR coalesce2 with a boolean
-			err := streamInjector.SprayFutureAndFillGapPackets(tcp.Seq, gap_payload, attack_payload, *coalesce1or2)
+			// choose which injection attack to perform
+			if *coalesce1 {
+				err = streamInjector.SprayFutureAndFillGapPackets(tcp.Seq, gap_payload, attack_payload, *coalesce1)
+			} else if *coalesce2 {
+				err = streamInjector.SprayFutureAndFillGapPackets(tcp.Seq, gap_payload, attack_payload, *coalesce2)
+			} else if *spray {
+				err = streamInjector.SpraySequenceRangePackets(tcp.Seq, 20)
+			}
 			if err != nil {
 				panic(err)
 			}
-			log.Print("packet spray sent!\n")
+			log.Print("tcp injection sent!\n")
 		}
 	}
 }
