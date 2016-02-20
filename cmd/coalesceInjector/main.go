@@ -64,9 +64,11 @@ func main() {
 
 	ipv4_mode := false
 	ipv6_mode := false
-	if len(serviceIP) == 4 {
+	if serviceIP.To4() != nil {
+		log.Print("using ipv4 mode")
 		ipv4_mode = true
 	} else if len(serviceIP) == 16 {
+		log.Print("using ipv6 mode")
 		ipv6_mode = true
 	} else {
 		panic("wtf")
@@ -81,11 +83,7 @@ func main() {
 		log.Fatal("error opening pcap handle: ", err)
 	}
 
-	streamInjector := attack.TCPStreamInjector{}
-	err = streamInjector.Init("0.0.0.0", handle, ipv6_mode)
-	if err != nil {
-		panic(err)
-	}
+	streamInjector := attack.NewTCPStreamInjector(handle, ipv6_mode)
 
 	if err := handle.SetBPFFilter(*filter); err != nil {
 		log.Fatal("error setting BPF filter: ", err)
@@ -135,7 +133,8 @@ func main() {
 		}
 
 		if ipv4_mode {
-			if tcp.SrcPort != layers.TCPPort(*servicePort) || !ip4.SrcIP.Equal(serviceIP.To4()) {
+//			if tcp.SrcPort != layers.TCPPort(*servicePort) || !ip4.SrcIP.Equal(serviceIP.To4()) {
+			if tcp.SrcPort != layers.TCPPort(*servicePort) || !ip4.SrcIP.Equal(serviceIP) {
 				continue
 			}
 		} else if ipv6_mode {
@@ -163,11 +162,11 @@ func main() {
 
 		// after some packets from a given flow then inject packets into the stream
 		if trackedFlows[*flow] == 5 {
+			streamInjector.SetEthernetLayer(&eth)
 			if ipv4_mode {
-				err = streamInjector.SetIPv4Layer(ip4)
+				streamInjector.SetIPv4Layer(ip4)
 			} else if ipv6_mode {
-				streamInjector.SetLayer1(&eth, &dot1q)
-				err = streamInjector.SetIPv6Layer(ip6)
+				streamInjector.SetIPv6Layer(ip6)
 			} else {
 				panic("wtf")
 			}

@@ -23,7 +23,6 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"golang.org/x/net/ipv4"
 	"net"
 	"log"
 )
@@ -31,61 +30,34 @@ import (
 type TCPStreamInjector struct {
 	packetConn    net.PacketConn
 	pcapHandle    *pcap.Handle
-	ipv4RawConn   *ipv4.RawConn
-	ipv4Header    *ipv4.Header
-	ipv4          layers.IPv4
 	eth           *layers.Ethernet
 	dot1q         *layers.Dot1Q
+	ipv4          layers.IPv4
 	ipv6          layers.IPv6
 	tcp           layers.TCP
 	ipBuf         gopacket.SerializeBuffer
-	tcpPayloadBuf gopacket.SerializeBuffer
 	Payload       gopacket.Payload
 	isIPv6Mode    bool
 }
 
-func (i *TCPStreamInjector) Init(netInterface string, pcapHandle *pcap.Handle, isIPv6Mode bool) error {
-	var err error
-	i.pcapHandle = pcapHandle
-	i.isIPv6Mode = isIPv6Mode
-	if isIPv6Mode {
-		return nil
-	} else {
-		i.packetConn, err = net.ListenPacket("ip4:tcp", netInterface)
-		if err != nil {
-			return err
-		}
-		i.ipv4RawConn, err = ipv4.NewRawConn(i.packetConn)
-		return err
+func NewTCPStreamInjector(pcapHandle *pcap.Handle, isIPv6Mode bool) *TCPStreamInjector {
+	t := TCPStreamInjector{
+		pcapHandle: pcapHandle,
+		isIPv6Mode: isIPv6Mode,
 	}
+	return &t
 }
 
-func (i *TCPStreamInjector) SetIPv4Layer(iplayer layers.IPv4) error {
-	i.ipv4 = iplayer
-	i.ipBuf = gopacket.NewSerializeBuffer()
-	opts := gopacket.SerializeOptions{
-		FixLengths:       true,
-		ComputeChecksums: true,
-	}
-	err := i.ipv4.SerializeTo(i.ipBuf, opts)
-	if err != nil {
-		return err
-	}
-	i.ipv4Header, err = ipv4.ParseHeader(i.ipBuf.Bytes())
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (i *TCPStreamInjector) SetIPv6Layer(iplayer layers.IPv6) error {
-	i.ipv6 = iplayer
-	return nil
-}
-
-func (i *TCPStreamInjector) SetLayer1(eth *layers.Ethernet, dot1q *layers.Dot1Q) {
+func (i *TCPStreamInjector) SetEthernetLayer(eth *layers.Ethernet) {
 	i.eth = eth
-	i.dot1q = dot1q
+}
+
+func (i *TCPStreamInjector) SetIPv4Layer(iplayer layers.IPv4) {
+	i.ipv4 = iplayer
+}
+
+func (i *TCPStreamInjector) SetIPv6Layer(iplayer layers.IPv6) {
+	i.ipv6 = iplayer
 }
 
 func (i *TCPStreamInjector) SetTCPLayer(tcpLayer layers.TCP) {
@@ -156,39 +128,31 @@ func (i *TCPStreamInjector) Write() error {
 	} else {
 		i.tcp.SetNetworkLayerForChecksum(&i.ipv4)
 	}
+	packetBuf := gopacket.NewSerializeBuffer()
 	if i.isIPv6Mode {
-		log.Print("ipv6 mode")
-		// XXX
-		ipv6PacketBuf := gopacket.NewSerializeBuffer()
 		opts := gopacket.SerializeOptions{
 			FixLengths:       true,
-			//ComputeChecksums: false,
 			ComputeChecksums: true,
 		}
-		//err = gopacket.SerializeLayers(ipv6PacketBuf, opts, i.eth, i.dot1q, &i.ipv6, &i.tcp, i.Payload)
-		err = gopacket.SerializeLayers(ipv6PacketBuf, opts, i.eth, &i.ipv6, &i.tcp, i.Payload)
+		err = gopacket.SerializeLayers(packetBuf, opts, i.eth, &i.ipv6, &i.tcp, i.Payload)
 		if err != nil {
-			log.Print("wtf. failed to decode ipv6 packet")
-			return err
-		}
-		if err := i.pcapHandle.WritePacketData(ipv6PacketBuf.Bytes()); err != nil {
-			log.Printf("Failed to send packet: %s\n", err)
+			log.Print("wtf. failed to encode ipv6 packet")
 			return err
 		}
 	} else {
-		log.Print("ipv4 mode")
-		i.tcpPayloadBuf = gopacket.NewSerializeBuffer()
-		//	packetPayload := gopacket.Payload(i.Payload)
-		packetPayload := i.Payload
 		opts := gopacket.SerializeOptions{
 			FixLengths:       true,
 			ComputeChecksums: true,
 		}
-		err = gopacket.SerializeLayers(i.tcpPayloadBuf, opts, &i.tcp, packetPayload)
+		err = gopacket.SerializeLayers(packetBuf, opts, i.eth, &i.ipv4, &i.tcp, i.Payload)
 		if err != nil {
+			log.Print("wtf. failed to encode ipv4 packet")
 			return err
 		}
-		err = i.ipv4RawConn.WriteTo(i.ipv4Header, i.tcpPayloadBuf.Bytes(), nil)
+	}
+	if err := i.pcapHandle.WritePacketData(packetBuf.Bytes()); err != nil {
+		log.Printf("Failed to send packet: %s\n", err)
+		return err
 	}
 	return err
 }
