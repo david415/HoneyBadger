@@ -121,7 +121,7 @@ func (i *Sniffer) capturePackets() {
 			return
 		}
 		if err != nil {
-			log.Printf("packet capure read error: %s", err)
+			//log.Printf("packet capure read error: %s", err)
 			continue
 		}
 		timedPacket := TimedRawPacket{
@@ -161,8 +161,11 @@ func (i *Sniffer) decodePackets() {
 			packetManifest := types.PacketManifest{
 				Timestamp: timedRawPacket.Timestamp,
 				Payload:   payload,
+				IPv6: nil,
+				IPv4: nil,
 			}
 			foundNetLayer := false
+
 			for _, typ := range decoded {
 				switch typ {
 				case layers.LayerTypeIPv4:
