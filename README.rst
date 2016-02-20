@@ -137,12 +137,21 @@ And then run honeyBadger like this::
   2016/02/07 14:16:32 Starting AF_PACKET packet capture on interface eth0
 
 
-linux security note
+Linux security note
 -------------------
 If running on Linux you can avoid running as root by using the setcap command.
 In Linux you can run packet capture tools as an unprivileged user after you run setcap as root like this::
 
    # setcap cap_net_raw,cap_net_admin=eip honeyBadger
+
+
+BSD security note
+-----------------
+When using the ``BSD_BPF`` sniffer, avoid running as root by making sure your user has
+read-write access to ``/dev/bpf*`` If you are in the ``wheel`` group and the bpf devices
+are group owned by ``wheel`` then this should work::
+
+   # chmod g+rw /dev/bpf*
 
 
 =======
