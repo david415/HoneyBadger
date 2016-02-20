@@ -97,6 +97,9 @@ func (i *Sniffer) setupHandle() {
 	i.packetDataSource, err = factory(i.options)
 
 	if err != nil {
+		if i.options.Filename != "" {
+			log.Printf("failed to read file %s", i.options.Filename)
+		}
 		panic(fmt.Sprintf("Failed to acquire DataAcQuisition source: %s", err))
 	}
 
