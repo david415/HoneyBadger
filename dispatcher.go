@@ -237,9 +237,10 @@ func (i *Dispatcher) dispatchPackets() {
 					conn = i.setupNewConnection(packetManifest.Flow)
 				}
 			} else if eType == layers.EndpointIPv6 {
-				_, ok := i.poolTcpIpv6[types.NewHashedTcpIpv6Flow(packetManifest.Flow)]
+				connectionHash := types.NewHashedTcpIpv6Flow(packetManifest.Flow)
+				_, ok := i.poolTcpIpv6[connectionHash]
 				if ok {
-					conn = i.poolTcpIpv6[types.NewHashedTcpIpv6Flow(packetManifest.Flow)]
+					conn = i.poolTcpIpv6[connectionHash]
 				} else {
 					if i.options.MaxConcurrentConnections != 0 {
 						if len(i.poolTcpIpv6) >= i.options.MaxConcurrentConnections {
