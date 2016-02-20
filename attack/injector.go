@@ -22,47 +22,42 @@ import (
 	"github.com/david415/HoneyBadger/types"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"golang.org/x/net/ipv4"
+	"github.com/google/gopacket/pcap"
 	"net"
+	"log"
 )
 
 type TCPStreamInjector struct {
 	packetConn    net.PacketConn
-	rawConn       *ipv4.RawConn
-	ipHeader      *ipv4.Header
-	ip            layers.IPv4
+	pcapHandle    *pcap.Handle
+	eth           *layers.Ethernet
+	dot1q         *layers.Dot1Q
+	ipv4          layers.IPv4
+	ipv6          layers.IPv6
 	tcp           layers.TCP
 	ipBuf         gopacket.SerializeBuffer
-	tcpPayloadBuf gopacket.SerializeBuffer
 	Payload       gopacket.Payload
+	isIPv6Mode    bool
 }
 
-func (i *TCPStreamInjector) Init(netInterface string) error {
-	var err error
-	i.packetConn, err = net.ListenPacket("ip4:tcp", netInterface)
-	if err != nil {
-		return err
+func NewTCPStreamInjector(pcapHandle *pcap.Handle, isIPv6Mode bool) *TCPStreamInjector {
+	t := TCPStreamInjector{
+		pcapHandle: pcapHandle,
+		isIPv6Mode: isIPv6Mode,
 	}
-	i.rawConn, err = ipv4.NewRawConn(i.packetConn)
-	return err
+	return &t
 }
 
-func (i *TCPStreamInjector) SetIPLayer(iplayer layers.IPv4) error {
-	i.ip = iplayer
-	i.ipBuf = gopacket.NewSerializeBuffer()
-	opts := gopacket.SerializeOptions{
-		FixLengths:       true,
-		ComputeChecksums: true,
-	}
-	err := i.ip.SerializeTo(i.ipBuf, opts)
-	if err != nil {
-		return err
-	}
-	i.ipHeader, err = ipv4.ParseHeader(i.ipBuf.Bytes())
-	if err != nil {
-		return err
-	}
-	return nil
+func (i *TCPStreamInjector) SetEthernetLayer(eth *layers.Ethernet) {
+	i.eth = eth
+}
+
+func (i *TCPStreamInjector) SetIPv4Layer(iplayer layers.IPv4) {
+	i.ipv4 = iplayer
+}
+
+func (i *TCPStreamInjector) SetIPv6Layer(iplayer layers.IPv6) {
+	i.ipv6 = iplayer
 }
 
 func (i *TCPStreamInjector) SetTCPLayer(tcpLayer layers.TCP) {
@@ -90,7 +85,7 @@ func (i *TCPStreamInjector) SpraySequenceRangePackets(start uint32, count int) e
 // The gap being the range from state machine's "next Sequence" to the earliest Sequence we
 // transmitted in our future sequence series of packets.
 func (i *TCPStreamInjector) SprayFutureAndFillGapPackets(start uint32, gap_payload, attack_payload []byte, overlap_future_packet bool) error {
-	var err error
+	var err error = nil
 
 	// send future packet
 	nextSeq := types.Sequence(start)
@@ -123,20 +118,41 @@ func (i *TCPStreamInjector) SprayFutureAndFillGapPackets(start uint32, gap_paylo
 	return nil
 }
 
-
 func (i *TCPStreamInjector) Write() error {
-	i.tcp.SetNetworkLayerForChecksum(&i.ip)
-	i.tcpPayloadBuf = gopacket.NewSerializeBuffer()
-	//	packetPayload := gopacket.Payload(i.Payload)
-	packetPayload := i.Payload
-	opts := gopacket.SerializeOptions{
-		FixLengths:       true,
-		ComputeChecksums: true,
+	log.Print("Write")
+	var err error = nil
+
+	if i.isIPv6Mode {
+		// XXX
+		i.tcp.SetNetworkLayerForChecksum(&i.ipv6)
+	} else {
+		i.tcp.SetNetworkLayerForChecksum(&i.ipv4)
 	}
-	err := gopacket.SerializeLayers(i.tcpPayloadBuf, opts, &i.tcp, packetPayload)
-	if err != nil {
+	packetBuf := gopacket.NewSerializeBuffer()
+	if i.isIPv6Mode {
+		opts := gopacket.SerializeOptions{
+			FixLengths:       true,
+			ComputeChecksums: true,
+		}
+		err = gopacket.SerializeLayers(packetBuf, opts, i.eth, &i.ipv6, &i.tcp, i.Payload)
+		if err != nil {
+			log.Print("wtf. failed to encode ipv6 packet")
+			return err
+		}
+	} else {
+		opts := gopacket.SerializeOptions{
+			FixLengths:       true,
+			ComputeChecksums: true,
+		}
+		err = gopacket.SerializeLayers(packetBuf, opts, i.eth, &i.ipv4, &i.tcp, i.Payload)
+		if err != nil {
+			log.Print("wtf. failed to encode ipv4 packet")
+			return err
+		}
+	}
+	if err := i.pcapHandle.WritePacketData(packetBuf.Bytes()); err != nil {
+		log.Printf("Failed to send packet: %s\n", err)
 		return err
 	}
-	err = i.rawConn.WriteTo(i.ipHeader, i.tcpPayloadBuf.Bytes(), nil)
 	return err
 }

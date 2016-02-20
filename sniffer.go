@@ -121,7 +121,7 @@ func (i *Sniffer) capturePackets() {
 			return
 		}
 		if err != nil {
-			log.Printf("packet capure read error: %s", err)
+			//log.Printf("packet capure read error: %s", err)
 			continue
 		}
 		timedPacket := TimedRawPacket{
@@ -138,11 +138,12 @@ func (i *Sniffer) capturePackets() {
 
 func (i *Sniffer) decodePackets() {
 	var eth layers.Ethernet
-	var ip layers.IPv4
+	var ip4 layers.IPv4
+	var ip6 layers.IPv6
 	var tcp layers.TCP
 	var payload gopacket.Payload
 
-	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet, &eth, &ip, &tcp, &payload)
+	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet, &eth, &ip4, &ip6, &tcp, &payload)
 	decoded := make([]gopacket.LayerType, 0, 4)
 
 	for {
@@ -156,16 +157,45 @@ func (i *Sniffer) decodePackets() {
 			if err != nil {
 				continue
 			}
-			flow := types.NewTcpIpFlowFromFlows(ip.NetworkFlow(), tcp.TransportFlow())
+
 			packetManifest := types.PacketManifest{
 				Timestamp: timedRawPacket.Timestamp,
-				Flow:      flow,
-				RawPacket: timedRawPacket.RawPacket,
-				IP:        ip,
-				TCP:       tcp,
 				Payload:   payload,
+				IPv6: nil,
+				IPv4: nil,
 			}
-			i.dispatcher.ReceivePacket(&packetManifest)
-		}
-	}
+			foundNetLayer := false
+
+			for _, typ := range decoded {
+				switch typ {
+				case layers.LayerTypeIPv4:
+					packetManifest.IPv4 = &ip4
+					foundNetLayer = true
+				case layers.LayerTypeIPv6:
+					packetManifest.IPv6 = &ip6
+					foundNetLayer = true
+				case layers.LayerTypeTCP:
+					if foundNetLayer {
+						flow := types.TcpIpFlow{}
+						if packetManifest.IPv6 == nil {
+							// IPv4 case
+							flow = types.NewTcpIpFlowFromFlows(ip4.NetworkFlow(), tcp.TransportFlow())
+						} else if packetManifest.IPv4 == nil {
+							// IPv6 case
+							flow = types.NewTcpIpFlowFromFlows(ip6.NetworkFlow(), tcp.TransportFlow())
+						} else {
+							panic("wtf")
+						}
+
+						packetManifest.Flow = &flow
+						packetManifest.TCP = tcp
+						i.dispatcher.ReceivePacket(&packetManifest)
+					} else {
+						log.Println("could not find IPv4 or IPv6 layer, inoring")
+					}
+				} // switch
+			} // for
+
+		} // select
+	} // for
 }

@@ -38,7 +38,7 @@ func TestFlowEqual(t *testing.T) {
 	tcpFlow2, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
 	flow2 := NewTcpIpFlowFromFlows(ipFlow2, tcpFlow2)
 
-	if !flow1.Equal(flow2) {
+	if !flow1.Equal(&flow2) {
 		t.Error("TcpIpFlow.Equal fail")
 		t.Fail()
 	}
@@ -47,7 +47,7 @@ func TestFlowEqual(t *testing.T) {
 	tcpFlow3, _ := gopacket.FlowFromEndpoints(layers.NewTCPPortEndpoint(layers.TCPPort(1)), layers.NewTCPPortEndpoint(layers.TCPPort(2)))
 	flow3 := NewTcpIpFlowFromFlows(ipFlow3, tcpFlow3)
 
-	if flow1.Equal(flow3) {
+	if flow1.Equal(&flow3) {
 		t.Error("TcpIpFlow.Equal fail")
 		t.Fail()
 	}
@@ -121,10 +121,22 @@ func FlowFromPacket() *TcpIpFlow {
 	return flow
 }
 
-func TestHashedTcpIpFlow(t *testing.T) {
+func TestHashedTcpIpv4Flow(t *testing.T) {
 	tcpIpFlow := FlowFromPacket()
-	hash1 := NewHashedTcpIpFlow(tcpIpFlow).Sorted()
-	hash2 := NewHashedTcpIpFlow(tcpIpFlow.Reverse()).Sorted()
+	hash1 := NewHashedTcpIpv4Flow(tcpIpFlow)
+	f := tcpIpFlow.Reverse()
+	hash2 := NewHashedTcpIpv4Flow(&f)
+	if hash1 != hash2 {
+		t.Error("hash values must be equal after sorting!")
+		t.Fail()
+	}
+}
+
+func TestHashedTcpIpv6Flow(t *testing.T) {
+	tcpIpFlow := FlowFromPacket()
+	hash1 := NewHashedTcpIpv6Flow(tcpIpFlow)
+	f := tcpIpFlow.Reverse()
+	hash2 := NewHashedTcpIpv6Flow(&f)
 	if hash1 != hash2 {
 		t.Error("hash values must be equal after sorting!")
 		t.Fail()
