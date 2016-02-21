@@ -37,10 +37,22 @@ type AfpacketHandle struct {
 }
 
 func NewAfpacketHandle(options *types.SnifferDriverOptions) (types.PacketDataSourceCloser, error) {
+
 	afpacketHandle, err := afpacket.NewTPacket(afpacket.OptInterface(options.Device))
+	if err != nil {
+		return nil, err
+	}
+
+	if options.FanoutID != 0 {
+		err = afpacketHandle.SetFanout(afpacket.FanoutHash, options.FanoutID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &AfpacketHandle{
 		afpacketHandle: afpacketHandle,
-	}, err
+	}, nil
 }
 
 func (a *AfpacketHandle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {

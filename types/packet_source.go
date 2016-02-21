@@ -36,6 +36,7 @@ type SnifferDriverOptions struct {
 	Snaplen      int32
 	WireDuration time.Duration
 	Filter       string
+	FanoutID     uint16
 }
 
 // PacketDataSource is an interface for some source of packet data.

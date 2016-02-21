@@ -56,6 +56,7 @@ continuing to stream connection data.  If zero or less, this is infinite`)
 		maxPcapLogSize      = flag.Int("max_pcap_log_size", 10, "maximum pcap size per rotation in megabytes")
 		maxNumPcapRotations = flag.Int("max_pcap_rotations", 100, "maximum number of pcap rotations per connection")
 		archiveDir          = flag.String("archive_dir", "", "archive directory for storing attack logs and related pcap files")
+		fanoutID            = flag.Int("fanout_id", 0,"AF_PACKET fanout hash ID")
 		daq                 = flag.String("daq", "libpcap", `Data AcQuisition packet source: pcapgo, libpcap, AF_PACKET or BSD_BPF.
 BSD_BPF is BSD systems only.
 AF_PACKET is Linux only.
@@ -133,6 +134,7 @@ pcapgo builds on every platform but does not support pcap-ng format, only pcap v
 		WireDuration: wireDuration,
 		Snaplen:      int32(*snaplen),
 		Filter:       *filter,
+		FanoutID:     uint16(*fanoutID),
 	}
 
 	connectionFactory := &HoneyBadger.DefaultConnFactory{}
