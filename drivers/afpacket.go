@@ -44,7 +44,10 @@ func NewAfpacketHandle(options *types.SnifferDriverOptions) (types.PacketDataSou
 	}
 
 	if options.FanoutID != 0 {
-		err = afpacketHandle.SetFanout(afpacket.FanoutHash, options.FanoutID)
+		//err = afpacketHandle.SetFanout(afpacket.FanoutHash, options.FanoutID)
+		// XXX I might be wrong... but this FanoutHashWithDefrag worked for me.
+		err = afpacketHandle.SetFanout(afpacket.FanoutHashWithDefrag, options.FanoutID)
+
 		if err != nil {
 			return nil, err
 		}
