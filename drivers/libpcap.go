@@ -1,4 +1,4 @@
-// +build linux freebsd smartos
+// +build linux freebsd solaris
 
 /*
  *    HoneyBadger core library for detecting TCP injection attacks
