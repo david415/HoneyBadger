@@ -1,0 +1,12 @@
+Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: HoneyBadger
+Source: https://github.com/david415/HoneyBadger
+
+Files: *
+Copyright: 2014 David Stainton
+License: GPL-3.0
+
+Files: debian/*
+Copyright: 2016 Some Debian Packager <someone@debian.org>
+License: GPL-3.0
+Comment: Debian packaging is licensed under the same terms as upstream

@@ -1,0 +1,27 @@
+#!/usr/bin/make -f
+
+export DH_VERBOSE=1
+export DH_GOPKG := github.com/david415/HoneyBadger
+
+DH_BUILDDIR = obj-$(shell dpkg-architecture -qDEB_HOST_GNU_TYPE)
+GOFLAGS = -tags 'debian'
+DH_INSTALLDIR = debian/honeybadger
+
+
+%:
+	dh $@ --buildsystem=golang --with=golang
+
+override_dh_auto_configure:
+	dh_auto_configure
+
+override_dh_auto_build:
+	cd $(DH_BUILDDIR) && GOPATH=$$PWD go install $(GOFLAGS) -v $(DH_GOPKG)/cmd/honeyBadger
+	cd $(DH_BUILDDIR) && GOPATH=$$PWD go install $(GOFLAGS) -v $(DH_GOPKG)/cmd/honeybadgerReportTool
+
+override_dh_auto_test:
+	cd $(DH_BUILDDIR) && GOPATH=$$PWD go test $(GOFLAGS) -v $(DH_GOPKG)
+
+override_dh_auto_install:
+	dh_auto_install
+	rm -rf $(DH_INSTALLDIR)/usr/share/gocode
+

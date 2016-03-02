@@ -1,0 +1,26 @@
+Source: honeybadger
+Section: devel
+Priority: optional
+Maintainer: Debian Go Packaging Team <pkg-go-maintainers@lists.alioth.debian.org>
+Uploaders: Some Debian Uploader <somedebianuploader@debian.org>
+Build-Depends: debhelper (>= 9),
+               dh-golang,
+               golang-go,
+               golang-github-google-gopacket-dev,
+               golang-golang-x-net-dev,
+               libpcap0.8-dev
+Standards-Version: 3.9.6
+Homepage: https://github.com/david415/HoneyBadger
+Vcs-Browser: https://anonscm.debian.org/cgit/pkg-go/packages/golang-github-david415-honeybadger.git
+Vcs-Git: git://anonscm.debian.org/pkg-go/packages/golang-github-david415-honeybadger.git
+XS-Go-Import-Path: github.com/david415/HoneyBadger
+
+Package: golang-github-david415-honeybadger-dev
+Architecture: all
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         golang-go,
+         golang-github-google-gopacket-dev
+Description: HoneyBadger detects TCP injection attacks ("Quantum Inserts").
+  HoneyBadger is a passive TCP protocol analyzer for detecting and recording
+  TCP injection attacks.
