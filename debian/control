@@ -1,0 +1,44 @@
+Source: honeybadger
+Section: devel
+Priority: optional
+Maintainer: Debian Go Packaging Team <pkg-go-maintainers@lists.alioth.debian.org>
+Uploaders: Some Debian Uploader <somedebianuploader@debian.org>
+Build-Depends: debhelper (>= 9),
+               dh-golang,
+               golang-go,
+               golang-github-google-gopacket-dev,
+               libpcap0.8-dev
+Standards-Version: 3.9.6
+Homepage: https://github.com/david415/HoneyBadger
+Vcs-Browser: https://anonscm.debian.org/cgit/pkg-go/packages/golang-github-david415-honeybadger.git
+Vcs-Git: git://anonscm.debian.org/pkg-go/packages/golang-github-david415-honeybadger.git
+XS-Go-Import-Path: github.com/david415/HoneyBadger
+
+Package: golang-github-david415-honeybadger-dev
+Architecture: all
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         golang-go,
+         golang-github-google-gopacket-dev,
+         libpcap0.8-dev
+# TODO: might be able to rm pcap dep if gopacket fixes #816519
+Description: Passive TCP protocol analyzer to detect and record injection attacks - source code
+ HoneyBadger is primarily a comprehensive TCP stream analysis tool for
+ detecting and recording TCP injection attacks. It will also include a variety
+ of prototype TCP stream injections attacks which prove that the TCP attack
+ detection is reliable.
+ .
+ This package contains the go source code used for building against. Typical
+ users do not need to install this.
+
+Package: honeybadger
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends}
+Description: Passive TCP protocol analyzer to detect and record injection attacks
+ HoneyBadger is primarily a comprehensive TCP stream analysis tool for
+ detecting and recording TCP injection attacks. It will also include a variety
+ of prototype TCP stream injections attacks which prove that the TCP attack
+ detection is reliable.
+ .
+ This package contains the main detection tool and report viewer.
