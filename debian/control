@@ -7,7 +7,6 @@ Build-Depends: debhelper (>= 9),
                dh-golang,
                golang-go,
                golang-github-google-gopacket-dev,
-               golang-golang-x-net-dev,
                libpcap0.8-dev
 Standards-Version: 3.9.6
 Homepage: https://github.com/david415/HoneyBadger
@@ -20,7 +19,26 @@ Architecture: all
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          golang-go,
-         golang-github-google-gopacket-dev
-Description: HoneyBadger detects TCP injection attacks ("Quantum Inserts").
-  HoneyBadger is a passive TCP protocol analyzer for detecting and recording
-  TCP injection attacks.
+         golang-github-google-gopacket-dev,
+         libpcap0.8-dev
+# TODO: might be able to rm pcap dep if gopacket fixes #816519
+Description: Passive TCP protocol analyzer to detect and record injection attacks - source code
+ HoneyBadger is primarily a comprehensive TCP stream analysis tool for
+ detecting and recording TCP injection attacks. It will also include a variety
+ of prototype TCP stream injections attacks which prove that the TCP attack
+ detection is reliable.
+ .
+ This package contains the go source code used for building against. Typical
+ users do not need to install this.
+
+Package: honeybadger
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends}
+Description: Passive TCP protocol analyzer to detect and record injection attacks
+ HoneyBadger is primarily a comprehensive TCP stream analysis tool for
+ detecting and recording TCP injection attacks. It will also include a variety
+ of prototype TCP stream injections attacks which prove that the TCP attack
+ detection is reliable.
+ .
+ This package contains the main detection tool and report viewer.
