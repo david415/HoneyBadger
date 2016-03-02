@@ -23,6 +23,9 @@ override_dh_auto_build:
 	# $(DH_GOPKG)/cmd/handshakeHijacker
 	# TODO(david415): rename better and rm dependency on gopacket example code
 
+# TODO(david415): build and install api docs
+# TODO(david415): build and install written docs at HoneyBadger_docs
+
 override_dh_auto_test:
 	cd $(DH_BUILDDIR) && GOPATH=$$PWD go test $(GOFLAGS) -v $(DH_GOPKG)
 
