@@ -25,8 +25,7 @@ Depends: ${shlibs:Depends},
 Description: Passive TCP protocol analyzer to detect and record injection attacks - source code
  HoneyBadger is primarily a comprehensive TCP stream analysis tool for
  detecting and recording TCP injection attacks. It will also include a variety
- of prototype TCP stream injections attacks which prove that the TCP attack
- detection is reliable.
+ of prototype TCP stream injections attacks which can be used for testing.
  .
  This package contains the go source code used for building against. Typical
  users do not need to install this.
@@ -38,7 +37,6 @@ Depends: ${shlibs:Depends},
 Description: Passive TCP protocol analyzer to detect and record injection attacks
  HoneyBadger is primarily a comprehensive TCP stream analysis tool for
  detecting and recording TCP injection attacks. It will also include a variety
- of prototype TCP stream injections attacks which prove that the TCP attack
- detection is reliable.
+ of prototype TCP stream injections attacks which can be used for testing.
  .
  This package contains the main detection tool and report viewer.
