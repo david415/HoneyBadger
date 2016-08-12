@@ -19,25 +19,25 @@
 package attack
 
 import (
+	"net"
+
 	"github.com/david415/HoneyBadger/types"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"net"
-	"log"
 )
 
 type TCPStreamInjector struct {
-	packetConn    net.PacketConn
-	pcapHandle    *pcap.Handle
-	eth           *layers.Ethernet
-	dot1q         *layers.Dot1Q
-	ipv4          layers.IPv4
-	ipv6          layers.IPv6
-	tcp           layers.TCP
-	ipBuf         gopacket.SerializeBuffer
-	Payload       gopacket.Payload
-	isIPv6Mode    bool
+	packetConn net.PacketConn
+	pcapHandle *pcap.Handle
+	eth        *layers.Ethernet
+	dot1q      *layers.Dot1Q
+	ipv4       layers.IPv4
+	ipv6       layers.IPv6
+	tcp        layers.TCP
+	ipBuf      gopacket.SerializeBuffer
+	Payload    gopacket.Payload
+	isIPv6Mode bool
 }
 
 func NewTCPStreamInjector(pcapHandle *pcap.Handle, isIPv6Mode bool) *TCPStreamInjector {
@@ -119,7 +119,7 @@ func (i *TCPStreamInjector) SprayFutureAndFillGapPackets(start uint32, gap_paylo
 }
 
 func (i *TCPStreamInjector) Write() error {
-	log.Print("Write")
+	log.Info("Write")
 	var err error = nil
 
 	if i.isIPv6Mode {
@@ -136,7 +136,7 @@ func (i *TCPStreamInjector) Write() error {
 		}
 		err = gopacket.SerializeLayers(packetBuf, opts, i.eth, &i.ipv6, &i.tcp, i.Payload)
 		if err != nil {
-			log.Print("wtf. failed to encode ipv6 packet")
+			log.Info("wtf. failed to encode ipv6 packet")
 			return err
 		}
 	} else {
@@ -146,12 +146,12 @@ func (i *TCPStreamInjector) Write() error {
 		}
 		err = gopacket.SerializeLayers(packetBuf, opts, i.eth, &i.ipv4, &i.tcp, i.Payload)
 		if err != nil {
-			log.Print("wtf. failed to encode ipv4 packet")
+			log.Info("wtf. failed to encode ipv4 packet")
 			return err
 		}
 	}
 	if err := i.pcapHandle.WritePacketData(packetBuf.Bytes()); err != nil {
-		log.Printf("Failed to send packet: %s\n", err)
+		log.Infof("Failed to send packet: %s\n", err)
 		return err
 	}
 	return err
