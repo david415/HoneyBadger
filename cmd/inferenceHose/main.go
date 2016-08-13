@@ -66,12 +66,12 @@ func main() {
 		//nfqNum = flag.Int("nfq_num", -1, "NFQUEUE queue-number to get packets from")
 		iface = flag.String("interface", "lo", "Interface to get packets from")
 		//filter      = flag.String("pcap_filter", "tcp", "BPF filter for pcap")
-		snaplen          = flag.Int("pcap_max_size", 65536, "SnapLen for pcap packet capture")
-		patsyIPstr       = flag.String("patsy_ip", "", "patsy TCP flows from this port")
-		sourceMacAddrStr = flag.String("source_mac", "", "source MAC address, if left unspecified then auto-detect will be attempted.")
-		targetMacAddrStr = flag.String("target_mac", "", "target MAC address (usually your router's MAC addr), if left unspecified then auto-detect will be attempted.")
-		targetIPstr      = flag.String("target_ip", "", "target TCP flows to this IPv4 or IPv6 address")
-		targetPort       = flag.Int("target_port", -1, "target TCP flows to this port")
+		snaplen    = flag.Int("pcap_max_size", 65536, "SnapLen for pcap packet capture")
+		patsyIPstr = flag.String("patsy_ip", "", "patsy TCP flows from this port")
+		//sourceMacAddrStr = flag.String("source_mac", "", "source MAC address, if left unspecified then auto-detect will be attempted.")
+		//targetMacAddrStr = flag.String("target_mac", "", "target MAC address (usually your router's MAC addr), if left unspecified then auto-detect will be attempted.")
+		targetIPstr = flag.String("target_ip", "", "target TCP flows to this IPv4 or IPv6 address")
+		targetPort  = flag.Int("target_port", -1, "target TCP flows to this port")
 	)
 
 	logBackend := setupLoggerBackend()
@@ -104,45 +104,43 @@ func main() {
 	sigKillChan := make(chan os.Signal, 1)
 	signal.Notify(sigKillChan, os.Interrupt, os.Kill)
 
-	/*
-		sideChannel := attack.NewTCPInferenceSideChannel(uint16(*nfqNum))
-		err := sideChannel.Open()
-		if err != nil {
-			log.Warning(fmt.Sprintf("NFQueue's Open returned error: %s", err))
-			//panic(fmt.Sprintf("failed to initialize NFQUEUE socket: %s", err))
-		}
-		log.Info("before flutter")
-		go sideChannel.Flutter()
-	*/
+	sideChannel := attack.NewTCPInferenceSideChannel(*iface, int32(*snaplen), targetIP, uint16(*targetPort))
+	log.Warning("before TCPInferenceSideChannel.Start")
+	err := sideChannel.Start()
+	if err != nil {
+		panic(err)
+	}
 
 	// XXX todo == send a packet!
 
-	injector := attack.NewTCPStreamInjector(patsyIP, targetIP, uint16(*targetPort))
-	if *targetMacAddrStr == "" || *sourceMacAddrStr == "" {
-		err := injector.SetEthernetToAutoHWAddr()
-		if err != nil {
-			panic(err)
+	/*
+		injector := attack.NewTCPStreamInjector(patsyIP, targetIP, uint16(*targetPort))
+		if *targetMacAddrStr == "" || *sourceMacAddrStr == "" {
+			err := injector.SetEthernetToAutoHWAddr()
+			if err != nil {
+				panic(err)
+			}
+		} else {
+			targetMac, err := net.ParseMAC(*targetMacAddrStr)
+			if err != nil {
+				panic(err)
+			}
+			sourceMac, err := net.ParseMAC(*sourceMacAddrStr)
+			if err != nil {
+				panic(err)
+			}
+			injector.SetEthernetToHWAddr(sourceMac, targetMac)
 		}
-	} else {
-		targetMac, err := net.ParseMAC(*targetMacAddrStr)
-		if err != nil {
-			panic(err)
-		}
-		sourceMac, err := net.ParseMAC(*sourceMacAddrStr)
-		if err != nil {
-			panic(err)
-		}
-		injector.SetEthernetToHWAddr(sourceMac, targetMac)
-	}
 
-	err := injector.Open(*iface, int32(*snaplen))
-	if err != nil {
-		panic(err)
-	}
-	err = injector.SprayTest()
-	if err != nil {
-		panic(err)
-	}
+		err = injector.Open(*iface, int32(*snaplen))
+		if err != nil {
+			panic(err)
+		}
+		err = injector.SprayTest()
+		if err != nil {
+			panic(err)
+		}
+	*/
 
 	// the end is near, here we wait
 	// XXX TODO wait for additonal events
