@@ -110,20 +110,15 @@ func (t *TCPInferenceSideChannel) EnsureDialed() error {
 
 	// target flow
 	localIP, localPort, remoteIP, remotePort := t.getTCP4Tuple(t.conn)
-	netLayer := layers.IPv4{
-		SrcIP: localIP,
-		DstIP: remoteIP,
-	}
-	tcpLayer := layers.TCP{
-		SrcPort: layers.TCPPort(localPort),
-		DstPort: layers.TCPPort(remotePort),
-	}
-	//netFlow := netLayer.NetworkFlow()
-	//tcpFlow := tcpLayer.TransportFlow()
-	//t.sendFlow = types.NewTcpIpFlowFromFlows(netFlow, tcpFlow)
-	flow := types.NewTcpIpFlowFromLayers(netLayer, tcpLayer)
-	t.sendFlow = *flow
-
+	srcIPEndpoint := layers.NewIPEndpoint(localIP)
+	dstIPEndpoint := layers.NewIPEndpoint(remoteIP)
+	srcTCPEndpoint := layers.NewTCPPortEndpoint(layers.TCPPort(localPort))
+	dstTCPEndpoint := layers.NewTCPPortEndpoint(layers.TCPPort(remotePort))
+	netFlow, err := gopacket.FlowFromEndpoints(srcIPEndpoint, dstIPEndpoint)
+	tcpFlow, err := gopacket.FlowFromEndpoints(srcTCPEndpoint, dstTCPEndpoint)
+	flow := types.NewTcpIpFlowFromFlows(netFlow, tcpFlow)
+	t.sendFlow = flow
+	log.Warningf("FLOW %s", flow)
 	return nil
 }
 
