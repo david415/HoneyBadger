@@ -33,36 +33,61 @@ import (
 
 type TCPStreamInjector struct {
 	router       routing.Router
-	target       net.IP
+	patsyIP      net.IP
+	targetIP     net.IP
+	targetPort   uint16
 	iface        *net.Interface
 	handle       *pcap.Handle
 	dst, gw, src net.IP
 	opts         gopacket.SerializeOptions
 	buf          gopacket.SerializeBuffer
 
-	eth     *layers.Ethernet
-	dot1q   *layers.Dot1Q
+	eth     layers.Ethernet
+	dot1q   layers.Dot1Q
 	ipv4    layers.IPv4
 	ipv6    layers.IPv6
 	tcp     layers.TCP
 	Payload gopacket.Payload
 }
 
-func NewTCPStreamInjector(target net.IP) *TCPStreamInjector {
-	t := TCPStreamInjector{
-		target: target,
+func NewTCPStreamInjector(patsyIP, targetIP net.IP, targetPort uint16) *TCPStreamInjector {
+	i := TCPStreamInjector{
+		patsyIP:    patsyIP,
+		targetIP:   targetIP,
+		targetPort: targetPort,
 		opts: gopacket.SerializeOptions{
 			FixLengths:       true,
 			ComputeChecksums: true,
 		},
 		buf: gopacket.NewSerializeBuffer(),
 	}
-	return &t
+	i.ipv4 = layers.IPv4{
+		SrcIP:    patsyIP,
+		DstIP:    targetIP,
+		Version:  4,
+		TTL:      64,
+		Protocol: layers.IPProtocolTCP,
+	}
+	i.tcp = layers.TCP{
+		SrcPort: layers.TCPPort(targetPort),
+		DstPort: 34576,
+		SYN:     true,
+	}
+	i.tcp.SetNetworkLayerForChecksum(&i.ipv4)
+
+	return &i
 }
 
-func (i *TCPStreamInjector) Open() error {
+func (i *TCPStreamInjector) SprayTest() error {
+	if err := i.send(&i.eth, &i.ipv4, &i.tcp); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (i *TCPStreamInjector) Open(ifaceName string, snaplen int32) error {
 	var err error = nil
-	i.handle, err = pcap.OpenLive(i.iface.Name, 65536, true, pcap.BlockForever)
+	i.handle, err = pcap.OpenLive(ifaceName, snaplen, true, pcap.BlockForever)
 	return err
 }
 
@@ -120,26 +145,22 @@ func (i *TCPStreamInjector) getHwAddr() (net.HardwareAddr, error) {
 	}
 }
 
-func (i *TCPStreamInjector) SetEthernetToHWAddr() error {
+func (i *TCPStreamInjector) SetEthernetToAutoHWAddr() error {
 	var iface *net.Interface
 	var gw, src net.IP
 	var err error
 
-	log.Info("meow1")
 	i.router, err = routing.New()
 	if err != nil {
 		return err
 	}
-	log.Info("meow2")
 
 	// Figure out the route to the IP.
-	iface, gw, src, err = i.router.Route(i.target)
-	log.Info("meow3")
+	iface, gw, src, err = i.router.Route(i.targetIP)
 	if err != nil {
-		log.Info("meow4")
 		return err
 	}
-	log.Noticef("scanning ip %v with interface %v, gateway %v, src %v", i.target, iface.Name, gw, src)
+	log.Noticef("scanning ip %v with interface %v, gateway %v, src %v", i.targetIP, iface.Name, gw, src)
 	i.gw, i.src, i.iface = gw, src, iface
 
 	hwAddr := net.HardwareAddr{}
@@ -156,8 +177,20 @@ func (i *TCPStreamInjector) SetEthernetToHWAddr() error {
 	return nil
 }
 
+func (i *TCPStreamInjector) SetEthernetToHWAddr(source, target net.HardwareAddr) {
+	eth := layers.Ethernet{
+		SrcMAC:       source,
+		DstMAC:       target,
+		EthernetType: layers.EthernetTypeIPv4,
+	}
+	i.SetEthernetLayer(&eth)
+}
+
 func (i *TCPStreamInjector) SetEthernetLayer(eth *layers.Ethernet) {
-	i.eth = eth
+	i.eth = *eth
+}
+
+func (i *TCPStreamInjector) SetIPToAddr(src, dst net.IP) {
 }
 
 func (i *TCPStreamInjector) SetIPv4Layer(iplayer layers.IPv4) {
@@ -240,7 +273,7 @@ func (i *TCPStreamInjector) Write() error {
 
 	i.tcp.SetNetworkLayerForChecksum(&i.ipv4)
 	packetBuf := gopacket.NewSerializeBuffer()
-	err = gopacket.SerializeLayers(packetBuf, i.opts, i.eth, &i.ipv4, &i.tcp, i.Payload)
+	err = gopacket.SerializeLayers(packetBuf, i.opts, &i.eth, &i.ipv4, &i.tcp, i.Payload)
 	if err != nil {
 		log.Info("wtf. failed to encode ipv4 packet")
 		return err

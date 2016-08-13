@@ -63,24 +63,29 @@ func setupLoggerBackend() logging.LeveledBackend {
 
 func main() {
 	var (
-		nfqNum = flag.Int("nfq_num", -1, "NFQUEUE queue-number to get packets from")
-		//iface       = flag.String("interface", "lo", "Interface to get packets from")
+		//nfqNum = flag.Int("nfq_num", -1, "NFQUEUE queue-number to get packets from")
+		iface = flag.String("interface", "lo", "Interface to get packets from")
 		//filter      = flag.String("pcap_filter", "tcp", "BPF filter for pcap")
-		//snaplen     = flag.Int("pcap_max_size", 65536, "SnapLen for pcap packet capture")
-		targetIPstr = flag.String("target_ip", "", "target TCP flows to this IPv4 or IPv6 address")
-		targetPort  = flag.Int("target_port", -1, "target TCP flows to this port")
-		patsyIPstr  = flag.String("patsy_ip", "", "patsy TCP flows from this port")
+		snaplen          = flag.Int("pcap_max_size", 65536, "SnapLen for pcap packet capture")
+		patsyIPstr       = flag.String("patsy_ip", "", "patsy TCP flows from this port")
+		sourceMacAddrStr = flag.String("source_mac", "", "source MAC address, if left unspecified then auto-detect will be attempted.")
+		targetMacAddrStr = flag.String("target_mac", "", "target MAC address (usually your router's MAC addr), if left unspecified then auto-detect will be attempted.")
+		targetIPstr      = flag.String("target_ip", "", "target TCP flows to this IPv4 or IPv6 address")
+		targetPort       = flag.Int("target_port", -1, "target TCP flows to this port")
 	)
 
 	logBackend := setupLoggerBackend()
 	log.SetBackend(logBackend)
 
 	flag.Parse()
-	if len(*patsyIPstr) == 0 {
-		log.Error("you must specify a 'patsy' IP address")
+	if len(*patsyIPstr) == 0 || *targetIPstr == "" || *targetPort == -1 {
+		log.Error("You must specify a patsy IP address, target IP address and target TCP port.")
+		log.Error("Optionally specify a target MAC address to avoid attempting to auto-detect it.")
 		flag.Usage()
 		os.Exit(-1)
 	}
+
+	targetIP := net.ParseIP(*targetIPstr)
 	patsyIP := net.ParseIP(*patsyIPstr)
 	if patsyIP.To4() == nil {
 		log.Info("Patsy IP address is an IPv6 address; using ipv6 mode")
@@ -88,25 +93,14 @@ func main() {
 		log.Info("using ipv4 mode")
 	}
 
-	if *targetIPstr == "" {
-		log.Error("you must specify a 'target' IP address")
-		flag.Usage()
-		os.Exit(-1)
-	}
-	targetIP := net.ParseIP(*targetIPstr)
-
-	if *targetPort == -1 {
-		log.Error("you must specify a 'target' TCP port")
-		flag.Usage()
-		os.Exit(-1)
-	}
-	if *nfqNum == -1 {
-		log.Info("setup your iptables like this: iptables -A OUTPUT -p tcp -j NFQUEUE --queue-num 1 --queue-bypass")
-		log.Error("you must specify an NFQUEUE queue-number corresponding to an IPTABLES NFQUEUE rule")
-		flag.Usage()
-		os.Exit(-1)
-	}
-
+	/*
+		if *nfqNum == -1 {
+			log.Info("setup your iptables like this: iptables -A OUTPUT -p tcp -j NFQUEUE --queue-num 1 --queue-bypass")
+			log.Error("you must specify an NFQUEUE queue-number corresponding to an IPTABLES NFQUEUE rule")
+			flag.Usage()
+			os.Exit(-1)
+		}
+	*/
 	sigKillChan := make(chan os.Signal, 1)
 	signal.Notify(sigKillChan, os.Interrupt, os.Kill)
 
@@ -123,13 +117,32 @@ func main() {
 
 	// XXX todo == send a packet!
 
-	injector := attack.NewTCPStreamInjector(targetIP)
-	log.Notice("before setting hw addr")
-	err := injector.SetEthernetToHWAddr()
+	injector := attack.NewTCPStreamInjector(patsyIP, targetIP, uint16(*targetPort))
+	if *targetMacAddrStr == "" || *sourceMacAddrStr == "" {
+		err := injector.SetEthernetToAutoHWAddr()
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		targetMac, err := net.ParseMAC(*targetMacAddrStr)
+		if err != nil {
+			panic(err)
+		}
+		sourceMac, err := net.ParseMAC(*sourceMacAddrStr)
+		if err != nil {
+			panic(err)
+		}
+		injector.SetEthernetToHWAddr(sourceMac, targetMac)
+	}
+
+	err := injector.Open(*iface, int32(*snaplen))
 	if err != nil {
 		panic(err)
 	}
-	log.Notice("after setting hw addr")
+	err = injector.SprayTest()
+	if err != nil {
+		panic(err)
+	}
 
 	// the end is near, here we wait
 	// XXX TODO wait for additonal events
