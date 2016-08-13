@@ -21,6 +21,7 @@ package attack
 import (
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 
 	"github.com/david415/HoneyBadger/types"
@@ -41,6 +42,7 @@ type TCPInferenceSideChannel struct {
 	targetPort uint16
 
 	handle  *pcap.Handle
+	decoded []gopacket.LayerType
 	parser  *gopacket.DecodingLayerParser
 	eth     *layers.Ethernet
 	dot1q   *layers.Dot1Q
@@ -48,6 +50,10 @@ type TCPInferenceSideChannel struct {
 	ip6     *layers.IPv6
 	tcp     *layers.TCP
 	payload *gopacket.Payload
+
+	seqChan    chan uint32
+	currentSeq uint32
+	sendFlow   types.TcpIpFlow
 }
 
 func NewTCPInferenceSideChannel(ifaceName string, snaplen int32, targetIP net.IP, targetPort uint16) *TCPInferenceSideChannel {
@@ -61,38 +67,75 @@ func NewTCPInferenceSideChannel(ifaceName string, snaplen int32, targetIP net.IP
 		ip6:        &layers.IPv6{},
 		tcp:        &layers.TCP{},
 		payload:    &gopacket.Payload{},
+		seqChan:    make(chan uint32, 0),
+		decoded:    make([]gopacket.LayerType, 0, 4),
 	}
+	t.parser = gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet,
+		t.eth, t.dot1q, t.ip4, t.ip6, t.tcp, t.payload)
 	return &t
 }
 
-func (t *TCPInferenceSideChannel) getTCP4TupleStr(conn net.Conn) (string, string, string, string) {
+func (t *TCPInferenceSideChannel) getTCP4Tuple(conn net.Conn) (net.IP, int, net.IP, int) {
 	remoteAddr := conn.RemoteAddr()
 	localAddr := conn.LocalAddr()
 	fields := strings.Split(remoteAddr.String(), ":")
 	remoteIP := fields[0]
-	remotePort := fields[1]
+	remotePortStr := fields[1]
 	fields = strings.Split(localAddr.String(), ":")
 	localIP := fields[0]
-	localPort := fields[1]
-	return localIP, localPort, remoteIP, remotePort
+	localPortStr := fields[1]
+	localPort, err := strconv.Atoi(localPortStr)
+	if err != nil {
+		panic(err)
+	}
+	remotePort, err := strconv.Atoi(remotePortStr)
+	if err != nil {
+		panic(err)
+	}
+	return net.ParseIP(localIP), localPort, net.ParseIP(remoteIP), remotePort
 }
 
 func (t *TCPInferenceSideChannel) EnsureDialed() error {
 	var err error
+	log.Notice("before Dial")
 	if t.conn == nil {
-		t.conn, err = net.Dial("tcp", fmt.Sprintf("%s:%d", t.targetIP, t.targetPort))
-		return err
+		addr := fmt.Sprintf("%s:%d", t.targetIP, t.targetPort)
+		log.Noticef("about to dial addr %s", addr)
+		t.conn, err = net.Dial("tcp", addr)
+		if err != nil {
+			return err
+		}
 	}
+	log.Notice("after Dial")
+
+	// target flow
+	localIP, localPort, remoteIP, remotePort := t.getTCP4Tuple(t.conn)
+	netLayer := layers.IPv4{
+		SrcIP: localIP,
+		DstIP: remoteIP,
+	}
+	tcpLayer := layers.TCP{
+		SrcPort: layers.TCPPort(localPort),
+		DstPort: layers.TCPPort(remotePort),
+	}
+	//netFlow := netLayer.NetworkFlow()
+	//tcpFlow := tcpLayer.TransportFlow()
+	//t.sendFlow = types.NewTcpIpFlowFromFlows(netFlow, tcpFlow)
+	flow := types.NewTcpIpFlowFromLayers(netLayer, tcpLayer)
+	t.sendFlow = *flow
+
 	return nil
 }
 
-func (t *TCPInferenceSideChannel) Start() error {
+func (t *TCPInferenceSideChannel) EnsureOpenedPcap() error {
 	var err error
-	t.EnsureDialed()
+	if t.conn == nil {
+		panic("wtf, t.conn is nil")
+	}
+	localIP, localPort, remoteIP, remotePort := t.getTCP4Tuple(t.conn)
+	filter := fmt.Sprintf("ip host %s and tcp port %d", remoteIP, remotePort)
 
-	localIP, localPort, remoteIP, remotePort := t.getTCP4TupleStr(t.conn)
-	log.Noticef("connection 4-tuple %s %s -> %s %s", localIP, localPort, remoteIP, remotePort)
-	filter := fmt.Sprintf("ip host %s and tcp port %s", remoteIP, remotePort)
+	log.Noticef("connection 4-tuple %s %d -> %s %d", localIP, localPort, remoteIP, remotePort)
 	log.Warning("attempting to us the following filter to sniff the connection:")
 	log.Warning(filter)
 
@@ -102,43 +145,76 @@ func (t *TCPInferenceSideChannel) Start() error {
 		log.Warning("failed to set pcap bpf filter")
 		return err
 	}
-	t.parser = gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet,
-		t.eth, t.dot1q, t.ip4, t.ip6, t.tcp, t.payload)
-
-	go t.readLoop()
 	return nil
 }
 
-func (t *TCPInferenceSideChannel) Close() {
+func (t *TCPInferenceSideChannel) Start() error {
+	err := t.GetCurrentSequence()
+	return err
 }
 
-func (t *TCPInferenceSideChannel) readLoop() {
-	decoded := make([]gopacket.LayerType, 0, 4)
+func (t *TCPInferenceSideChannel) GetCurrentSequence() error {
+	var err error
+
+	err = t.EnsureDialed()
+	if err != nil {
+		return err
+	}
+	log.Notice("AFTER DIALED")
+	err = t.EnsureOpenedPcap()
+	if err != nil {
+		panic(err)
+	}
+
+	go t.sniffSequence()
+	t.SendToConn()
+	t.currentSeq = <-t.seqChan
+
+	log.Noticef("TCP Sequence %d", t.currentSeq)
+	return nil
+}
+
+func (t *TCPInferenceSideChannel) SendToConn() {
+
+	_, err := t.conn.Write([]byte("hello\n"))
+	if err != nil {
+		log.Notice("SendToConn failed")
+		panic(err)
+	}
+	log.Notice("SendToConn success.")
+}
+
+func (t *TCPInferenceSideChannel) Close() {
+	t.handle.Close()
+}
+
+func (t *TCPInferenceSideChannel) sniffSequence() {
 	for {
 		data, ci, err := t.handle.ReadPacketData()
 		if err != nil {
 			log.Warningf("error getting packet: %v %s", err, ci)
-			continue
-		}
-		err = t.parser.DecodeLayers(data, &decoded)
-		if err != nil {
-			log.Warningf("error decoding packet: %v", err)
-			continue
 		}
 
-		srcIP := net.IP{}
-		dstIP := net.IP{}
+		err = t.parser.DecodeLayers(data, &t.decoded)
+		if err != nil {
+			log.Warningf("error decoding packet: %v", err)
+		}
+
+		// flow of received packet
 		flow := &types.TcpIpFlow{}
 		if t.ip4 == nil {
+			// XXX ipv6 compatibility fix me
 			//flow = types.NewTcpIpFlowFromLayers(*t.ip6, t.tcp)
-			srcIP = t.ip6.SrcIP
-			dstIP = t.ip6.DstIP
+			panic("ipv6 not yet supported")
 		} else {
 			flow = types.NewTcpIpFlowFromLayers(*t.ip4, *t.tcp)
-			srcIP = t.ip4.SrcIP
-			dstIP = t.ip4.DstIP
 		}
-		log.Notice(flow)
-		//log.Noticef("%s:%d -> %s:%d", srcIP, t.tcp.SrcPort, dstIP, t.tcp.DstPort)
+
+		// XXX
+		if t.sendFlow.Equal(flow) {
+			log.Warningf("matching flow! %s", flow)
+			t.seqChan <- t.tcp.Seq
+			return
+		}
 	}
 }
