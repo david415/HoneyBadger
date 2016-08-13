@@ -23,7 +23,7 @@ import (
 	"net"
 	"strings"
 
-	//"github.com/david415/HoneyBadger/types"
+	"github.com/david415/HoneyBadger/types"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
@@ -65,33 +65,38 @@ func NewTCPInferenceSideChannel(ifaceName string, snaplen int32, targetIP net.IP
 	return &t
 }
 
-func (t *TCPInferenceSideChannel) Start() error {
-	var err error
-	t.conn, err = net.Dial("tcp", fmt.Sprintf("%s:%d", t.targetIP, t.targetPort))
-	if err != nil {
-		panic(err)
-	}
-	_, err = t.conn.Write([]byte("hello\n"))
-	if err != nil {
-		panic(err)
-	}
-	log.Warning("sent target a hello")
-
-	// get the connection's TCP 4-tuple here
-	remoteAddr := t.conn.RemoteAddr()
-	localAddr := t.conn.LocalAddr()
+func (t *TCPInferenceSideChannel) getTCP4TupleStr(conn net.Conn) (string, string, string, string) {
+	remoteAddr := conn.RemoteAddr()
+	localAddr := conn.LocalAddr()
 	fields := strings.Split(remoteAddr.String(), ":")
 	remoteIP := fields[0]
 	remotePort := fields[1]
 	fields = strings.Split(localAddr.String(), ":")
 	localIP := fields[0]
 	localPort := fields[1]
-	log.Noticef("%s %s -> %s %s", localIP, localPort, remoteIP, remotePort)
+	return localIP, localPort, remoteIP, remotePort
+}
 
-	t.handle, err = pcap.OpenLive(t.ifaceName, t.snaplen, true, pcap.BlockForever)
+func (t *TCPInferenceSideChannel) EnsureDialed() error {
+	var err error
+	if t.conn == nil {
+		t.conn, err = net.Dial("tcp", fmt.Sprintf("%s:%d", t.targetIP, t.targetPort))
+		return err
+	}
+	return nil
+}
+
+func (t *TCPInferenceSideChannel) Start() error {
+	var err error
+	t.EnsureDialed()
+
+	localIP, localPort, remoteIP, remotePort := t.getTCP4TupleStr(t.conn)
+	log.Noticef("connection 4-tuple %s %s -> %s %s", localIP, localPort, remoteIP, remotePort)
 	filter := fmt.Sprintf("ip host %s and tcp port %s", remoteIP, remotePort)
 	log.Warning("attempting to us the following filter to sniff the connection:")
 	log.Warning(filter)
+
+	t.handle, err = pcap.OpenLive(t.ifaceName, t.snaplen, true, pcap.BlockForever)
 	err = t.handle.SetBPFFilter(filter)
 	if err != nil {
 		log.Warning("failed to set pcap bpf filter")
@@ -123,14 +128,17 @@ func (t *TCPInferenceSideChannel) readLoop() {
 
 		srcIP := net.IP{}
 		dstIP := net.IP{}
+		flow := &types.TcpIpFlow{}
 		if t.ip4 == nil {
+			//flow = types.NewTcpIpFlowFromLayers(*t.ip6, t.tcp)
 			srcIP = t.ip6.SrcIP
 			dstIP = t.ip6.DstIP
 		} else {
+			flow = types.NewTcpIpFlowFromLayers(*t.ip4, *t.tcp)
 			srcIP = t.ip4.SrcIP
 			dstIP = t.ip4.DstIP
 		}
-
-		log.Noticef("%s:%d -> %s:%d", srcIP, t.tcp.SrcPort, dstIP, t.tcp.DstPort)
+		log.Notice(flow)
+		//log.Noticef("%s:%d -> %s:%d", srcIP, t.tcp.SrcPort, dstIP, t.tcp.DstPort)
 	}
 }
