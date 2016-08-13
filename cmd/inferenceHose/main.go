@@ -22,26 +22,15 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"net"
 	"os"
 	"os/signal"
 	"syscall"
 	"unsafe"
 
-	//	"math/rand"
-	//	"time"
-
-	//"github.com/google/gopacket"
 	"github.com/david415/HoneyBadger/attack"
-	"github.com/google/gopacket/layers"
-	//"github.com/google/gopacket/pcap"
 	"github.com/op/go-logging"
-	/*
-
-		"github.com/google/gopacket/examples/util"
-		"github.com/google/gopacket/tcpassembly"
-	*/)
+)
 
 var log = logging.MustGetLogger("tcpInferenceHose")
 
@@ -73,21 +62,11 @@ func setupLoggerBackend() logging.LeveledBackend {
 }
 
 func main() {
-	var tcp layers.TCP
-	/*
-		var eth layers.Ethernet
-		var dot1q layers.Dot1Q
-		var ip4 layers.IPv4
-		var ip6 layers.IPv6
-		var payload gopacket.Payload
-	*/
-	ipv6_mode := false
-
 	var (
-		nfqNum      = flag.Int("nfq_num", -1, "NFQUEUE queue-number to get packets from")
-		iface       = flag.String("interface", "lo", "Interface to get packets from")
-		filter      = flag.String("pcap_filter", "tcp", "BPF filter for pcap")
-		snaplen     = flag.Int("pcap_max_size", 65536, "SnapLen for pcap packet capture")
+		nfqNum = flag.Int("nfq_num", -1, "NFQUEUE queue-number to get packets from")
+		//iface       = flag.String("interface", "lo", "Interface to get packets from")
+		//filter      = flag.String("pcap_filter", "tcp", "BPF filter for pcap")
+		//snaplen     = flag.Int("pcap_max_size", 65536, "SnapLen for pcap packet capture")
 		targetIPstr = flag.String("target_ip", "", "target TCP flows to this IPv4 or IPv6 address")
 		targetPort  = flag.Int("target_port", -1, "target TCP flows to this port")
 		patsyIPstr  = flag.String("patsy_ip", "", "patsy TCP flows from this port")
@@ -105,7 +84,6 @@ func main() {
 	patsyIP := net.ParseIP(*patsyIPstr)
 	if patsyIP.To4() == nil {
 		log.Info("Patsy IP address is an IPv6 address; using ipv6 mode")
-		ipv6_mode = true
 	} else {
 		log.Info("using ipv4 mode")
 	}
@@ -115,6 +93,8 @@ func main() {
 		flag.Usage()
 		os.Exit(-1)
 	}
+	targetIP := net.ParseIP(*targetIPstr)
+
 	if *targetPort == -1 {
 		log.Error("you must specify a 'target' TCP port")
 		flag.Usage()
@@ -130,23 +110,26 @@ func main() {
 	sigKillChan := make(chan os.Signal, 1)
 	signal.Notify(sigKillChan, os.Interrupt, os.Kill)
 
-	sideChannel := attack.NewTCPInferenceSideChannel(uint16(*nfqNum))
-	err := sideChannel.Open()
-	if err != nil {
-		log.Warning(fmt.Sprintf("NFQueue's Open returned error: %s", err))
-		//panic(fmt.Sprintf("failed to initialize NFQUEUE socket: %s", err))
-	}
-
-	log.Info("before flutter")
-	go sideChannel.Flutter()
-
-	//handle, err := pcap.OpenLive(*iface, int32(*snaplen), true, pcap.BlockForever)
-	//if err != nil {
-	//	log.Fatal("error opening pcap handle: ", err)
-	//}
+	/*
+		sideChannel := attack.NewTCPInferenceSideChannel(uint16(*nfqNum))
+		err := sideChannel.Open()
+		if err != nil {
+			log.Warning(fmt.Sprintf("NFQueue's Open returned error: %s", err))
+			//panic(fmt.Sprintf("failed to initialize NFQUEUE socket: %s", err))
+		}
+		log.Info("before flutter")
+		go sideChannel.Flutter()
+	*/
 
 	// XXX todo == send a packet!
-	log.Warning(fmt.Sprintf("%s %s %s %s %s %s %s %s\n", *iface, *filter, *snaplen, *targetIPstr, *targetPort, *patsyIPstr, ipv6_mode, tcp))
+
+	injector := attack.NewTCPStreamInjector(targetIP)
+	log.Notice("before setting hw addr")
+	err := injector.SetEthernetToHWAddr()
+	if err != nil {
+		panic(err)
+	}
+	log.Notice("after setting hw addr")
 
 	// the end is near, here we wait
 	// XXX TODO wait for additonal events
@@ -155,7 +138,7 @@ func main() {
 		select {
 		case <-sigKillChan:
 			log.Notice("tcpInferenceHose shutting down")
-			sideChannel.Close()
+			//sideChannel.Close()
 			return
 		}
 	}

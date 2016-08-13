@@ -19,33 +19,141 @@
 package attack
 
 import (
+	"bytes"
+	"fmt"
 	"net"
+	"time"
 
 	"github.com/david415/HoneyBadger/types"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"github.com/google/gopacket/routing"
 )
 
 type TCPStreamInjector struct {
-	packetConn net.PacketConn
-	pcapHandle *pcap.Handle
-	eth        *layers.Ethernet
-	dot1q      *layers.Dot1Q
-	ipv4       layers.IPv4
-	ipv6       layers.IPv6
-	tcp        layers.TCP
-	ipBuf      gopacket.SerializeBuffer
-	Payload    gopacket.Payload
-	isIPv6Mode bool
+	router       routing.Router
+	target       net.IP
+	iface        *net.Interface
+	handle       *pcap.Handle
+	dst, gw, src net.IP
+	opts         gopacket.SerializeOptions
+	buf          gopacket.SerializeBuffer
+
+	eth     *layers.Ethernet
+	dot1q   *layers.Dot1Q
+	ipv4    layers.IPv4
+	ipv6    layers.IPv6
+	tcp     layers.TCP
+	Payload gopacket.Payload
 }
 
-func NewTCPStreamInjector(pcapHandle *pcap.Handle, isIPv6Mode bool) *TCPStreamInjector {
+func NewTCPStreamInjector(target net.IP) *TCPStreamInjector {
 	t := TCPStreamInjector{
-		pcapHandle: pcapHandle,
-		isIPv6Mode: isIPv6Mode,
+		target: target,
+		opts: gopacket.SerializeOptions{
+			FixLengths:       true,
+			ComputeChecksums: true,
+		},
+		buf: gopacket.NewSerializeBuffer(),
 	}
 	return &t
+}
+
+func (i *TCPStreamInjector) Open() error {
+	var err error = nil
+	i.handle, err = pcap.OpenLive(i.iface.Name, 65536, true, pcap.BlockForever)
+	return err
+}
+
+// getHwAddr is a hacky but effective way to get the destination hardware
+// address for our packets.  It does an ARP request for our gateway (if there is
+// one) or destination IP (if no gateway is necessary), then waits for an ARP
+// reply.  This is pretty slow right now, since it blocks on the ARP
+// request/reply.
+func (i *TCPStreamInjector) getHwAddr() (net.HardwareAddr, error) {
+	start := time.Now()
+	arpDst := i.dst
+	if i.gw != nil {
+		arpDst = i.gw
+	}
+	// Prepare the layers to send for an ARP request.
+	eth := layers.Ethernet{
+		SrcMAC:       i.iface.HardwareAddr,
+		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
+		EthernetType: layers.EthernetTypeARP,
+	}
+	arp := layers.ARP{
+		AddrType:          layers.LinkTypeEthernet,
+		Protocol:          layers.EthernetTypeIPv4,
+		HwAddressSize:     6,
+		ProtAddressSize:   4,
+		Operation:         layers.ARPRequest,
+		SourceHwAddress:   []byte(i.iface.HardwareAddr),
+		SourceProtAddress: []byte(i.src),
+		DstHwAddress:      []byte{0, 0, 0, 0, 0, 0},
+		DstProtAddress:    []byte(arpDst),
+	}
+	// Send a single ARP request packet (we never retry a send, since this
+	// is just an example ;)
+	if err := i.send(&eth, &arp); err != nil {
+		return nil, err
+	}
+	// Wait 3 seconds for an ARP reply.
+	for {
+		if time.Since(start) > time.Second*3 {
+			return nil, fmt.Errorf("timeout getting ARP reply")
+		}
+		data, _, err := i.handle.ReadPacketData()
+		if err == pcap.NextErrorTimeoutExpired {
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+		packet := gopacket.NewPacket(data, layers.LayerTypeEthernet, gopacket.NoCopy)
+		if arpLayer := packet.Layer(layers.LayerTypeARP); arpLayer != nil {
+			arp := arpLayer.(*layers.ARP)
+			if bytes.Equal(arp.SourceProtAddress, arpDst) {
+				return net.HardwareAddr(arp.SourceHwAddress), nil
+			}
+		}
+	}
+}
+
+func (i *TCPStreamInjector) SetEthernetToHWAddr() error {
+	var iface *net.Interface
+	var gw, src net.IP
+	var err error
+
+	log.Info("meow1")
+	i.router, err = routing.New()
+	if err != nil {
+		return err
+	}
+	log.Info("meow2")
+
+	// Figure out the route to the IP.
+	iface, gw, src, err = i.router.Route(i.target)
+	log.Info("meow3")
+	if err != nil {
+		log.Info("meow4")
+		return err
+	}
+	log.Noticef("scanning ip %v with interface %v, gateway %v, src %v", i.target, iface.Name, gw, src)
+	i.gw, i.src, i.iface = gw, src, iface
+
+	hwAddr := net.HardwareAddr{}
+	hwAddr, err = i.getHwAddr()
+	if err != nil {
+		return err
+	}
+	eth := layers.Ethernet{
+		SrcMAC:       i.iface.HardwareAddr,
+		DstMAC:       hwAddr,
+		EthernetType: layers.EthernetTypeIPv4,
+	}
+	i.SetEthernetLayer(&eth)
+	return nil
 }
 
 func (i *TCPStreamInjector) SetEthernetLayer(eth *layers.Ethernet) {
@@ -118,39 +226,26 @@ func (i *TCPStreamInjector) SprayFutureAndFillGapPackets(start uint32, gap_paylo
 	return nil
 }
 
+// send sends the given layers as a single packet on the network.
+func (i *TCPStreamInjector) send(l ...gopacket.SerializableLayer) error {
+	if err := gopacket.SerializeLayers(i.buf, i.opts, l...); err != nil {
+		return err
+	}
+	return i.handle.WritePacketData(i.buf.Bytes())
+}
+
 func (i *TCPStreamInjector) Write() error {
 	log.Info("Write")
 	var err error = nil
 
-	if i.isIPv6Mode {
-		// XXX
-		i.tcp.SetNetworkLayerForChecksum(&i.ipv6)
-	} else {
-		i.tcp.SetNetworkLayerForChecksum(&i.ipv4)
-	}
+	i.tcp.SetNetworkLayerForChecksum(&i.ipv4)
 	packetBuf := gopacket.NewSerializeBuffer()
-	if i.isIPv6Mode {
-		opts := gopacket.SerializeOptions{
-			FixLengths:       true,
-			ComputeChecksums: true,
-		}
-		err = gopacket.SerializeLayers(packetBuf, opts, i.eth, &i.ipv6, &i.tcp, i.Payload)
-		if err != nil {
-			log.Info("wtf. failed to encode ipv6 packet")
-			return err
-		}
-	} else {
-		opts := gopacket.SerializeOptions{
-			FixLengths:       true,
-			ComputeChecksums: true,
-		}
-		err = gopacket.SerializeLayers(packetBuf, opts, i.eth, &i.ipv4, &i.tcp, i.Payload)
-		if err != nil {
-			log.Info("wtf. failed to encode ipv4 packet")
-			return err
-		}
+	err = gopacket.SerializeLayers(packetBuf, i.opts, i.eth, &i.ipv4, &i.tcp, i.Payload)
+	if err != nil {
+		log.Info("wtf. failed to encode ipv4 packet")
+		return err
 	}
-	if err := i.pcapHandle.WritePacketData(packetBuf.Bytes()); err != nil {
+	if err := i.handle.WritePacketData(packetBuf.Bytes()); err != nil {
 		log.Infof("Failed to send packet: %s\n", err)
 		return err
 	}
