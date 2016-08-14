@@ -200,11 +200,9 @@ func (t *TCPInferenceSideChannel) sniffSequence() {
 		// flow of received packet
 		flow := &types.TcpIpFlow{}
 		if t.ip4 == nil {
-			// XXX ipv6 compatibility fix me
-			//flow = types.NewTcpIpFlowFromLayers(*t.ip6, t.tcp)
-			panic("ipv6 not yet supported")
+			flow = types.NewTcpIp6FlowFromLayers(*t.ip6, *t.tcp)
 		} else {
-			flow = types.NewTcpIpFlowFromLayers(*t.ip4, *t.tcp)
+			flow = types.NewTcpIp4FlowFromLayers(*t.ip4, *t.tcp)
 		}
 
 		if t.sendFlow.Equal(flow) {
