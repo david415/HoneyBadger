@@ -196,7 +196,7 @@ func TestInquisitorSourceReceiveOne(t *testing.T) {
 		SrcPort: 1,
 		DstPort: 2,
 	}
-	flow := types.NewTcpIpFlowFromLayers(ip, tcp)
+	flow := types.NewTcpIp4FlowFromLayers(ip, tcp)
 	p := types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flow,
@@ -247,7 +247,7 @@ func TestInquisitorResetTwice(t *testing.T) {
 		SrcPort: 1,
 		DstPort: 2,
 	}
-	flow1 := types.NewTcpIpFlowFromLayers(ip1, tcp1)
+	flow1 := types.NewTcpIp4FlowFromLayers(ip1, tcp1)
 	packet1 := types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flow1,
@@ -270,7 +270,7 @@ func TestInquisitorResetTwice(t *testing.T) {
 		SrcPort: 1,
 		DstPort: 2,
 	}
-	flow2 := types.NewTcpIpFlowFromLayers(ip2, tcp2)
+	flow2 := types.NewTcpIp4FlowFromLayers(ip2, tcp2)
 	packet2 := types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flow2,

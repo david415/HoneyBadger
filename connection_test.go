@@ -39,7 +39,7 @@ func TestStateDataTransfer(t *testing.T) {
 		SrcPort: 1,
 		DstPort: 2,
 	}
-	flow := types.NewTcpIpFlowFromLayers(ip, tcp)
+	flow := types.NewTcpIp4FlowFromLayers(ip, tcp)
 	p := types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flow,
