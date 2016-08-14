@@ -31,7 +31,7 @@ import (
 	"github.com/google/gopacket/routing"
 )
 
-type TCPStreamInjector struct {
+type TCPInjector struct {
 	router       routing.Router
 	patsyIP      net.IP
 	targetIP     net.IP
@@ -50,8 +50,8 @@ type TCPStreamInjector struct {
 	Payload gopacket.Payload
 }
 
-func NewTCPStreamInjector(patsyIP, targetIP net.IP, targetPort uint16) *TCPStreamInjector {
-	i := TCPStreamInjector{
+func NewTCPInjector(patsyIP, targetIP net.IP, targetPort uint16) *TCPInjector {
+	i := TCPInjector{
 		patsyIP:    patsyIP,
 		targetIP:   targetIP,
 		targetPort: targetPort,
@@ -78,14 +78,14 @@ func NewTCPStreamInjector(patsyIP, targetIP net.IP, targetPort uint16) *TCPStrea
 	return &i
 }
 
-func (i *TCPStreamInjector) SprayTest() error {
+func (i *TCPInjector) SprayTest() error {
 	if err := i.send(&i.eth, &i.ipv4, &i.tcp); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (i *TCPStreamInjector) Open(ifaceName string, snaplen int32) error {
+func (i *TCPInjector) Open(ifaceName string, snaplen int32) error {
 	var err error = nil
 	i.handle, err = pcap.OpenLive(ifaceName, snaplen, true, pcap.BlockForever)
 	return err
@@ -96,7 +96,7 @@ func (i *TCPStreamInjector) Open(ifaceName string, snaplen int32) error {
 // one) or destination IP (if no gateway is necessary), then waits for an ARP
 // reply.  This is pretty slow right now, since it blocks on the ARP
 // request/reply.
-func (i *TCPStreamInjector) getHwAddr() (net.HardwareAddr, error) {
+func (i *TCPInjector) getHwAddr() (net.HardwareAddr, error) {
 	start := time.Now()
 	arpDst := i.dst
 	if i.gw != nil {
@@ -145,7 +145,7 @@ func (i *TCPStreamInjector) getHwAddr() (net.HardwareAddr, error) {
 	}
 }
 
-func (i *TCPStreamInjector) SetEthernetToAutoHWAddr() error {
+func (i *TCPInjector) SetEthernetToAutoHWAddr() error {
 	var iface *net.Interface
 	var gw, src net.IP
 	var err error
@@ -177,7 +177,7 @@ func (i *TCPStreamInjector) SetEthernetToAutoHWAddr() error {
 	return nil
 }
 
-func (i *TCPStreamInjector) SetEthernetToHWAddr(source, target net.HardwareAddr) {
+func (i *TCPInjector) SetEthernetToHWAddr(source, target net.HardwareAddr) {
 	eth := layers.Ethernet{
 		SrcMAC:       source,
 		DstMAC:       target,
@@ -186,26 +186,26 @@ func (i *TCPStreamInjector) SetEthernetToHWAddr(source, target net.HardwareAddr)
 	i.SetEthernetLayer(&eth)
 }
 
-func (i *TCPStreamInjector) SetEthernetLayer(eth *layers.Ethernet) {
+func (i *TCPInjector) SetEthernetLayer(eth *layers.Ethernet) {
 	i.eth = *eth
 }
 
-func (i *TCPStreamInjector) SetIPToAddr(src, dst net.IP) {
+func (i *TCPInjector) SetIPToAddr(src, dst net.IP) {
 }
 
-func (i *TCPStreamInjector) SetIPv4Layer(iplayer layers.IPv4) {
+func (i *TCPInjector) SetIPv4Layer(iplayer layers.IPv4) {
 	i.ipv4 = iplayer
 }
 
-func (i *TCPStreamInjector) SetIPv6Layer(iplayer layers.IPv6) {
+func (i *TCPInjector) SetIPv6Layer(iplayer layers.IPv6) {
 	i.ipv6 = iplayer
 }
 
-func (i *TCPStreamInjector) SetTCPLayer(tcpLayer layers.TCP) {
+func (i *TCPInjector) SetTCPLayer(tcpLayer layers.TCP) {
 	i.tcp = tcpLayer
 }
 
-func (i *TCPStreamInjector) SpraySequenceRangePackets(start uint32, count int) error {
+func (i *TCPInjector) SpraySequenceRangePackets(start uint32, count int) error {
 	var err error
 
 	currentSeq := types.Sequence(start)
@@ -225,7 +225,7 @@ func (i *TCPStreamInjector) SpraySequenceRangePackets(start uint32, count int) e
 // that is we first inject packets with future sequence numbers and then we fill the gap.
 // The gap being the range from state machine's "next Sequence" to the earliest Sequence we
 // transmitted in our future sequence series of packets.
-func (i *TCPStreamInjector) SprayFutureAndFillGapPackets(start uint32, gap_payload, attack_payload []byte, overlap_future_packet bool) error {
+func (i *TCPInjector) SprayFutureAndFillGapPackets(start uint32, gap_payload, attack_payload []byte, overlap_future_packet bool) error {
 	var err error = nil
 
 	// send future packet
@@ -260,14 +260,14 @@ func (i *TCPStreamInjector) SprayFutureAndFillGapPackets(start uint32, gap_paylo
 }
 
 // send sends the given layers as a single packet on the network.
-func (i *TCPStreamInjector) send(l ...gopacket.SerializableLayer) error {
+func (i *TCPInjector) send(l ...gopacket.SerializableLayer) error {
 	if err := gopacket.SerializeLayers(i.buf, i.opts, l...); err != nil {
 		return err
 	}
 	return i.handle.WritePacketData(i.buf.Bytes())
 }
 
-func (i *TCPStreamInjector) Write() error {
+func (i *TCPInjector) Write() error {
 	log.Info("Write")
 	var err error = nil
 

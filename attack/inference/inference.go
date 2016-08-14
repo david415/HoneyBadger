@@ -146,7 +146,14 @@ func (t *TCPInferenceSideChannel) EnsureOpenedPcap() error {
 
 func (t *TCPInferenceSideChannel) Start() error {
 	err := t.GetCurrentSequence()
-	return err
+	if err != nil {
+		log.Warningf("TCPInferenceSideChannel Start failure: %s", err)
+		return err
+	}
+
+	t.SendProbe()
+
+	return nil
 }
 
 func (t *TCPInferenceSideChannel) GetCurrentSequence() error {
@@ -170,7 +177,7 @@ func (t *TCPInferenceSideChannel) GetCurrentSequence() error {
 	return nil
 }
 
-func (t *TCPInferenceSideChannel) Probe() {
+func (t *TCPInferenceSideChannel) SendProbe() {
 }
 
 // XXX todo: think of a better method receiver name
