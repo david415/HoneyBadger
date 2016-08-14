@@ -20,14 +20,13 @@
 package types
 
 import (
-	"fmt"
-	"encoding/binary"
 	"bytes"
+	"encoding/binary"
+	"fmt"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 )
-
 
 // TcpIpFlow is used for tracking unidirectional TCP flows
 type TcpIpFlow struct {
@@ -74,6 +73,11 @@ func (t *TcpIpFlow) Reverse() TcpIpFlow {
 
 // Equal returns true if TcpIpFlow structs t and s are equal. False otherwise.
 func (t *TcpIpFlow) Equal(s *TcpIpFlow) bool {
+	ipEndSrc1, _ := t.ipFlow.Endpoints()
+	ipEndSrc2, _ := s.ipFlow.Endpoints()
+	if ipEndSrc1.EndpointType() != ipEndSrc2.EndpointType() {
+		panic(fmt.Sprintf("TcpIpFlow.Equal fail: mismatched flow types %s != %s", ipEndSrc1.EndpointType(), ipEndSrc2.EndpointType()))
+	}
 	return t.ipFlow == s.ipFlow && t.tcpFlow == s.tcpFlow
 }
 
