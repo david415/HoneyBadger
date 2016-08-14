@@ -164,26 +164,29 @@ func (i *Sniffer) decodePackets() {
 			packetManifest := types.PacketManifest{
 				Timestamp: timedRawPacket.Timestamp,
 				Payload:   payload,
-				IPv6:      nil,
-				IPv4:      nil,
+				IPv6:      &layers.IPv6{},
+				IPv4:      &layers.IPv4{},
+				TCP:       &layers.TCP{},
 			}
+
 			foundNetLayer := false
 
 			for _, typ := range decoded {
 				switch typ {
 				case layers.LayerTypeIPv4:
-					packetManifest.IPv4 = &ip4
+					*packetManifest.IPv4 = ip4
 					foundNetLayer = true
 				case layers.LayerTypeIPv6:
-					packetManifest.IPv6 = &ip6
+					*packetManifest.IPv6 = ip6
 					foundNetLayer = true
 				case layers.LayerTypeTCP:
 					if foundNetLayer {
 						flow := types.TcpIpFlow{}
-						if packetManifest.IPv6 == nil {
+
+						if packetManifest.IPv4.Version == 4 {
 							// IPv4 case
 							flow = types.NewTcpIpFlowFromFlows(ip4.NetworkFlow(), tcp.TransportFlow())
-						} else if packetManifest.IPv4 == nil {
+						} else if packetManifest.IPv6.Version == 6 {
 							// IPv6 case
 							flow = types.NewTcpIpFlowFromFlows(ip6.NetworkFlow(), tcp.TransportFlow())
 						} else {
@@ -191,7 +194,7 @@ func (i *Sniffer) decodePackets() {
 						}
 
 						packetManifest.Flow = &flow
-						packetManifest.TCP = &tcp
+						*packetManifest.TCP = tcp
 						i.dispatcher.ReceivePacket(&packetManifest)
 					} else {
 						log.Println("could not find IPv4 or IPv6 layer, inoring")
