@@ -20,10 +20,10 @@
 package types
 
 import (
-	"time"
 	"bytes"
-	"fmt"
 	"encoding/hex"
+	"fmt"
+	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -70,7 +70,7 @@ type PacketManifest struct {
 	RawPacket []byte
 	IPv4      *layers.IPv4
 	IPv6      *layers.IPv6
-	TCP       layers.TCP
+	TCP       *layers.TCP
 	Payload   gopacket.Payload
 }
 
@@ -80,5 +80,5 @@ func (p PacketManifest) String() string {
 	buffer.WriteString(fmt.Sprintf("TCP Sequence %d\n", p.TCP.Seq))
 	buffer.WriteString("Packet payload hex dump:\n")
 	buffer.WriteString(hex.Dump(p.Payload))
-    return buffer.String()
+	return buffer.String()
 }

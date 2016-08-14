@@ -40,7 +40,7 @@ func TestOrderedCoalesceUsedPages(t *testing.T) {
 		Timestamp: time.Now(),
 		Flow:      &flow,
 		IPv4:      &ip,
-		TCP:       tcp,
+		TCP:       &tcp,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
 

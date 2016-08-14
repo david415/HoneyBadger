@@ -44,7 +44,7 @@ func TestStateDataTransfer(t *testing.T) {
 		Timestamp: time.Now(),
 		Flow:      flow,
 		IPv4:      &ip,
-		TCP:       tcp,
+		TCP:       &tcp,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
 	conn.serverFlow = flow
@@ -77,7 +77,7 @@ func TestStateDataTransfer(t *testing.T) {
 		Timestamp: time.Now(),
 		Flow:      flow,
 		IPv4:      &ip,
-		TCP:       tcp,
+		TCP:       &tcp,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
 	conn.ReceivePacket(&p)
@@ -103,7 +103,7 @@ func TestStateDataTransfer(t *testing.T) {
 		Timestamp: time.Now(),
 		Flow:      flow,
 		IPv4:      &ip,
-		TCP:       tcp,
+		TCP:       &tcp,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
 	conn.ReceivePacket(&p)
@@ -154,7 +154,7 @@ func TestTCPConnect(t *testing.T) {
 		Timestamp: time.Now(),
 		Flow:      &flow,
 		IPv4:      &ip,
-		TCP:       tcp,
+		TCP:       &tcp,
 		Payload:   []byte{},
 	}
 	tcp.SetNetworkLayerForChecksum(&ip)
@@ -188,7 +188,7 @@ func TestTCPConnect(t *testing.T) {
 		Timestamp: time.Now(),
 		Flow:      &flowReversed,
 		IPv4:      &ip,
-		TCP:       tcp,
+		TCP:       &tcp,
 		Payload:   []byte{},
 	}
 	conn.ReceivePacket(&p)
@@ -218,7 +218,7 @@ func TestTCPConnect(t *testing.T) {
 		Timestamp: time.Now(),
 		Flow:      &flow,
 		IPv4:      &ip,
-		TCP:       tcp,
+		TCP:       &tcp,
 		Payload:   []byte{},
 	}
 	conn.ReceivePacket(&p)
@@ -293,7 +293,7 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		Timestamp: time.Now(),
 		Flow:      &flow,
 		IPv4:      &ip,
-		TCP:       tcp,
+		TCP:       &tcp,
 		Payload:   []byte{},
 	}
 
@@ -341,7 +341,7 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		Timestamp: time.Now(),
 		Flow:      &flow2,
 		IPv4:      &ip,
-		TCP:       tcp,
+		TCP:       &tcp,
 		Payload:   []byte{},
 	}
 
@@ -374,7 +374,7 @@ func HelperTestThreeWayClose(isClient bool, t *testing.T) {
 		Timestamp: time.Now(),
 		Flow:      &flow,
 		IPv4:      &ip,
-		TCP:       tcp,
+		TCP:       &tcp,
 		Payload:   []byte{},
 	}
 
@@ -420,7 +420,7 @@ func TestTCPHijack(t *testing.T) {
 		Timestamp: time.Now(),
 		Flow:      &flow,
 		IPv4:      &ip,
-		TCP:       tcp,
+		TCP:       &tcp,
 		Payload:   []byte{},
 	}
 	tcp.SetNetworkLayerForChecksum(&ip)
@@ -456,7 +456,7 @@ func TestTCPHijack(t *testing.T) {
 		Timestamp: time.Now(),
 		Flow:      &flowReversed,
 		IPv4:      &ip,
-		TCP:       tcp,
+		TCP:       &tcp,
 		Payload:   []byte{},
 	}
 	conn.ReceivePacket(&p)
@@ -486,7 +486,7 @@ func TestTCPHijack(t *testing.T) {
 		Timestamp: time.Now(),
 		Flow:      &flowReversed,
 		IPv4:      &ip,
-		TCP:       tcp,
+		TCP:       &tcp,
 		Payload:   []byte{},
 	}
 	conn.ReceivePacket(&p)
@@ -516,7 +516,7 @@ func TestTCPHijack(t *testing.T) {
 		Timestamp: time.Now(),
 		Flow:      &flow,
 		IPv4:      &ip,
-		TCP:       tcp,
+		TCP:       &tcp,
 		Payload:   []byte{},
 	}
 	conn.ReceivePacket(&p)
@@ -546,7 +546,7 @@ func TestTCPHijack(t *testing.T) {
 		Timestamp: time.Now(),
 		Flow:      &flowReversed,
 		IPv4:      &ip,
-		TCP:       tcp,
+		TCP:       &tcp,
 		Payload:   []byte{},
 	}
 	conn.ReceivePacket(&p)

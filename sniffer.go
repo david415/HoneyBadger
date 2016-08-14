@@ -164,8 +164,8 @@ func (i *Sniffer) decodePackets() {
 			packetManifest := types.PacketManifest{
 				Timestamp: timedRawPacket.Timestamp,
 				Payload:   payload,
-				IPv6: nil,
-				IPv4: nil,
+				IPv6:      nil,
+				IPv4:      nil,
 			}
 			foundNetLayer := false
 
@@ -191,7 +191,7 @@ func (i *Sniffer) decodePackets() {
 						}
 
 						packetManifest.Flow = &flow
-						packetManifest.TCP = tcp
+						packetManifest.TCP = &tcp
 						i.dispatcher.ReceivePacket(&packetManifest)
 					} else {
 						log.Println("could not find IPv4 or IPv6 layer, inoring")

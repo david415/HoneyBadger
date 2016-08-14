@@ -143,10 +143,10 @@ type OrderedCoalesce struct {
 func NewOrderedCoalesce(logger types.Logger, flow *types.TcpIpFlow, pageCache *pageCache, streamRing *types.Ring, maxBufferedPagesTotal, maxBufferedPagesPerFlow int, DetectCoalesceInjection bool, attackDetected *bool) *OrderedCoalesce {
 	return &OrderedCoalesce{
 		attackDetected: attackDetected,
-		log:        logger,
-		Flow:       flow,
-		PageCache:  pageCache,
-		StreamRing: streamRing,
+		log:            logger,
+		Flow:           flow,
+		PageCache:      pageCache,
+		StreamRing:     streamRing,
 
 		MaxBufferedPagesTotal:   maxBufferedPagesTotal,
 		MaxBufferedPagesPerFlow: maxBufferedPagesPerFlow,
@@ -322,7 +322,7 @@ func (o *OrderedCoalesce) addNext(nextSeq types.Sequence) (types.Sequence, bool)
 			p := types.PacketManifest{
 				Timestamp: o.first.Seen,
 				Payload:   o.first.Bytes,
-				TCP: layers.TCP{
+				TCP: &layers.TCP{
 					Seq: uint32(o.first.Seq),
 				},
 			}

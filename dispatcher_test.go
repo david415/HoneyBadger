@@ -1,10 +1,10 @@
 package HoneyBadger
 
 import (
+	"io"
 	"log"
 	"net"
 	"os"
-	"io"
 	"testing"
 	"time"
 
@@ -201,7 +201,7 @@ func TestInquisitorSourceReceiveOne(t *testing.T) {
 		Timestamp: time.Now(),
 		Flow:      flow,
 		IPv4:      &ip,
-		TCP:       tcp,
+		TCP:       &tcp,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
 
@@ -252,7 +252,7 @@ func TestInquisitorResetTwice(t *testing.T) {
 		Timestamp: time.Now(),
 		Flow:      flow1,
 		IPv4:      &ip1,
-		TCP:       tcp1,
+		TCP:       &tcp1,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
 
@@ -275,7 +275,7 @@ func TestInquisitorResetTwice(t *testing.T) {
 		Timestamp: time.Now(),
 		Flow:      flow2,
 		IPv4:      &ip2,
-		TCP:       tcp2,
+		TCP:       &tcp2,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
 	connsChan := dispatcher.GetObservedConnectionsChan(1)
