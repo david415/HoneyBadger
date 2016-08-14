@@ -178,6 +178,8 @@ func (t *TCPInferenceSideChannel) GetCurrentSequence() error {
 }
 
 func (t *TCPInferenceSideChannel) SendProbe() {
+	//t.probe.
+	//t.probe.Send(t.targetManifest)
 }
 
 // XXX todo: think of a better method receiver name
@@ -190,6 +192,34 @@ func (t *TCPInferenceSideChannel) SendToConn() {
 
 func (t *TCPInferenceSideChannel) Close() {
 	t.handle.Close()
+}
+
+func (t *TCPInferenceSideChannel) sniffProbe() {
+	for {
+		data, ci, err := t.handle.ReadPacketData()
+		if err != nil {
+			log.Warningf("error getting packet: %v %s", err, ci)
+		}
+
+		err = t.parser.DecodeLayers(data, &t.decoded)
+		if err != nil {
+			log.Warningf("error decoding packet: %v", err)
+		}
+
+		// flow of received packet
+		flow := &types.TcpIpFlow{}
+		if t.ip4 == nil {
+			flow = types.NewTcpIp6FlowFromLayers(*t.ip6, *t.tcp)
+		} else {
+			flow = types.NewTcpIp4FlowFromLayers(*t.ip4, *t.tcp)
+		}
+
+		if t.probeFlow.Equal(flow) {
+			log.Warningf("matching probe flow! %s", flow)
+			t.seqChan <- t.tcp.Seq
+			return
+		}
+	}
 }
 
 func (t *TCPInferenceSideChannel) sniffSequence() {
