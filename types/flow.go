@@ -20,14 +20,13 @@
 package types
 
 import (
-	"fmt"
-	"encoding/binary"
 	"bytes"
+	"encoding/binary"
+	"fmt"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 )
-
 
 // TcpIpFlow is used for tracking unidirectional TCP flows
 type TcpIpFlow struct {
@@ -66,7 +65,17 @@ func (t *TcpIpFlow) Reverse() TcpIpFlow {
 
 // Equal returns true if TcpIpFlow structs t and s are equal. False otherwise.
 func (t *TcpIpFlow) Equal(s *TcpIpFlow) bool {
-	return t.ipFlow == s.ipFlow && t.tcpFlow == s.tcpFlow
+	ipEndSrc1, ipEndDst1 := t.ipFlow.Endpoints()
+	ipEndSrc2, ipEndDst2 := s.ipFlow.Endpoints()
+	tcpEndSrc1, tcpEndDst1 := t.tcpFlow.Endpoints()
+	tcpEndSrc2, tcpEndDst2 := s.tcpFlow.Endpoints()
+	if ipEndSrc1.EndpointType() != ipEndSrc2.EndpointType() {
+		panic(fmt.Sprintf("TcpIpFlow.Equal fail: mismatched flow types %s != %s", ipEndSrc1.EndpointType(), ipEndSrc2.EndpointType()))
+	}
+	return bytes.Equal(ipEndSrc1.Raw(), ipEndSrc2.Raw()) &&
+		bytes.Equal(ipEndDst1.Raw(), ipEndDst2.Raw()) &&
+		bytes.Equal(tcpEndSrc1.Raw(), tcpEndSrc2.Raw()) &&
+		bytes.Equal(tcpEndDst1.Raw(), tcpEndDst2.Raw())
 }
 
 // getPacketFlow returns a TcpIpFlow struct given a byte array packet

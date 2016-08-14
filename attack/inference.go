@@ -92,7 +92,10 @@ func (t *TCPInferenceSideChannel) getTCP4Tuple(conn net.Conn) (net.IP, int, net.
 	if err != nil {
 		panic(err)
 	}
-	return net.ParseIP(localIP), localPort, net.ParseIP(remoteIP), remotePort
+	if net.ParseIP(localIP).To4() == nil {
+		return net.ParseIP(localIP).To16(), localPort, net.ParseIP(remoteIP).To16(), remotePort
+	}
+	return net.ParseIP(localIP).To4(), localPort, net.ParseIP(remoteIP).To4(), remotePort
 }
 
 func (t *TCPInferenceSideChannel) EnsureDialed() error {
@@ -118,7 +121,6 @@ func (t *TCPInferenceSideChannel) EnsureDialed() error {
 	tcpFlow, err := gopacket.FlowFromEndpoints(srcTCPEndpoint, dstTCPEndpoint)
 	flow := types.NewTcpIpFlowFromFlows(netFlow, tcpFlow)
 	t.sendFlow = flow
-	log.Warningf("FLOW %s", flow)
 	return nil
 }
 
@@ -131,8 +133,7 @@ func (t *TCPInferenceSideChannel) EnsureOpenedPcap() error {
 	filter := fmt.Sprintf("ip host %s and tcp port %d", remoteIP, remotePort)
 
 	log.Noticef("connection 4-tuple %s %d -> %s %d", localIP, localPort, remoteIP, remotePort)
-	log.Warning("attempting to us the following filter to sniff the connection:")
-	log.Warning(filter)
+	log.Warningf("attempting to use this filter to sniff the connection: %s", filter)
 
 	t.handle, err = pcap.OpenLive(t.ifaceName, t.snaplen, true, pcap.BlockForever)
 	err = t.handle.SetBPFFilter(filter)
@@ -155,7 +156,7 @@ func (t *TCPInferenceSideChannel) GetCurrentSequence() error {
 	if err != nil {
 		return err
 	}
-	log.Notice("AFTER DIALED")
+
 	err = t.EnsureOpenedPcap()
 	if err != nil {
 		panic(err)
@@ -165,18 +166,19 @@ func (t *TCPInferenceSideChannel) GetCurrentSequence() error {
 	t.SendToConn()
 	t.currentSeq = <-t.seqChan
 
-	log.Noticef("TCP Sequence %d", t.currentSeq)
+	log.Noticef("current TCP Sequence %d", t.currentSeq)
 	return nil
 }
 
-func (t *TCPInferenceSideChannel) SendToConn() {
+func (t *TCPInferenceSideChannel) Probe() {
+}
 
+// XXX todo: think of a better method receiver name
+func (t *TCPInferenceSideChannel) SendToConn() {
 	_, err := t.conn.Write([]byte("hello\n"))
 	if err != nil {
-		log.Notice("SendToConn failed")
 		panic(err)
 	}
-	log.Notice("SendToConn success.")
 }
 
 func (t *TCPInferenceSideChannel) Close() {
@@ -205,7 +207,6 @@ func (t *TCPInferenceSideChannel) sniffSequence() {
 			flow = types.NewTcpIpFlowFromLayers(*t.ip4, *t.tcp)
 		}
 
-		// XXX
 		if t.sendFlow.Equal(flow) {
 			log.Warningf("matching flow! %s", flow)
 			t.seqChan <- t.tcp.Seq
