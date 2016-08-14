@@ -34,8 +34,16 @@ type TcpIpFlow struct {
 	tcpFlow gopacket.Flow
 }
 
-// NewTcpIpFlowFromLayers given IPv4 and TCP layers it returns a TcpIpFlow
-func NewTcpIpFlowFromLayers(ipLayer layers.IPv4, tcpLayer layers.TCP) *TcpIpFlow {
+// NewTcpIp4FlowFromLayers given IPv4 and TCP layers it returns a TcpIpFlow
+func NewTcpIp4FlowFromLayers(ipLayer layers.IPv4, tcpLayer layers.TCP) *TcpIpFlow {
+	return &TcpIpFlow{
+		ipFlow:  ipLayer.NetworkFlow(),
+		tcpFlow: tcpLayer.TransportFlow(),
+	}
+}
+
+// NewTcpIp6FlowFromLayers given IPv6 and TCP layers it returns a TcpIpFlow
+func NewTcpIp6FlowFromLayers(ipLayer layers.IPv6, tcpLayer layers.TCP) *TcpIpFlow {
 	return &TcpIpFlow{
 		ipFlow:  ipLayer.NetworkFlow(),
 		tcpFlow: tcpLayer.TransportFlow(),
