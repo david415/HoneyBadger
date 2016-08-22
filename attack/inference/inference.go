@@ -41,6 +41,9 @@ type TCPInferenceSideChannel struct {
 	targetIP   net.IP
 	targetPort uint16
 
+	opts gopacket.SerializeOptions
+	buf  gopacket.SerializeBuffer
+
 	handle  *pcap.Handle
 	decoded []gopacket.LayerType
 	parser  *gopacket.DecodingLayerParser
@@ -51,9 +54,10 @@ type TCPInferenceSideChannel struct {
 	tcp     *layers.TCP
 	payload *gopacket.Payload
 
-	seqChan    chan uint32
-	currentSeq uint32
-	sendFlow   types.TcpIpFlow
+	packetChan    chan types.PacketManifest
+	currentPacket types.PacketManifest
+	sendFlow      types.TcpIpFlow
+	probeFlow     types.TcpIpFlow
 }
 
 func NewTCPInferenceSideChannel(ifaceName string, snaplen int32, targetIP net.IP, targetPort uint16) *TCPInferenceSideChannel {
@@ -67,8 +71,13 @@ func NewTCPInferenceSideChannel(ifaceName string, snaplen int32, targetIP net.IP
 		ip6:        &layers.IPv6{},
 		tcp:        &layers.TCP{},
 		payload:    &gopacket.Payload{},
-		seqChan:    make(chan uint32, 0),
+		seqChan:    make(chan types.PacketManifest, 0),
 		decoded:    make([]gopacket.LayerType, 0, 4),
+		opts: gopacket.SerializeOptions{
+			FixLengths:       true,
+			ComputeChecksums: true,
+		},
+		buf: gopacket.NewSerializeBuffer(),
 	}
 	t.parser = gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet,
 		t.eth, t.dot1q, t.ip4, t.ip6, t.tcp, t.payload)
@@ -171,15 +180,27 @@ func (t *TCPInferenceSideChannel) GetCurrentSequence() error {
 
 	go t.sniffSequence()
 	t.SendToConn()
-	t.currentSeq = <-t.seqChan
+	t.currentPacket = <-t.packetChan
 
-	log.Noticef("current TCP Sequence %d", t.currentSeq)
+	log.Noticef("current TCP Sequence %d", t.currentPacket.TCP.Seq)
 	return nil
 }
 
-func (t *TCPInferenceSideChannel) SendProbe() {
-	//t.probe.
-	//t.probe.Send(t.targetManifest)
+func (t *TCPInferenceSideChannel) sendProbe() {
+	copy := t.currentPacket
+	copy.TCP.Seq += 10
+
+	if err := i.send(&copy.Eth, &copy.IPv4, &copy.TCP); err != nil {
+		return err
+	}
+}
+
+// send sends the given layers as a single packet on the network.
+func (i *TCPInferenceSideChannel) send(l ...gopacket.SerializableLayer) error {
+	if err := gopacket.SerializeLayers(i.buf, i.opts, l...); err != nil {
+		return err
+	}
+	return i.handle.WritePacketData(i.buf.Bytes())
 }
 
 // XXX todo: think of a better method receiver name
@@ -216,7 +237,6 @@ func (t *TCPInferenceSideChannel) sniffProbe() {
 
 		if t.probeFlow.Equal(flow) {
 			log.Warningf("matching probe flow! %s", flow)
-			t.seqChan <- t.tcp.Seq
 			return
 		}
 	}
@@ -224,7 +244,7 @@ func (t *TCPInferenceSideChannel) sniffProbe() {
 
 func (t *TCPInferenceSideChannel) sniffSequence() {
 	for {
-		data, ci, err := t.handle.ReadPacketData()
+		data, captureInfo, err := t.handle.ReadPacketData()
 		if err != nil {
 			log.Warningf("error getting packet: %v %s", err, ci)
 		}
@@ -232,6 +252,7 @@ func (t *TCPInferenceSideChannel) sniffSequence() {
 		err = t.parser.DecodeLayers(data, &t.decoded)
 		if err != nil {
 			log.Warningf("error decoding packet: %v", err)
+			continue
 		}
 
 		// flow of received packet
@@ -244,8 +265,34 @@ func (t *TCPInferenceSideChannel) sniffSequence() {
 
 		if t.sendFlow.Equal(flow) {
 			log.Warningf("matching flow! %s", flow)
-			t.seqChan <- t.tcp.Seq
-			return
-		}
-	}
+
+			packetManifest := types.PacketManifest{
+				Timestamp: captureInfo.Timestamp,
+				Payload:   t.payload,
+				IPv6:      &layers.IPv6{},
+				IPv4:      &layers.IPv4{},
+				TCP:       &layers.TCP{},
+			}
+
+			for _, typ := range t.decoded {
+				switch typ {
+				case layers.LayerTypeIPv4:
+					*packetManifest.IPv4 = ip4
+					foundNetLayer = true
+				case layers.LayerTypeIPv6:
+					*packetManifest.IPv6 = ip6
+					foundNetLayer = true
+				case layers.LayerTypeTCP:
+					if foundNetLayer {
+						packetManifest.Flow = &flow
+						*packetManifest.TCP = tcp
+						t.packetChan <- packetManifest
+						return
+					} else {
+						log.Error("could not find IPv4 or IPv6 layer, inoring")
+					}
+				} // switch typ {
+			} // for _, typ := range t.decoded {
+		} // if t.sendFlow.Equal(flow) {
+	} // for {
 }
