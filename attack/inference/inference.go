@@ -71,7 +71,7 @@ func NewTCPInferenceSideChannel(ifaceName string, snaplen int32, targetIP net.IP
 		ip6:        &layers.IPv6{},
 		tcp:        &layers.TCP{},
 		payload:    &gopacket.Payload{},
-		seqChan:    make(chan types.PacketManifest, 0),
+		packetChan: make(chan types.PacketManifest, 0),
 		decoded:    make([]gopacket.LayerType, 0, 4),
 		opts: gopacket.SerializeOptions{
 			FixLengths:       true,
@@ -128,8 +128,7 @@ func (t *TCPInferenceSideChannel) getFlowFromConn(conn net.Conn) (types.TcpIpFlo
 	return flow, nil
 }
 
-// EnsureDialed dials the target TCP endpoint and then
-// saves a copy of the outbound connection flow
+// EnsureDialed dials the target TCP endpoint
 func (t *TCPInferenceSideChannel) EnsureDialed() error {
 	var err error
 	if t.conn == nil {
@@ -140,8 +139,6 @@ func (t *TCPInferenceSideChannel) EnsureDialed() error {
 			return err
 		}
 	}
-	t.sendFlow = t.getFlowFromConn(t.conn)
-
 	return nil
 }
 
@@ -168,13 +165,33 @@ func (t *TCPInferenceSideChannel) EnsureOpenedPcap() error {
 
 // Start initiates usage of the TCP inference side-channel
 func (t *TCPInferenceSideChannel) Start() error {
-	err := t.GetCurrentSequence()
+	var err error
+
+	// dial the target TCP service for side-chan
+	err = t.EnsureDialed()
+	if err != nil {
+		return err
+	}
+
+	t.sendFlow, err = t.getFlowFromConn(t.conn)
+	if err != nil {
+		panic(err)
+	}
+
+	// packet sniffer/sprayer
+	err = t.EnsureOpenedPcap()
+	if err != nil {
+		panic(err)
+	}
+
+	err = t.GetCurrentProbeManifest()
 	if err != nil {
 		log.Warningf("TCPInferenceSideChannel Start failure: %s", err)
 		return err
 	}
 
-	t.SendProbe()
+	go t.sniffProbe(t.sendFlow.Reverse())
+	t.sendProbe()
 
 	return nil
 }
@@ -182,18 +199,6 @@ func (t *TCPInferenceSideChannel) Start() error {
 // GetCurrentProbeManifest synchronously retreives the outbound types.PacketManifest
 // from the TCP connection we will use for the inference side-channel
 func (t *TCPInferenceSideChannel) GetCurrentProbeManifest() error {
-	var err error
-
-	err = t.EnsureDialed()
-	if err != nil {
-		return err
-	}
-
-	err = t.EnsureOpenedPcap()
-	if err != nil {
-		panic(err)
-	}
-
 	go t.sniffSequence()
 	t.SendToConn()
 	t.currentPacket = <-t.packetChan
@@ -202,13 +207,14 @@ func (t *TCPInferenceSideChannel) GetCurrentProbeManifest() error {
 	return nil
 }
 
-func (t *TCPInferenceSideChannel) sendProbe() {
+func (t *TCPInferenceSideChannel) sendProbe() error {
 	copy := t.currentPacket
 	copy.TCP.Seq += 10
 
-	if err := i.send(&copy.Eth, &copy.IPv4, &copy.TCP); err != nil {
+	if err := t.send(copy.Ethernet, copy.IPv4, copy.TCP); err != nil {
 		return err
 	}
+	return nil
 }
 
 // send sends the given layers as a single packet on the network.
@@ -231,7 +237,9 @@ func (t *TCPInferenceSideChannel) Close() {
 	t.handle.Close()
 }
 
-func (t *TCPInferenceSideChannel) sniffProbe() {
+// sniffProbe is a work-in-progress sniffer for receiving probe
+// responses; challenge ACKs.
+func (t *TCPInferenceSideChannel) sniffProbe(probeFlow types.TcpIpFlow) {
 	for {
 		data, ci, err := t.handle.ReadPacketData()
 		if err != nil {
@@ -251,7 +259,7 @@ func (t *TCPInferenceSideChannel) sniffProbe() {
 			flow = types.NewTcpIp4FlowFromLayers(*t.ip4, *t.tcp)
 		}
 
-		if t.probeFlow.Equal(flow) {
+		if probeFlow.Equal(flow) {
 			log.Warningf("matching probe flow! %s", flow)
 			return
 		}
@@ -264,10 +272,11 @@ func (t *TCPInferenceSideChannel) sniffProbe() {
 // an IPv4 and IPv6 compatible manner and sends them
 // asynchronously on a channel.
 func (t *TCPInferenceSideChannel) sniffSequence() {
+	var foundNetLayer, foundEthLayer bool
 	for {
 		data, captureInfo, err := t.handle.ReadPacketData()
 		if err != nil {
-			log.Warningf("error getting packet: %v %s", err, ci)
+			log.Warningf("error getting packet: %v %s", err, captureInfo)
 		}
 
 		err = t.parser.DecodeLayers(data, &t.decoded)
@@ -289,24 +298,30 @@ func (t *TCPInferenceSideChannel) sniffSequence() {
 
 			packetManifest := types.PacketManifest{
 				Timestamp: captureInfo.Timestamp,
-				Payload:   t.payload,
+				Payload:   *t.payload,
+				Ethernet:  &layers.Ethernet{},
 				IPv6:      &layers.IPv6{},
 				IPv4:      &layers.IPv4{},
 				TCP:       &layers.TCP{},
 			}
 
+			foundNetLayer = false
+			foundEthLayer = false
 			for _, typ := range t.decoded {
 				switch typ {
+				case layers.LayerTypeEthernet:
+					*packetManifest.Ethernet = *t.eth
+					foundEthLayer = true
 				case layers.LayerTypeIPv4:
-					*packetManifest.IPv4 = ip4
+					*packetManifest.IPv4 = *t.ip4
 					foundNetLayer = true
 				case layers.LayerTypeIPv6:
-					*packetManifest.IPv6 = ip6
+					*packetManifest.IPv6 = *t.ip6
 					foundNetLayer = true
 				case layers.LayerTypeTCP:
-					if foundNetLayer {
-						packetManifest.Flow = &flow
-						*packetManifest.TCP = tcp
+					if foundEthLayer && foundNetLayer {
+						packetManifest.Flow = flow
+						*packetManifest.TCP = *t.tcp
 						t.packetChan <- packetManifest
 						return
 					} else {
