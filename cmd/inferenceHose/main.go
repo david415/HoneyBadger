@@ -149,7 +149,7 @@ func main() {
 		select {
 		case <-sigKillChan:
 			log.Notice("tcpInferenceHose shutting down")
-			//sideChannel.Close()
+			sideChannel.Close()
 			return
 		}
 	}

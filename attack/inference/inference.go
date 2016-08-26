@@ -84,6 +84,60 @@ func NewTCPInferenceSideChannel(ifaceName string, snaplen int32, targetIP net.IP
 	return &t
 }
 
+// Start initiates usage of the TCP inference side-channel
+func (t *TCPInferenceSideChannel) Start() error {
+	var err error
+
+	// dial the target TCP service for side-chan
+	err = t.EnsureDialed()
+	if err != nil {
+		return err
+	}
+
+	t.sendFlow, err = t.getFlowFromConn(t.conn)
+	if err != nil {
+		panic(err)
+	}
+
+	// packet sniffer/sprayer
+	err = t.EnsureOpenedPcap()
+	if err != nil {
+		panic(err)
+	}
+
+	err = t.GetCurrentProbeManifest()
+	if err != nil {
+		log.Warningf("TCPInferenceSideChannel Start failure: %s", err)
+		return err
+	}
+
+	go t.sniffProbe(t.sendFlow.Reverse())
+
+	// compose many packets to send
+	var rawPacket []byte
+	var rawPackets [][]byte
+	copy := t.currentPacket
+	copy.TCP.Seq = uint32(types.Sequence(copy.TCP.Seq).Add(1000))
+	for i := 0; i < 100; i++ {
+		rawPacket, err = t.encodePacket(copy)
+		if err != nil {
+			return err
+		}
+		rawPackets = append(rawPackets, rawPacket)
+	}
+
+	// send the packets
+	log.Notice("sending 100 probe packets")
+	for i := 0; i < len(rawPackets); i++ {
+		_, err := t.conn.Write(rawPackets[i])
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // getTCP4Tuple returns a TCP/IP 4-tuple given a net.Conn
 func (t *TCPInferenceSideChannel) getTCP4Tuple(conn net.Conn) (net.IP, int, net.IP, int) {
 	remoteAddr := conn.RemoteAddr()
@@ -163,48 +217,39 @@ func (t *TCPInferenceSideChannel) EnsureOpenedPcap() error {
 	return nil
 }
 
-// Start initiates usage of the TCP inference side-channel
-func (t *TCPInferenceSideChannel) Start() error {
-	var err error
-
-	// dial the target TCP service for side-chan
-	err = t.EnsureDialed()
-	if err != nil {
-		return err
-	}
-
-	t.sendFlow, err = t.getFlowFromConn(t.conn)
-	if err != nil {
-		panic(err)
-	}
-
-	// packet sniffer/sprayer
-	err = t.EnsureOpenedPcap()
-	if err != nil {
-		panic(err)
-	}
-
-	err = t.GetCurrentProbeManifest()
-	if err != nil {
-		log.Warningf("TCPInferenceSideChannel Start failure: %s", err)
-		return err
-	}
-
-	go t.sniffProbe(t.sendFlow.Reverse())
-	t.sendProbe()
-
-	return nil
-}
-
 // GetCurrentProbeManifest synchronously retreives the outbound types.PacketManifest
 // from the TCP connection we will use for the inference side-channel
 func (t *TCPInferenceSideChannel) GetCurrentProbeManifest() error {
+	log.Notice("GetCurrentProbeManifest")
+
+	log.Notice("before sniffSequence")
 	go t.sniffSequence()
-	t.SendToConn()
-	t.currentPacket = <-t.packetChan
+
+	log.Notice("before sendToConn")
+	t.sendToConn()
+
+	log.Notice("awaiting packet manifest from sniffer channel")
+	t.currentPacket = <-t.packetChan // save current outbound packet manifest
 
 	log.Noticef("current TCP Sequence %d", t.currentPacket.TCP.Seq)
+	log.Noticef("TCP SrcPort %d SrcIP %s %v", t.currentPacket.TCP.SrcPort, t.currentPacket.IPv4.SrcIP, t.currentPacket.Ethernet)
 	return nil
+}
+
+func (t *TCPInferenceSideChannel) encodePacket(p types.PacketManifest) ([]byte, error) {
+	var err error
+	if t.ip6.AddressTo16() == nil {
+		p.TCP.SetNetworkLayerForChecksum(p.IPv6)
+		err = gopacket.SerializeLayers(t.buf, t.opts, p.Ethernet, p.IPv6, p.TCP, p.Payload)
+	} else {
+		p.TCP.SetNetworkLayerForChecksum(p.IPv4)
+		err = gopacket.SerializeLayers(t.buf, t.opts, p.Ethernet, p.IPv4, p.TCP, p.Payload)
+
+	}
+	if err != nil {
+		return nil, err
+	}
+	return t.buf.Bytes(), nil
 }
 
 func (t *TCPInferenceSideChannel) sendProbe() error {
@@ -218,15 +263,15 @@ func (t *TCPInferenceSideChannel) sendProbe() error {
 }
 
 // send sends the given layers as a single packet on the network.
-func (i *TCPInferenceSideChannel) send(l ...gopacket.SerializableLayer) error {
-	if err := gopacket.SerializeLayers(i.buf, i.opts, l...); err != nil {
+func (t *TCPInferenceSideChannel) send(l ...gopacket.SerializableLayer) error {
+	if err := gopacket.SerializeLayers(t.buf, t.opts, l...); err != nil {
 		return err
 	}
-	return i.handle.WritePacketData(i.buf.Bytes())
+	return t.handle.WritePacketData(t.buf.Bytes())
 }
 
 // XXX todo: think of a better method receiver name
-func (t *TCPInferenceSideChannel) SendToConn() {
+func (t *TCPInferenceSideChannel) sendToConn() {
 	_, err := t.conn.Write([]byte("hello\n"))
 	if err != nil {
 		panic(err)
@@ -240,6 +285,7 @@ func (t *TCPInferenceSideChannel) Close() {
 // sniffProbe is a work-in-progress sniffer for receiving probe
 // responses; challenge ACKs.
 func (t *TCPInferenceSideChannel) sniffProbe(probeFlow types.TcpIpFlow) {
+	probeCount := 0
 	for {
 		data, ci, err := t.handle.ReadPacketData()
 		if err != nil {
@@ -259,9 +305,9 @@ func (t *TCPInferenceSideChannel) sniffProbe(probeFlow types.TcpIpFlow) {
 			flow = types.NewTcpIp4FlowFromLayers(*t.ip4, *t.tcp)
 		}
 
-		if probeFlow.Equal(flow) {
-			log.Warningf("matching probe flow! %s", flow)
-			return
+		if probeFlow.Equal(flow) && t.tcp.ACK {
+			probeCount += 1
+			log.Warningf("matching PROBE count %d", probeCount)
 		}
 	}
 }
