@@ -84,6 +84,7 @@ func NewTCPInferenceSideChannel(ifaceName string, snaplen int32, targetIP net.IP
 	return &t
 }
 
+// getTCP4Tuple returns a TCP/IP 4-tuple given a net.Conn
 func (t *TCPInferenceSideChannel) getTCP4Tuple(conn net.Conn) (net.IP, int, net.IP, int) {
 	remoteAddr := conn.RemoteAddr()
 	localAddr := conn.LocalAddr()
@@ -107,9 +108,30 @@ func (t *TCPInferenceSideChannel) getTCP4Tuple(conn net.Conn) (net.IP, int, net.
 	return net.ParseIP(localIP).To4(), localPort, net.ParseIP(remoteIP).To4(), remotePort
 }
 
+// getFlowFromConn returns a flow and a nil error given a net.Conn otherwise returns an error
+func (t *TCPInferenceSideChannel) getFlowFromConn(conn net.Conn) (types.TcpIpFlow, error) {
+	var flow types.TcpIpFlow
+	localIP, localPort, remoteIP, remotePort := t.getTCP4Tuple(conn)
+	srcIPEndpoint := layers.NewIPEndpoint(localIP)
+	dstIPEndpoint := layers.NewIPEndpoint(remoteIP)
+	srcTCPEndpoint := layers.NewTCPPortEndpoint(layers.TCPPort(localPort))
+	dstTCPEndpoint := layers.NewTCPPortEndpoint(layers.TCPPort(remotePort))
+	netFlow, err := gopacket.FlowFromEndpoints(srcIPEndpoint, dstIPEndpoint)
+	if err != nil {
+		return flow, err
+	}
+	tcpFlow, err := gopacket.FlowFromEndpoints(srcTCPEndpoint, dstTCPEndpoint)
+	if err != nil {
+		return flow, err
+	}
+	flow = types.NewTcpIpFlowFromFlows(netFlow, tcpFlow)
+	return flow, nil
+}
+
+// EnsureDialed dials the target TCP endpoint and then
+// saves a copy of the outbound connection flow
 func (t *TCPInferenceSideChannel) EnsureDialed() error {
 	var err error
-	log.Notice("before Dial")
 	if t.conn == nil {
 		addr := fmt.Sprintf("%s:%d", t.targetIP, t.targetPort)
 		log.Noticef("about to dial addr %s", addr)
@@ -118,21 +140,12 @@ func (t *TCPInferenceSideChannel) EnsureDialed() error {
 			return err
 		}
 	}
-	log.Notice("after Dial")
+	t.sendFlow = t.getFlowFromConn(t.conn)
 
-	// target flow
-	localIP, localPort, remoteIP, remotePort := t.getTCP4Tuple(t.conn)
-	srcIPEndpoint := layers.NewIPEndpoint(localIP)
-	dstIPEndpoint := layers.NewIPEndpoint(remoteIP)
-	srcTCPEndpoint := layers.NewTCPPortEndpoint(layers.TCPPort(localPort))
-	dstTCPEndpoint := layers.NewTCPPortEndpoint(layers.TCPPort(remotePort))
-	netFlow, err := gopacket.FlowFromEndpoints(srcIPEndpoint, dstIPEndpoint)
-	tcpFlow, err := gopacket.FlowFromEndpoints(srcTCPEndpoint, dstTCPEndpoint)
-	flow := types.NewTcpIpFlowFromFlows(netFlow, tcpFlow)
-	t.sendFlow = flow
 	return nil
 }
 
+// EnsureOpenedPcap ensures we have an open handle for sending and receiving raw packets
 func (t *TCPInferenceSideChannel) EnsureOpenedPcap() error {
 	var err error
 	if t.conn == nil {
@@ -153,6 +166,7 @@ func (t *TCPInferenceSideChannel) EnsureOpenedPcap() error {
 	return nil
 }
 
+// Start initiates usage of the TCP inference side-channel
 func (t *TCPInferenceSideChannel) Start() error {
 	err := t.GetCurrentSequence()
 	if err != nil {
@@ -165,7 +179,9 @@ func (t *TCPInferenceSideChannel) Start() error {
 	return nil
 }
 
-func (t *TCPInferenceSideChannel) GetCurrentSequence() error {
+// GetCurrentProbeManifest synchronously retreives the outbound types.PacketManifest
+// from the TCP connection we will use for the inference side-channel
+func (t *TCPInferenceSideChannel) GetCurrentProbeManifest() error {
 	var err error
 
 	err = t.EnsureDialed()
@@ -242,6 +258,11 @@ func (t *TCPInferenceSideChannel) sniffProbe() {
 	}
 }
 
+// sniffSequence is essentially an ethernet sniffer
+// written in crash-only style (no shutdown code-path).
+// It's decodes packets into types.PacketManifest in
+// an IPv4 and IPv6 compatible manner and sends them
+// asynchronously on a channel.
 func (t *TCPInferenceSideChannel) sniffSequence() {
 	for {
 		data, captureInfo, err := t.handle.ReadPacketData()
