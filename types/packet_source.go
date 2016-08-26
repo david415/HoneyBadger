@@ -68,6 +68,7 @@ type PacketManifest struct {
 	Timestamp time.Time
 	Flow      *TcpIpFlow
 	RawPacket []byte
+	Ethernet  *layers.Ethernet
 	IPv4      *layers.IPv4
 	IPv6      *layers.IPv6
 	TCP       *layers.TCP
