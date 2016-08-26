@@ -117,17 +117,22 @@ func (t *TCPInferenceSideChannel) Start() error {
 	var rawPacket []byte
 	var rawPackets [][]byte
 	copy := t.currentPacket
-	copy.TCP.Seq = uint32(types.Sequence(copy.TCP.Seq).Add(1000))
-	for i := 0; i < 100; i++ {
+	copy.TCP.Seq = uint32(types.Sequence(copy.TCP.Seq).Add(6))
+	copy.TCP.PSH = false
+	copy.TCP.ACK = false
+	log.Noticef("TCP: Seq %d SYN %v PSH %v ACK %v", copy.TCP.Seq, copy.TCP.SYN, copy.TCP.PSH, copy.TCP.ACK)
+	log.Noticef("payload: %s", string(copy.Payload))
+	for i := 0; i < 1; i++ {
 		rawPacket, err = t.encodePacket(copy)
 		if err != nil {
 			return err
 		}
+		log.Noticef("encoding packet of size %d", len(rawPacket))
 		rawPackets = append(rawPackets, rawPacket)
 	}
 
 	// send the packets
-	log.Notice("sending 100 probe packets")
+	log.Noticef("sending %d probe packets", len(rawPackets))
 	for i := 0; i < len(rawPackets); i++ {
 		_, err := t.conn.Write(rawPackets[i])
 		if err != nil {
