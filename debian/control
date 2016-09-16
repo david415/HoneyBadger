@@ -6,7 +6,7 @@ Uploaders: Some Debian Uploader <somedebianuploader@debian.org>
 Build-Depends: debhelper (>= 9),
                dh-golang,
                golang-go,
-               golang-github-google-gopacket-dev,
+               golang-gopacket-dev,
                libpcap0.8-dev
 Standards-Version: 3.9.6
 Homepage: https://github.com/david415/HoneyBadger
@@ -19,7 +19,7 @@ Architecture: all
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          golang-go,
-         golang-github-google-gopacket-dev,
+         golang-gopacket-dev,
          libpcap0.8-dev
 # TODO: might be able to rm pcap dep if gopacket fixes #816519
 Description: Passive TCP protocol analyzer to detect and record injection attacks - source code
