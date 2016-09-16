@@ -83,7 +83,7 @@ func (f *DefaultConnFactory) Build(options ConnectionOptions) ConnectionInterfac
 
 type ConnectionInterface interface {
 	Close()
-    GetClientFlow() *types.TcpIpFlow
+	GetClientFlow() *types.TcpIpFlow
 	SetPacketLogger(types.PacketLogger)
 	GetLastSeen() time.Time
 	ReceivePacket(*types.PacketManifest)
@@ -138,7 +138,6 @@ type Connection struct {
 	ServerCoalesce           *OrderedCoalesce
 	PacketLogger             types.PacketLogger
 }
-
 
 func (c *Connection) GetClientFlow() *types.TcpIpFlow {
 	return c.clientFlow
@@ -586,11 +585,11 @@ func (c *Connection) detectCensorInjection(p *types.PacketManifest) {
 		return
 	}
 	event := types.Event{
-		Type:          attackType,
-		PacketCount:   c.packetCount,
-		Time:          time.Now(),
-		Flow:          *p.Flow,
-		Start:         types.Sequence(p.TCP.Seq),
+		Type:        attackType,
+		PacketCount: c.packetCount,
+		Time:        time.Now(),
+		Flow:        *p.Flow,
+		Start:       types.Sequence(p.TCP.Seq),
 	}
 	c.AttackLogger.Log(&event)
 	c.attackDetected = true
@@ -657,18 +656,20 @@ func (c *Connection) ReceivePacket(p *types.PacketManifest) {
 	c.packetCount += 1
 	//log.Printf("packetCount %d\n", c.packetCount)
 
-	// detect injection
-	var nextSeqPtr *types.Sequence
-	if c.clientFlow.Equal(p.Flow) {
-		nextSeqPtr = &c.clientNextSeq
-	} else {
-		nextSeqPtr = &c.serverNextSeq
-	}
-	diff := nextSeqPtr.Difference(types.Sequence(p.TCP.Seq))
-	if diff < 0 {
-		// overlap
-		if len(p.Payload) > 0 {
-			c.detectInjection(p)
+	if c.state != TCP_UNKNOWN {
+		// detect injection
+		var nextSeqPtr *types.Sequence
+		if c.clientFlow.Equal(p.Flow) {
+			nextSeqPtr = &c.clientNextSeq
+		} else {
+			nextSeqPtr = &c.serverNextSeq
+		}
+		diff := nextSeqPtr.Difference(types.Sequence(p.TCP.Seq))
+		if diff < 0 {
+			// overlap
+			if len(p.Payload) > 0 {
+				c.detectInjection(p)
+			}
 		}
 	}
 

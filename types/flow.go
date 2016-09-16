@@ -20,14 +20,13 @@
 package types
 
 import (
-	"fmt"
-	"encoding/binary"
 	"bytes"
+	"encoding/binary"
+	"fmt"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 )
-
 
 // TcpIpFlow is used for tracking unidirectional TCP flows
 type TcpIpFlow struct {
@@ -35,8 +34,16 @@ type TcpIpFlow struct {
 	tcpFlow gopacket.Flow
 }
 
-// NewTcpIpFlowFromLayers given IPv4 and TCP layers it returns a TcpIpFlow
-func NewTcpIpFlowFromLayers(ipLayer layers.IPv4, tcpLayer layers.TCP) *TcpIpFlow {
+// NewTcpIp4FlowFromLayers given IPv4 and TCP layers it returns a TcpIpFlow
+func NewTcpIp4FlowFromLayers(ipLayer layers.IPv4, tcpLayer layers.TCP) *TcpIpFlow {
+	return &TcpIpFlow{
+		ipFlow:  ipLayer.NetworkFlow(),
+		tcpFlow: tcpLayer.TransportFlow(),
+	}
+}
+
+// NewTcpIp6FlowFromLayers given IPv6 and TCP layers it returns a TcpIpFlow
+func NewTcpIp6FlowFromLayers(ipLayer layers.IPv6, tcpLayer layers.TCP) *TcpIpFlow {
 	return &TcpIpFlow{
 		ipFlow:  ipLayer.NetworkFlow(),
 		tcpFlow: tcpLayer.TransportFlow(),
@@ -66,6 +73,11 @@ func (t *TcpIpFlow) Reverse() TcpIpFlow {
 
 // Equal returns true if TcpIpFlow structs t and s are equal. False otherwise.
 func (t *TcpIpFlow) Equal(s *TcpIpFlow) bool {
+	ipEndSrc1, _ := t.ipFlow.Endpoints()
+	ipEndSrc2, _ := s.ipFlow.Endpoints()
+	if ipEndSrc1.EndpointType() != ipEndSrc2.EndpointType() {
+		panic(fmt.Sprintf("TcpIpFlow.Equal fail: mismatched flow types %s != %s", ipEndSrc1.EndpointType(), ipEndSrc2.EndpointType()))
+	}
 	return t.ipFlow == s.ipFlow && t.tcpFlow == s.tcpFlow
 }
 

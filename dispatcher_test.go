@@ -1,10 +1,10 @@
 package HoneyBadger
 
 import (
+	"io"
 	"log"
 	"net"
 	"os"
-	"io"
 	"testing"
 	"time"
 
@@ -196,12 +196,12 @@ func TestInquisitorSourceReceiveOne(t *testing.T) {
 		SrcPort: 1,
 		DstPort: 2,
 	}
-	flow := types.NewTcpIpFlowFromLayers(ip, tcp)
+	flow := types.NewTcpIp4FlowFromLayers(ip, tcp)
 	p := types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flow,
 		IPv4:      &ip,
-		TCP:       tcp,
+		TCP:       &tcp,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
 
@@ -247,12 +247,12 @@ func TestInquisitorResetTwice(t *testing.T) {
 		SrcPort: 1,
 		DstPort: 2,
 	}
-	flow1 := types.NewTcpIpFlowFromLayers(ip1, tcp1)
+	flow1 := types.NewTcpIp4FlowFromLayers(ip1, tcp1)
 	packet1 := types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flow1,
 		IPv4:      &ip1,
-		TCP:       tcp1,
+		TCP:       &tcp1,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
 
@@ -270,12 +270,12 @@ func TestInquisitorResetTwice(t *testing.T) {
 		SrcPort: 1,
 		DstPort: 2,
 	}
-	flow2 := types.NewTcpIpFlowFromLayers(ip2, tcp2)
+	flow2 := types.NewTcpIp4FlowFromLayers(ip2, tcp2)
 	packet2 := types.PacketManifest{
 		Timestamp: time.Now(),
 		Flow:      flow2,
 		IPv4:      &ip2,
-		TCP:       tcp2,
+		TCP:       &tcp2,
 		Payload:   []byte{1, 2, 3, 4, 5, 6, 7},
 	}
 	connsChan := dispatcher.GetObservedConnectionsChan(1)
