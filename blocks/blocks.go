@@ -1,4 +1,3 @@
-
 // code borrowed from https://github.com/zond/qisniff
 // it's GPL2 see LICENSE
 
@@ -7,21 +6,24 @@
 package blocks
 
 import (
-	"github.com/david415/HoneyBadger/types"
 	"fmt"
+	"github.com/david415/HoneyBadger/types"
 	"strings"
 )
-
 
 type Block struct {
 	A, B types.Sequence
 }
 
 type BlockSegment struct {
-	Block Block
-	Bytes []byte
-	IsCoalesce bool
+	Block         Block
+	Bytes         []byte
+	IsCoalesce    bool
 	IsCoalesceGap bool
+}
+
+func (t BlockSegment) String() string {
+	return fmt.Sprintf("%s, Bytes %x, IsCoalesce %v, IsCoalesceGap %v", t.Block, t.Bytes, t.IsCoalesce, t.IsCoalesceGap)
 }
 
 func (t Block) String() string {

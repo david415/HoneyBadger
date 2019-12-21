@@ -19,7 +19,6 @@
 
 package main
 
-
 import (
 	"flag"
 	"fmt"
@@ -32,7 +31,6 @@ import (
 	"log"
 	"net"
 )
-
 
 var iface = flag.String("i", "lo", "Interface to get packets from")
 var filter = flag.String("f", "tcp", "BPF filter for pcap")
@@ -61,7 +59,7 @@ func main() {
 	serviceIP := net.ParseIP(*serviceIPstr)
 
 	if serviceIP == nil {
-		panic(fmt.Sprintf("non-ip target: %q\n", serviceIPstr))
+		panic(fmt.Sprintf("non-ip target: %s\n", *serviceIPstr))
 	}
 
 	ipv4_mode := false
@@ -78,7 +76,6 @@ func main() {
 
 	gap_payload := []byte("Many of these well-funded state/world-class adversaries are able to completely automate the compromising of computers using these TCP injection attacks against real people to violate their human rights.")
 	attack_payload := []byte("Privacy is necessary for an open society in the electronic age. Privacy is not secrecy. A private matter is something one doesn't want the whole world to know, but a secret matter is something one doesn't want anybody to know. Privacy is the power to selectively reveal oneself to the world.")
-
 
 	handle, err := pcap.OpenLive(*iface, int32(*snaplen), true, pcap.BlockForever)
 	if err != nil {
@@ -99,7 +96,7 @@ func main() {
 	for {
 		data, ci, err := handle.ReadPacketData()
 		if err != nil {
-			log.Printf("error getting packet: %v %s", err, ci)
+			log.Printf("error getting packet: %v %v", err, ci)
 			continue
 		}
 		err = parser.DecodeLayers(data, &decoded)
@@ -135,7 +132,7 @@ func main() {
 		}
 
 		if ipv4_mode {
-//			if tcp.SrcPort != layers.TCPPort(*servicePort) || !ip4.SrcIP.Equal(serviceIP.To4()) {
+			//			if tcp.SrcPort != layers.TCPPort(*servicePort) || !ip4.SrcIP.Equal(serviceIP.To4()) {
 			if tcp.SrcPort != layers.TCPPort(*servicePort) || !ip4.SrcIP.Equal(serviceIP) {
 				continue
 			}
@@ -148,7 +145,7 @@ func main() {
 		}
 
 		if foundIPv4 == true {
-			flow = types.NewTcpIpFlowFromLayers(ip4, tcp)
+			flow = types.NewTcpIp4FlowFromLayers(ip4, tcp)
 		} else if foundIPv6 == true {
 			f := types.NewTcpIpFlowFromFlows(ip6.NetworkFlow(), tcp.TransportFlow())
 			flow = &f

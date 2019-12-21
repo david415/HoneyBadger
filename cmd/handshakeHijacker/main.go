@@ -26,9 +26,9 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/google/gopacket/tcpassembly"
-	"net"
 	"log"
 	"math/rand"
+	"net"
 	"time"
 )
 
@@ -80,7 +80,7 @@ func main() {
 		data, ci, err := handle.ReadPacketData()
 		log.Print("after ReadPacketData")
 		if err != nil {
-			log.Printf("error getting packet: %v %s", err, ci)
+			log.Printf("error getting packet: %v %v", err, ci)
 			continue
 		}
 		err = parser.DecodeLayers(data, &decoded)

@@ -2,8 +2,8 @@ package HoneyBadger
 
 import (
 	"fmt"
-	"os"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -127,7 +127,7 @@ func TestAllPcapFiles(t *testing.T) {
 		if strings.HasSuffix(path, ".pcap") {
 			fmt.Printf("HoneyBadger integration test with: %s\n", path)
 			if !PcapIsDetectInjection(path) {
-				t.Fatal("No injection attack detected in pcap file: %s\n", path)
+				t.Fatalf("No injection attack detected in pcap file: %s\n", path)
 			}
 		}
 		return nil
